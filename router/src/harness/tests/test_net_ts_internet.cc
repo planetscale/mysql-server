@@ -487,6 +487,11 @@ TEST(NetTS_internet, udp_ipv4_socket_bind_sendmsg_recvmsg) {
 }
 
 TEST(NetTS_internet, tcp_ipv6_socket_bind_accept_connect) {
+  if (getenv("DISABLE_IPV6_TESTS")) {
+    // fails when ipv6 is present but disabled
+    GTEST_SKIP();
+  }
+
   net::io_context io_ctx;
 
   // the test relies on bind(addr, port=0) assigns are random port.
@@ -588,6 +593,11 @@ TEST(NetTS_internet, tcp_ipv6_socket_bind_accept_connect) {
 }
 
 TEST(NetTS_internet, udp_ipv6_socket_bind_accept_connect) {
+  if (getenv("DISABLE_IPV6_TESTS")) {
+    // fails when ipv6 is present but disabled
+    GTEST_SKIP();
+  }
+
   net::io_context io_ctx;
 
   // any ip, any port

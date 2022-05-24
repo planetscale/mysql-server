@@ -3390,7 +3390,13 @@ static int com_go(String *buffer, char *line MY_ATTRIBUTE((unused))) {
     }
     my_stpcpy(pos, time_buff);
     put_info(buff, INFO_RESULT);
-    if (mysql_info(&mysql)) put_info(mysql_info(&mysql), INFO_RESULT);
+    const char *info = mysql_info(&mysql);
+    if (info) {
+      if (info[0])
+        put_info(mysql_info(&mysql), INFO_RESULT);
+      else if (info[1])
+        printf("Metrics: %s\n", info+1);
+    }
     put_info("", INFO_RESULT);  // Empty row
 
     if (result && !mysql_eof(result)) /* Something wrong when using quick */

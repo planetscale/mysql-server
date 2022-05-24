@@ -459,6 +459,7 @@
 #include "sql/sql_lex.h"
 #include "sql/sql_list.h"
 #include "sql/sql_prepare.h"  // Prepared_statement
+#include "sql/sql_thd_internal_api.h"
 #include "sql/system_variables.h"
 #include "sql_string.h"
 #include "template_utils.h"
@@ -858,7 +859,7 @@ bool net_send_error(NET *net, uint sql_errno, const char *err) {
 
 static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
                         ulonglong affected_rows, ulonglong id,
-                        const char *message, bool eof_identifier) {
+                        const char *message, size_t msglen, bool eof_identifier) {
   Protocol *protocol = thd->get_protocol();
   NET *net = thd->get_protocol_classic()->get_net();
   uchar buff[MYSQL_ERRMSG_SIZE + 10];
@@ -927,9 +928,9 @@ static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
 
   if (protocol->has_client_capability(CLIENT_SESSION_TRACK)) {
     /* the info field */
-    if (state_changed || (message && message[0]))
+    if (state_changed || (message && msglen))
       pos = net_store_data(pos, pointer_cast<const uchar *>(message),
-                           message ? strlen(message) : 0);
+                           message ? msglen : 0);
     /* session state change information */
     if (unlikely(state_changed)) {
       store.set_charset(thd->variables.collation_database);
@@ -946,10 +947,10 @@ static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
       start = (uchar *)store.ptr();
       pos = start + store.length();
     }
-  } else if (message && message[0]) {
+  } else if (message && msglen > 0 && (message[0] || message[1])) {
     /* the info field, if there is a message to store */
     pos = net_store_data(pos, pointer_cast<const uchar *>(message),
-                         strlen(message));
+                         msglen);
   }
 
   /* OK packet length will be restricted to 16777215 bytes */
@@ -1299,7 +1300,7 @@ bool Protocol_classic::send_ok(uint server_status, uint statement_warn_count,
   DBUG_TRACE;
   const bool retval =
       net_send_ok(m_thd, server_status, statement_warn_count, affected_rows,
-                  last_insert_id, message, false);
+                  last_insert_id, message, strlen(message), false);
   // Reclaim some memory
   convert.shrink(m_thd->variables.net_buffer_length);
   return retval;
@@ -1321,9 +1322,13 @@ bool Protocol_classic::send_eof(uint server_status, uint statement_warn_count) {
   */
   if (has_client_capability(CLIENT_DEPRECATE_EOF) &&
       (m_thd->get_command() != COM_BINLOG_DUMP &&
-       m_thd->get_command() != COM_BINLOG_DUMP_GTID))
+       m_thd->get_command() != COM_BINLOG_DUMP_GTID)) {
+    char message[64] = "";
+    snprintf(message+1, sizeof(message)-1, "{\"rows_read\":%llu}", m_thd->get_stmt_da()->rows_read());
+
     retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
-                         nullptr, true);
+                         message, 1+strlen(message+1), true);
+  }
   else
     retval = net_send_eof(m_thd, server_status, statement_warn_count);
   // Reclaim some memory
@@ -3686,7 +3691,7 @@ bool Protocol_binary::send_parameters(List<Item_param> *parameters,
                        (m_thd->server_status | SERVER_PS_OUT_PARAMS |
                         SERVER_MORE_RESULTS_EXISTS),
                        m_thd->get_stmt_da()->current_statement_cond_count(), 0,
-                       0, nullptr, true);
+                       0, nullptr, 0, true);
   else
     /*
       In case of old clients send EOF packet.

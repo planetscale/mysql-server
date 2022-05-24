@@ -71,6 +71,9 @@ static_assert(sizeof(kInvalidBindAddress) > 7 + 1,
               "kInvalidBindAddress is too short");
 #endif
 
+const std::string localhost_ipv4("127.0.0.1");
+const std::string localhost_ipv6("::1");
+
 using namespace std::chrono_literals;
 
 const std::string kHttpBasedir(kPlaceholderHttpBaseDir);
@@ -216,6 +219,11 @@ TempDirectory HttpServerPlainTest::http_base_dir_;
  * - make a client connect to the http-server
  */
 TEST_P(HttpServerPlainTest, ensure) {
+  if (getenv("DISABLE_IPV6_TESTS") && GetParam().http_hostname == localhost_ipv6) {
+    // fails when ipv6 is present but disabled
+    GTEST_SKIP();
+  }
+
   std::vector<std::pair<std::string, std::string>> http_section;
   http_section.reserve(GetParam().http_section.size());
 
@@ -315,9 +323,6 @@ TEST_P(HttpServerPlainTest, ensure) {
                 ::testing::ContainsRegex(GetParam().errmsg_regex));
   }
 }
-
-const std::string localhost_ipv4("127.0.0.1");
-const std::string localhost_ipv6("::1");
 
 static const HttpServerPlainParams http_server_static_files_params[]{
     {"bind-address-ipv4-any",

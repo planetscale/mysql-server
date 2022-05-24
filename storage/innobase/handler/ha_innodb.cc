@@ -9823,6 +9823,7 @@ int ha_innobase::index_read(
       } else {
         srv_stats.n_rows_read.add(thd_get_thread_id(m_prebuilt->trx->mysql_thd),
                                   1);
+        m_user_thd->get_stmt_da()->inc_rows_read();
       }
       break;
 
@@ -10069,6 +10070,7 @@ int ha_innobase::general_fetch(
       } else {
         srv_stats.n_rows_read.add(thd_get_thread_id(m_prebuilt->trx->mysql_thd),
                                   1);
+        m_user_thd->get_stmt_da()->inc_rows_read();
       }
       break;
     case DB_RECORD_NOT_FOUND:

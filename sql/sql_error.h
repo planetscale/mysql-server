@@ -392,6 +392,11 @@ class Diagnostics_area {
     return m_affected_rows;
   }
 
+  ulonglong rows_read() const {
+    assert(m_status == DA_OK);
+    return m_rows_read;
+  }
+
   ulonglong last_insert_id() const {
     DBUG_ASSERT(m_status == DA_OK);
     return m_last_insert_id;
@@ -450,6 +455,9 @@ class Diagnostics_area {
 
   /** Increment the current row counter to point at the next row. */
   void inc_current_row_for_condition() { m_current_row_for_condition++; }
+
+  /** Increment the rows-read counter. */
+  void inc_rows_read() { m_rows_read++; }
 
   /** Set the current row counter to point to the given row number. */
   void set_current_row_for_condition(ulong rowno) {
@@ -648,6 +656,11 @@ class Diagnostics_area {
     can not be changed.
   */
   ulonglong m_affected_rows;
+
+  /**
+    The number of rows read by the last statement.
+  */
+  ulonglong m_rows_read;
 
   /**
     Similarly to the previous member, this is a replacement of
