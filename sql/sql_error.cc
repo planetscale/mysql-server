@@ -336,6 +336,7 @@ Diagnostics_area::Diagnostics_area(bool allow_unlimited_conditions)
       m_status(DA_EMPTY),
       m_mysql_errno(0),
       m_affected_rows(0),
+      m_rows_read(0),
       m_last_insert_id(0),
       m_last_statement_cond_count(0),
       m_current_statement_cond_count(0),
@@ -364,6 +365,7 @@ void Diagnostics_area::reset_diagnostics_area() {
   m_last_insert_id = 0;
   m_last_statement_cond_count = 0;
 #endif
+  m_rows_read = 0;
   set_is_sent(false);
   // Tiny reset in debug mode to see garbage right away.
   m_status = DA_EMPTY;

@@ -142,6 +142,12 @@ TEST(Mysys, LoadPathOverflow) {
 
 #ifdef HAVE_O_TMPFILE
 TEST(Mysys, CreateTempFile) {
+  if (getenv("DISABLE_TMPFILE_TESTS")) {
+    // In Docker, /tmp is a plain subdirectory under /, which is an overlayfs
+    // O_TMPFILE does not work on overlayfs
+    GTEST_SKIP();
+  }
+
   char dst[FN_REFLEN];
   aset(dst, 0xaa);
 

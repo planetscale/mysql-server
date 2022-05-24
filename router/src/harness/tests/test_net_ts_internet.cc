@@ -661,6 +661,11 @@ TEST(NetTS_internet, tcp_ipv4_socket_bind_accept_connect_dynbuffer) {
 }
 
 TEST(NetTS_internet, tcp_ipv6_socket_bind_accept_connect) {
+  if (getenv("DISABLE_IPV6_TESTS")) {
+    // fails when ipv6 is present but disabled
+    GTEST_SKIP();
+  }
+
   net::io_context io_ctx;
 
   net::ip::tcp::endpoint endp = net_ipv6_any_port_endpoint();
@@ -748,6 +753,11 @@ TEST(NetTS_internet, tcp_ipv6_socket_bind_accept_connect) {
 }
 
 TEST(NetTS_internet, udp_ipv6_socket_bind_accept_connect) {
+  if (getenv("DISABLE_IPV6_TESTS")) {
+    // fails when ipv6 is present but disabled
+    GTEST_SKIP();
+  }
+
   net::io_context io_ctx;
 
   // any ip, any port

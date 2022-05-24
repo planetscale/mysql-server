@@ -93,6 +93,7 @@ void Security_context::init() {
   m_has_drop_policy = false;
   m_executed_drop_policy = false;
   m_registration_sandbox_mode = false;
+  m_exclude_user_from_rows_read = false;
 }
 
 void Security_context::logout() {
@@ -815,6 +816,8 @@ void Security_context::set_user_ptr(const char *user_arg,
 
   // set new user value to m_user.
   m_user.set(user_arg, user_arg_length, system_charset_info);
+
+  recheck_exclude_rows_read();
 }
 
 /**
@@ -837,6 +840,25 @@ void Security_context::assign_user(const char *user_arg,
     m_user.copy(user_arg, user_arg_length, system_charset_info);
   else
     m_user.set((const char *)nullptr, 0, system_charset_info);
+
+  recheck_exclude_rows_read();
+}
+
+char *rows_read_exclude_users = nullptr;
+
+void Security_context::recheck_exclude_rows_read() {
+  m_exclude_user_from_rows_read = false;
+  if (rows_read_exclude_users) {
+    char *copy = strdup(rows_read_exclude_users);
+    char *saveptr, *tok;
+    for (tok=my_strtok_r(copy, ",", &saveptr); tok; tok=my_strtok_r(NULL, ",", &saveptr)) {
+      if (!strcmp(tok, m_user.ptr())) {
+        m_exclude_user_from_rows_read = true;
+        break;
+      }
+    }
+    free(copy);
+  }
 }
 
 /**
@@ -880,7 +902,7 @@ void Security_context::set_host_ptr(const char *host_arg,
 /**
   Setter method for member m_host.
 
-  Copies host_arg value to the m_host if it is not null else m_user is set
+  Copies host_arg value to the m_host if it is not null else m_host is set
   to empty string.
 
 
