@@ -10286,9 +10286,10 @@ int ha_innobase::index_read(
       if (m_prebuilt->table->is_system_table) {
         srv_stats.n_system_rows_read.add(
             thd_get_thread_id(m_prebuilt->trx->mysql_thd), 1);
-      } else {
+      } else if (!m_user_thd->security_context()->exclude_user_from_rows_read()) {
         srv_stats.n_rows_read.add(thd_get_thread_id(m_prebuilt->trx->mysql_thd),
                                   1);
+        m_user_thd->get_stmt_da()->inc_rows_read();
       }
       break;
 
@@ -10533,9 +10534,10 @@ int ha_innobase::general_fetch(
       if (m_prebuilt->table->is_system_table) {
         srv_stats.n_system_rows_read.add(
             thd_get_thread_id(m_prebuilt->trx->mysql_thd), 1);
-      } else {
+      } else if (!m_user_thd->security_context()->exclude_user_from_rows_read()) {
         srv_stats.n_rows_read.add(thd_get_thread_id(m_prebuilt->trx->mysql_thd),
                                   1);
+        m_user_thd->get_stmt_da()->inc_rows_read();
       }
       break;
     case DB_RECORD_NOT_FOUND:
