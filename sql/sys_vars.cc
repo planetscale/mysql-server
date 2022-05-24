@@ -1063,6 +1063,13 @@ static Sys_var_charptr Sys_my_bind_addr(
     READ_ONLY NON_PERSIST GLOBAL_VAR(my_bind_addr_str), CMD_LINE(REQUIRED_ARG),
     IN_FS_CHARSET, DEFAULT(MY_BIND_ALL_ADDRESSES));
 
+extern char *rows_read_exclude_users;
+static Sys_var_charptr Sys_my_rows_read_exclude_users(
+    "rows_read_exclude_users",
+    "Comma-separated list of users whose queries do not increment rows_read",
+    READ_ONLY NON_PERSIST GLOBAL_VAR(rows_read_exclude_users), CMD_LINE(REQUIRED_ARG),
+    IN_FS_CHARSET, DEFAULT(nullptr));
+
 static Sys_var_charptr Sys_admin_addr(
     "admin_address",
     "IP address to bind to for service connection. Address can be an IPv4"
