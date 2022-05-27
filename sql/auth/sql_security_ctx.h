@@ -62,6 +62,7 @@ class Security_context {
   void skip_grants(const char *user = "skip-grants user",
                    const char *host = "skip-grants host");
   bool is_skip_grants_user();
+  bool exclude_user_from_rows_read() const { return m_exclude_user_from_rows_read; }
 
   /**
     Getter method for member m_user.
@@ -377,6 +378,9 @@ class Security_context {
     True if the skip_grants_user is set.
   */
   bool m_is_skip_grants_user;
+
+  bool m_exclude_user_from_rows_read;
+  void recheck_exclude_rows_read();
 
   bool m_executed_drop_policy;
   bool m_has_drop_policy;

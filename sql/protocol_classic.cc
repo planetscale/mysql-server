@@ -1323,11 +1323,17 @@ bool Protocol_classic::send_eof(uint server_status, uint statement_warn_count) {
   if (has_client_capability(CLIENT_DEPRECATE_EOF) &&
       (m_thd->get_command() != COM_BINLOG_DUMP &&
        m_thd->get_command() != COM_BINLOG_DUMP_GTID)) {
-    char message[64] = "";
-    snprintf(message+1, sizeof(message)-1, "{\"rows_read\":%llu}", m_thd->get_stmt_da()->rows_read());
-
-    retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
-                         message, 1+strlen(message+1), true);
+    ulonglong rows_read = m_thd->get_stmt_da()->rows_read();
+    if (rows_read) {
+      char message[64] = "";
+      snprintf(message+1, sizeof(message)-1, "{\"rows_read\":%llu}", rows_read);
+      retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
+                           message, 1+strlen(message+1), true);
+    }
+    else {
+      retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
+                           NULL, 0, true);
+    }
   }
   else
     retval = net_send_eof(m_thd, server_status, statement_warn_count);
