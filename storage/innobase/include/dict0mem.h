@@ -2101,6 +2101,10 @@ struct dict_table_t {
   or performance_schema) */
   bool is_system_table;
 
+  /** True if the table stats should be seen as a system table (mysql, information_schema
+  or performance_schema) */
+  bool is_system_table_metrics;
+
   /** Hash chain node. */
   hash_node_t name_hash;
 
