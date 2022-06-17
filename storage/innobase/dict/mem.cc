@@ -35,6 +35,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 other files in library. The code in this file is used to make a library for
 external tools. */
 
+#include <algorithm>
 #include <new>
 
 #include "dict0dict.h"
@@ -147,35 +148,36 @@ void dict_mem_table_free(dict_table_t *table) /*!< in: table */
 }
 
 /** System databases */
-static std::string innobase_system_databases[] = {
-    "mysql/", "information_schema/", "performance_schema/", ""};
+static std::vector<std::string> innobase_system_databases({
+    "mysql/", "information_schema/", "performance_schema/"
+});
 
 /** Determines if a table is a system table
 @param[in]  name  table_name
 @return true if table is system table */
-static bool dict_mem_table_is_system(const std::string name) {
+static bool dict_mem_table_is_system(const std::string &name) {
   /* Table has the following format: database/table and some system table are
   of the form SYS_* */
-  if (name.find('/') != std::string::npos) {
-    size_t table_len = name.length();
-
-    std::string system_db = std::string(innobase_system_databases[0]);
-    int i = 0;
-
-    while (system_db.compare("") != 0) {
-      size_t len = system_db.length();
-
-      if (table_len > len && name.compare(0, len, system_db) == 0) {
-        return true;
-      }
-
-      system_db = std::string(innobase_system_databases[++i]);
-    }
-
-    return false;
-  } else {
+  if (name.find('/') == std::string::npos)
     return true;
+
+  for (auto p : innobase_system_databases) {
+    if (name.length() > p.length() && name.compare(0, p.length(), p) == 0)
+      return true;
   }
+
+  return false;
+}
+
+void dict_add_system_prefix(const char *pfx) {
+  if (!pfx || !pfx[0])
+    return;
+
+  std::string pfx_s = pfx;
+  if (pfx_s[pfx_s.size()-1] != '/')
+    pfx_s += '/';
+  if (std::find(innobase_system_databases.begin(), innobase_system_databases.end(), pfx_s) == innobase_system_databases.end())
+    innobase_system_databases.push_back(pfx_s);
 }
 
 /** Creates a table memory object.
