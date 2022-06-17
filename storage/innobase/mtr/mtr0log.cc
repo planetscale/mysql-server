@@ -1303,6 +1303,7 @@ static byte *mlog_parse_index_v1(byte *ptr, const byte *end_ptr,
   }
 
   table->is_system_table = false;
+  table->is_system_table_metrics = false;
 
   if (is_instant || is_versioned) {
     if (is_versioned) {
