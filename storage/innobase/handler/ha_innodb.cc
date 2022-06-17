@@ -327,6 +327,10 @@ static ulong innodb_flush_method;
 stopword table to be used */
 static char *innobase_server_stopword_table = nullptr;
 
+/* A comma-separated list of prefixes that designate system (not user) tables
+for metrics accounting.  See also dict_mem_table_is_system. */
+static char *extra_system_table_prefixes = nullptr;
+
 /* Below we have boolean-valued start-up parameters, and their default
 values */
 
@@ -5591,6 +5595,15 @@ static int innobase_init_files(dict_init_mode_t dict_init_mode,
   /* Turn on monitor counters that are default on */
   srv_mon_default_on();
 
+  if (extra_system_table_prefixes) {
+    char *copy = strdup(extra_system_table_prefixes);
+    char *saveptr, *tok;
+    for (tok=my_strtok_r(copy, ",", &saveptr); tok; tok=my_strtok_r(NULL, ",", &saveptr)) {
+      dict_add_system_metrics_prefix(tok);
+    }
+    free(copy);
+  }
+
   /* Unit Tests */
 #ifdef UNIV_ENABLE_UNIT_TEST_GET_PARENT_DIR
   unit_test_os_file_get_parent_dir();
@@ -10279,7 +10292,7 @@ int ha_innobase::index_read(
   switch (ret) {
     case DB_SUCCESS:
       error = 0;
-      if (m_prebuilt->table->is_system_table) {
+      if (m_prebuilt->table->is_system_table_metrics) {
         srv_stats.n_system_rows_read.add(
             thd_get_thread_id(m_prebuilt->trx->mysql_thd), 1);
       } else if (!m_user_thd->security_context()->exclude_user_from_rows_read()) {
@@ -10527,7 +10540,7 @@ int ha_innobase::general_fetch(
   switch (ret) {
     case DB_SUCCESS:
       error = 0;
-      if (m_prebuilt->table->is_system_table) {
+      if (m_prebuilt->table->is_system_table_metrics) {
         srv_stats.n_system_rows_read.add(
             thd_get_thread_id(m_prebuilt->trx->mysql_thd), 1);
       } else if (!m_user_thd->security_context()->exclude_user_from_rows_read()) {
@@ -22021,6 +22034,12 @@ static MYSQL_SYSVAR_STR(ft_server_stopword_table,
                         "The user supplied stopword table name.",
                         innodb_stopword_table_validate, nullptr, nullptr);
 
+static MYSQL_SYSVAR_STR(extra_system_table_prefixes,
+                        extra_system_table_prefixes,
+                        PLUGIN_VAR_READONLY | PLUGIN_VAR_NOSYSVAR | PLUGIN_VAR_RQCMDARG,
+                        "Additional prefixes that designate system (not user) tables for metrics accounting.",
+                        nullptr, nullptr, nullptr);
+
 static MYSQL_SYSVAR_UINT(flush_log_at_timeout, srv_flush_log_at_timeout,
                          PLUGIN_VAR_OPCMDARG,
                          "Write and flush logs every (n) second.", nullptr,
@@ -23227,6 +23246,7 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(ft_aux_table),
     MYSQL_SYSVAR(ft_enable_diag_print),
     MYSQL_SYSVAR(ft_server_stopword_table),
+    MYSQL_SYSVAR(extra_system_table_prefixes),
     MYSQL_SYSVAR(ft_user_stopword_table),
     MYSQL_SYSVAR(disable_sort_file_cache),
     MYSQL_SYSVAR(stats_on_metadata),

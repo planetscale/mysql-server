@@ -178,6 +178,38 @@ static bool dict_mem_table_is_system(const std::string name) {
   }
 }
 
+static std::vector<std::string> innobase_system_databases_metrics({
+    "mysql/", "information_schema/", "performance_schema/"
+});
+
+/** Determines if a table is a system table for metrics purposes
+@param[in]  name  table_name
+@return true if table is system table */
+static bool dict_mem_table_is_system_metrics(const std::string &name) {
+  /* Table has the following format: database/table and some system table are
+  of the form SYS_* */
+  if (name.find('/') == std::string::npos)
+    return true;
+
+  for (auto p : innobase_system_databases_metrics) {
+    if (name.length() > p.length() && name.compare(0, p.length(), p) == 0)
+      return true;
+  }
+
+  return false;
+}
+
+void dict_add_system_metrics_prefix(const char *pfx) {
+  if (!pfx || !pfx[0])
+    return;
+
+  std::string pfx_s = pfx;
+  if (pfx_s[pfx_s.size()-1] != '/')
+    pfx_s += '/';
+  if (std::find(innobase_system_databases_metrics.begin(), innobase_system_databases_metrics.end(), pfx_s) == innobase_system_databases_metrics.end())
+    innobase_system_databases_metrics.push_back(pfx_s);
+}
+
 dict_table_t *dict_mem_table_create(const char *name, space_id_t space,
                                     ulint n_cols, ulint n_v_cols,
                                     ulint n_m_v_cols, uint32_t flags,
@@ -211,6 +243,7 @@ dict_table_t *dict_mem_table_create(const char *name, space_id_t space,
   table->flags2 = (unsigned int)flags2;
   table->name.m_name = mem_strdup(name);
   table->is_system_table = dict_mem_table_is_system(table->name.m_name);
+  table->is_system_table_metrics = dict_mem_table_is_system_metrics(table->name.m_name);
   table->space = (unsigned int)space;
   table->dd_space_id = dd::INVALID_OBJECT_ID;
   table->n_t_cols = (unsigned int)(n_cols + table->get_n_sys_cols());

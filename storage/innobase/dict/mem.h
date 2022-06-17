@@ -105,4 +105,9 @@ const char *dict_add_col_name(const char *col_names, /*!< in: existing column
                               ulint cols, /*!< in: number of existing columns */
                               const char *name,  /*!< in: new column name */
                               mem_heap_t *heap); /*!< in: heap */
+
+/** Add the prefix 'pfx' to the list of database names that count as
+ * system tables, rather than user tables, for the purposes of rows
+ * {read,inserted,updated,deleted} counters. */
+void dict_add_system_metrics_prefix(const char *pfx);
 #endif

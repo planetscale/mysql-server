@@ -1485,7 +1485,7 @@ static dberr_t row_insert_for_mysql_using_cursor(const byte *mysql_rec,
     , with a latch. */
     dict_table_n_rows_inc(node->table);
 
-    if (node->table->is_system_table) {
+    if (node->table->is_system_table_metrics) {
       srv_stats.n_system_rows_inserted.inc();
     } else {
       srv_stats.n_rows_inserted.inc();
@@ -1679,7 +1679,7 @@ run_again:
 
   que_thr_stop_for_mysql_no_error(thr, trx);
 
-  if (table->is_system_table) {
+  if (table->is_system_table_metrics) {
     srv_stats.n_system_rows_inserted.inc();
   } else {
     srv_stats.n_rows_inserted.inc();
@@ -2225,7 +2225,7 @@ static dberr_t row_del_upd_for_mysql_using_cursor(row_prebuilt_t *prebuilt) {
   if (node->is_delete) {
     if (err == DB_SUCCESS) {
       dict_table_n_rows_dec(prebuilt->table);
-      if (node->table->is_system_table) {
+      if (node->table->is_system_table_metrics) {
         srv_stats.n_system_rows_deleted.inc();
       } else {
         srv_stats.n_rows_deleted.inc();
@@ -2239,7 +2239,7 @@ static dberr_t row_del_upd_for_mysql_using_cursor(row_prebuilt_t *prebuilt) {
     err = row_update_for_mysql_using_cursor(node, delete_entries, thr);
 
     if (err == DB_SUCCESS) {
-      if (node->table->is_system_table) {
+      if (node->table->is_system_table_metrics) {
         srv_stats.n_system_rows_updated.inc();
       } else {
         srv_stats.n_rows_updated.inc();
@@ -2408,13 +2408,13 @@ run_again:
     with a latch. */
     dict_table_n_rows_dec(prebuilt->table);
 
-    if (table->is_system_table) {
+    if (table->is_system_table_metrics) {
       srv_stats.n_system_rows_deleted.inc();
     } else {
       srv_stats.n_rows_deleted.inc();
     }
   } else {
-    if (table->is_system_table) {
+    if (table->is_system_table_metrics) {
       srv_stats.n_system_rows_updated.inc();
     } else {
       srv_stats.n_rows_updated.inc();
@@ -2639,13 +2639,13 @@ run_again:
     with a latch. */
     dict_table_n_rows_dec(table);
 
-    if (table->is_system_table) {
+    if (table->is_system_table_metrics) {
       srv_stats.n_system_rows_deleted.add((size_t)trx->id, 1);
     } else {
       srv_stats.n_rows_deleted.add((size_t)trx->id, 1);
     }
   } else {
-    if (table->is_system_table) {
+    if (table->is_system_table_metrics) {
       srv_stats.n_system_rows_updated.add((size_t)trx->id, 1);
     } else {
       srv_stats.n_rows_updated.add((size_t)trx->id, 1);
