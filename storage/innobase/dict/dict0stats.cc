@@ -2006,7 +2006,7 @@ static void dict_stats_analyze_index(
  will be saved on disk.
  @return DB_SUCCESS or error code */
 static dberr_t dict_stats_update_persistent(
-    dict_table_t *table) /*!< in/out: table */
+    dict_table_t *table, bool only_clustered_index) /*!< in/out: table */
 {
   dict_index_t *index;
 
@@ -2050,7 +2050,7 @@ static dberr_t dict_stats_update_persistent(
 
     dict_stats_empty_index(index);
 
-    if (dict_stats_should_ignore_index(index)) {
+    if (only_clustered_index || dict_stats_should_ignore_index(index)) {
       continue;
     }
 
@@ -2841,6 +2841,7 @@ storage */
   switch (stats_upd_option) {
     dberr_t err;
 
+    case DICT_STATS_RECALC_PERSISTENT_FAST:
     case DICT_STATS_RECALC_PERSISTENT:
 
       if (srv_read_only_mode) {
@@ -2862,7 +2863,7 @@ storage */
       persistent stats enabled */
       ut_a(strchr(table->name.m_name, '/') != nullptr);
 
-      err = dict_stats_update_persistent(table);
+      err = dict_stats_update_persistent(table, stats_upd_option == DICT_STATS_RECALC_PERSISTENT_FAST);
 
       if (err != DB_SUCCESS) {
         return (err);

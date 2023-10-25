@@ -129,4 +129,6 @@
 */
 #define OPTION_NO_SUBQUERY_DURING_OPTIMIZATION (1ULL << 39)  // intern
 
+#define OPTION_FAST_ANALYZE_TABLE (1ULL << 61)  // THD, user, binlog
+
 #endif /* QUERY_OPTIONS_INCLUDED */

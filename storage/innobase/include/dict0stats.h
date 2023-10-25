@@ -46,6 +46,9 @@ enum dict_stats_upd_option_t {
                            storage, if the persistent storage is
                            not present then emit a warning and
                            fall back to transient stats */
+  DICT_STATS_RECALC_PERSISTENT_FAST, /* like DICT_STATS_RECALC_PERSISTENT,
+                            but only computes statistics for the clustering index
+                            (PRIMARY KEY) */
   DICT_STATS_RECALC_TRANSIENT,  /* (re) calculate the statistics
                             using an imprecise quick algo
                             without saving the results

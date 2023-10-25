@@ -5601,6 +5601,12 @@ static Sys_var_bit Sys_unique_checks("unique_checks", "unique_checks",
                                      REVERSE(OPTION_RELAXED_UNIQUE_CHECKS),
                                      DEFAULT(true), NO_MUTEX_GUARD, IN_BINLOG);
 
+static Sys_var_bit Sys_fast_analyze_table("fast_analyze_table", "fast_analyze_table",
+    HINT_UPDATEABLE SESSION_VAR(option_bits),
+    NO_CMD_LINE, OPTION_FAST_ANALYZE_TABLE,
+    DEFAULT(false), NO_MUTEX_GUARD,
+    IN_BINLOG);
+
 #ifdef ENABLED_PROFILING
 static Sys_var_bit Sys_profiling("profiling", "profiling",
                                  SESSION_VAR(option_bits), NO_CMD_LINE,
