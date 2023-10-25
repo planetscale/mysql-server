@@ -1,0 +1,25 @@
+#
+# Test of fast_analyze_table variable
+#
+
+--source include/count_sessions.inc
+
+--disable_warnings
+drop table if exists t0;
+--enable_warnings
+
+create table t0 (id int primary key);
+
+show global variables like 'fast_analyze_table';
+show session variables like 'fast_analyze_table';
+
+select @@global.fast_analyze_table;
+select @@session.fast_analyze_table;
+
+set @@fast_analyze_table=1;
+show global variables like 'fast_analyze_table';
+show session variables like 'fast_analyze_table';
+
+analyze table t0;
+set @@fast_analyze_table=0;
+drop table if exists t0;

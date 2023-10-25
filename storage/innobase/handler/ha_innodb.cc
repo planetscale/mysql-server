@@ -17200,6 +17200,10 @@ int ha_innobase::info_low(uint flag, bool is_analyze) {
       if (dict_stats_is_persistent_enabled(ib_table)) {
         if (is_analyze) {
           opt = DICT_STATS_RECALC_PERSISTENT;
+
+          if (m_prebuilt->trx->mysql_thd != nullptr && thd_test_options(m_prebuilt->trx->mysql_thd, OPTION_FAST_ANALYZE_TABLE)) {
+            opt = DICT_STATS_RECALC_PERSISTENT_FAST;
+          }
         } else {
           /* This is e.g. 'SHOW INDEXES', fetch
           the persistent stats from disk. */
