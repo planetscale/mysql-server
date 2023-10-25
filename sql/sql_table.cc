@@ -2455,7 +2455,18 @@ static bool rm_table_check_fks(THD *thd, Drop_tables_ctx *drop_ctx) {
       return true;
     }
 
+    Table_name_inspector inspector(table->table_name);
+    if (inspector.skip_fk_checks()) {
+      continue;
+    }
+
     for (const dd::Foreign_key_parent *fk : table_def->foreign_key_parents()) {
+      // Whether we drop a table or a database, it's fine to ignore vitess-internal children tables:
+      Table_name_inspector child_inspector(fk->child_table_name().c_str());
+      if (child_inspector.skip_fk_checks()) {
+        // The child table can be ignored.
+        continue;
+      }
       if (drop_ctx->drop_database) {
         /*
           In case of DROP DATABASE list of tables to be dropped can be huge.
@@ -9827,6 +9838,58 @@ static bool check_fk_children_after_parent_def_change(
   @param parent_table_db    Old schema name.
   @param parent_table_name  Old table name.
   @param hton               Handlerton for table's storage engine.
+
+  @retval operation outcome, false if no error.
+*/
+static bool reload_fk_children_after_parent_rename_preserve(
+    THD *thd,
+    const char *parent_table_db,
+    const char *parent_table_name,
+    handlerton *hton) {
+  Normalized_fk_children fk_children;
+  if (fetch_fk_children_uncached_uncommitted_normalized(
+          thd, parent_table_db, parent_table_name,
+          ha_resolve_storage_engine_name(hton), &fk_children))
+    return true;
+
+  for (auto fk_children_it : fk_children) {
+    const char *schema_name = fk_children_it.first.c_str();
+    const char *table_name = fk_children_it.second.c_str();
+
+    if (my_strcasecmp(table_alias_charset, schema_name, parent_table_db) == 0 &&
+        my_strcasecmp(table_alias_charset, table_name, parent_table_name) ==
+            0) {
+      // self reference
+      continue;
+    }
+
+    dd::Table *child_table_def = nullptr;
+
+    if (thd->dd_client()->acquire_for_modification(schema_name, table_name,
+                                                   &child_table_def))
+      return true;
+
+    assert(child_table_def != nullptr);
+
+    mysql_ha_flush_table(thd, schema_name, table_name);
+    close_all_tables_for_name(thd, schema_name, table_name, false);
+
+    if (hton->dict_cache_reset) {
+      hton->dict_cache_reset(schema_name, table_name);
+    }
+  }
+
+  return false;
+}
+
+/**
+  Update the referenced schema- and/or table name for the referencing tables
+  when the referenced table is renamed.
+
+  @param thd                Thread handle.
+  @param parent_table_db    Old schema name.
+  @param parent_table_name  Old table name.
+  @param hton               Handlerton for table's storage engine.
   @param new_db             New schema name.
   @param new_table_name     New table name.
 
@@ -15720,6 +15783,24 @@ bool adjust_fks_for_rename_table(THD *thd, const char *db,
   if (adjust_fk_parents(thd, new_db, new_table_name, true, nullptr))
     return true;
 
+  return false;
+}
+
+
+bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *db,
+                                 const char *table_name, const char *new_db,
+                                 const char *new_table_name,
+                                 handlerton *hton) {
+  dd::Table *new_table = nullptr;
+
+  if (thd->dd_client()->acquire_for_modification(new_db, new_table_name, &new_table))
+    return true;
+
+  assert(new_table != nullptr);
+
+  if (reload_fk_children_after_parent_rename_preserve(thd, db, table_name, hton)) {
+    return true;
+  }
   return false;
 }
 

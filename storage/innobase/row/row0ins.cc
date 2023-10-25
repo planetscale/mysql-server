@@ -1494,6 +1494,17 @@ dberr_t row_ins_check_foreign_constraint(
     check_index = foreign->foreign_index;
   }
 
+  if (check_table != nullptr) {
+    Table_name_inspector table_inspector(check_table->name.m_name);
+    if (table_inspector.skip_fk_checks()) {
+      goto exit_func;
+    }
+    Table_name_inspector foreign_inspector(foreign->referenced_table->name.m_name);
+    if (foreign_inspector.skip_fk_checks()) {
+      goto exit_func;
+    }
+  }
+
   if (check_table == nullptr || check_table->ibd_file_missing ||
       check_index == nullptr) {
     if (!srv_read_only_mode && check_ref) {
@@ -1769,6 +1780,10 @@ exit_func:
   trx = thr_get_trx(thr);
 
   if (trx->check_foreigns == false) {
+    return (DB_SUCCESS);
+  }
+  Table_name_inspector inspector(table->name.m_name);
+  if (inspector.skip_fk_checks()) {
     return (DB_SUCCESS);
   }
   DEBUG_SYNC(thr_get_trx(thr)->mysql_thd, "foreign_constraint_check_for_ins");
