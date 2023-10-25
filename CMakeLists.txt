@@ -2022,7 +2022,9 @@ IF(WITH_PROTOBUF STREQUAL "bundled" OR WITH_FIDO STREQUAL "bundled")
   # Protobuf library is a target, installed to <root>/${INSTALL_PRIV_LIBDIR}
   # INSTALL_RPATH must be set for all binaries linking with libprotobuf.
   IF(WITH_PROTOBUF STREQUAL "bundled")
-    SET(UNIX_INSTALL_RPATH_ORIGIN_PRIV_LIBDIR 1)
+    IF(NOT CMAKE_CXX_FLAGS MATCHES "-static-libgcc")
+      SET(UNIX_INSTALL_RPATH_ORIGIN_PRIV_LIBDIR 1)
+    ENDIF()
     ADD_SUBDIRECTORY(extra/protobuf)
   ENDIF()
 
