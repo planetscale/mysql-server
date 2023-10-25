@@ -36,6 +36,7 @@
 #include "my_sys.h"
 #include "mysql/components/services/log_shared.h"
 #include "mysqld_error.h"
+#include "mysql/plugin.h"
 #include "sql/dd/cache/dictionary_client.h"  // dd::cache::Dictionary_client
 #include "sql/dd/dd_table.h"                 // dd::table_storage_engine
 #include "sql/dd/properties.h"               // dd::Properties
@@ -783,13 +784,34 @@ static bool do_rename(THD *thd, Table_ref *ren_table, const char *new_db,
 
         If renaming fails, my_error() has already been called
       */
+
+      bool cleanup_required = false;
       if (mysql_rename_table(
               thd, hton, ren_table->db, old_alias, ren_table->db, old_alias,
               *to_schema, new_db, new_alias,
-              ((hton->flags & HTON_SUPPORTS_ATOMIC_DDL) ? NO_DD_COMMIT : 0)) ||
-          ((hton->flags & HTON_SUPPORTS_FOREIGN_KEYS) &&
-           adjust_fks_for_rename_table(thd, ren_table->db, old_alias, new_db,
-                                       new_alias, hton))) {
+              ((hton->flags & HTON_SUPPORTS_ATOMIC_DDL) ? NO_DD_COMMIT : 0))) {
+        // rename table failed
+        cleanup_required = true;
+      } else {
+        // rename successful
+        if (hton->flags & HTON_SUPPORTS_FOREIGN_KEYS) {
+          // If 'OPTION_RENAME_TABLE_PRESERVE_FOREIGN_KEY' is set, then we explicitly don't want to run `adjust_fks_for_rename_table`,
+          // because we want the foreign key child to point to the newly instated table, rather than follow
+          // the old, renamed table.
+          if (thd_test_options(thd, OPTION_RENAME_TABLE_PRESERVE_FOREIGN_KEY)) {
+            if (adjust_fks_for_rename_table_with_preserve_fk(thd, ren_table->db, old_alias, new_db, new_alias, hton)) {
+              // adjust FKs failed
+              cleanup_required = true;
+            }
+          } else {
+            if (adjust_fks_for_rename_table(thd, ren_table->db, old_alias, new_db, new_alias, hton)) {
+              // adjust FKs failed
+              cleanup_required = true;
+            }
+          }
+        }
+      }
+      if (cleanup_required) {
         /*
           If RENAME TABLE is non-atomic as whole but we didn't try to commit
           the above changes we need to clean-up them before returning.

@@ -5601,6 +5601,26 @@ static Sys_var_bit Sys_unique_checks("unique_checks", "unique_checks",
                                      REVERSE(OPTION_RELAXED_UNIQUE_CHECKS),
                                      DEFAULT(true), NO_MUTEX_GUARD, IN_BINLOG);
 
+/**
+  **NOTE**: specialized variable to be used in a specific scenario under specific conditions.
+  This flag when set to true affects behavior of foreign key during rename:
+  By default when a parent table is being renamed, table definitions of foreign key children
+  are updated to reflect the new table's name. Thus, the children migrate along with the parent.
+  With the flag set to true, the children will refer to the new adopting parent under the original name:
+  - This children's schema definition remains unchanged
+  - They will point to a new table entity, which replaces the original parent.
+  Important:
+  - It is the responsibility of the user to ensure the children are not left orphaned. i.e. that
+    the RENAME sql also instates a new table in place of the original one
+  - It is the responsibility of the user to ensure that the new table has compatible columns and
+    indexes, and can thus adopt the children
+*/
+static Sys_var_bit Sys_rename_table_preserve_foreign_key("rename_table_preserve_foreign_key", "rename_table_preserve_foreign_key",
+     HINT_UPDATEABLE SESSION_VAR(option_bits),
+     NO_CMD_LINE, OPTION_RENAME_TABLE_PRESERVE_FOREIGN_KEY,
+     DEFAULT(false), NO_MUTEX_GUARD,
+     IN_BINLOG);
+
 static Sys_var_bit Sys_fast_analyze_table("fast_analyze_table", "fast_analyze_table",
     HINT_UPDATEABLE SESSION_VAR(option_bits),
     NO_CMD_LINE, OPTION_FAST_ANALYZE_TABLE,
