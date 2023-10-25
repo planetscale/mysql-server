@@ -360,6 +360,26 @@ bool collect_fk_names_for_new_fks(THD *thd, const char *db_name,
     THD *thd, const char *db, const char *table_name, const char *new_db,
     const char *new_table_name, handlerton *hton);
 
+
+/**
+  Update referenced table names and the unique constraint name for FKs
+  affected by RENAME TABLE with @@rename_table_preserve_foreign_key=1
+
+  @param  thd             Thread handle.
+  @param  db              Table's old schema.
+  @param  table_name      Table's old name.
+  @param  new_db          Table's new schema.
+  @param  new_table_name  Table's new name.
+  @param  hton            Table's SE.
+
+  @retval operation outcome, false if no error.
+*/
+[[nodiscard]] bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *db,
+                                               const char *table_name,
+                                               const char *new_db,
+                                               const char *new_table_name,
+                                               handlerton *hton);
+
 /**
   Update referenced table names and the unique constraint name for FKs
   affected by RENAME TABLE operation.

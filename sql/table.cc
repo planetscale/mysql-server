@@ -34,6 +34,8 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <regex>
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "ft_global.h"
 #include "m_string.h"
@@ -156,6 +158,22 @@ LEX_CSTRING GTID_EXECUTED_NAME = {STRING_WITH_LEN("gtid_executed")};
 
 /* Keyword for parsing generated column functions */
 LEX_CSTRING PARSE_GCOL_KEYWORD = {STRING_WITH_LEN("parse_gcol_expr")};
+
+/* Vitess VReplication indicator */
+LEX_CSTRING VITESS_VREPL_TABLE_SUFFIX = {STRING_WITH_LEN("_vrepl")};
+
+/* Vitess lifecycle table name indicator */
+LEX_CSTRING VITESS_GC_TABLE_INFIX = {STRING_WITH_LEN("_vt_")};
+
+// vitess_vrepl_table_name_regex is a regular expression that matches names like:
+// - "_84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl"
+// - "test/_84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl"
+const std::regex vitess_vrepl_table_name_regex = std::regex(".*_[0-f]{8}_[0-f]{4}_[0-f]{4}_[0-f]{4}_[0-f]{12}_[0-9]{14}_vrepl$");
+
+// vitess_gc_table_name_regex is a regular expression that matches names like:
+// - "_vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410"
+// - "test/_vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410"
+const std::regex vitess_gc_table_name_regex = std::regex(".*_vt_(HOLD|PURGE|EVAC|DROP)_[0-f]{32}_[0-9]{14}$");
 
 /* Functions defined in this file */
 
@@ -7976,6 +7994,31 @@ void TABLE::invalidate_stats() {
   // m_invalid_stats is protected by Table_cache::m_lock.
   table_cache_manager.assert_owner_all();
   m_invalid_stats = true;
+}
+
+Table_name_inspector::Table_name_inspector(const char * table_name):
+  table_name(table_name) {}
+
+bool Table_name_inspector::skip_fk_checks() {
+  // Tables named like `_84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl` are exempt from FK checks.
+  // We analyze these table names via regex. As a small optimization, and to save CPU, let's first validate
+  // if the name ends with '_vrepl'
+  if (boost::algorithm::ends_with(this->table_name, VITESS_VREPL_TABLE_SUFFIX.str)) {
+    // vitess_vrepl_table_name_regex is const. The call to regex_match does not manipulate it, and is thread safe.
+    if (std::regex_match(this->table_name, vitess_vrepl_table_name_regex)) {
+      return true;
+    }
+  }
+  // Tables named like `_vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410` are exempt from FK checks.
+  // We analyze these table names via regex. As a small optimization, and to save CPU, let's first validate
+  // if the name contains '_vt_'
+  if (strstr(this->table_name, VITESS_GC_TABLE_INFIX.str) != nullptr) {
+    // vitess_gc_table_name_regex is const. The call to regex_match does not manipulate it, and is thread safe.
+    if (std::regex_match(this->table_name, vitess_gc_table_name_regex)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 #ifndef NDEBUG

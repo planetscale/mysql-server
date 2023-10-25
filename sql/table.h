@@ -4543,4 +4543,16 @@ int create_table_share_for_upgrade(THD *thd, const char *path,
 
 bool create_key_part_field_with_prefix_length(TABLE *table, MEM_ROOT *root);
 
+/**
+  Table_name_inspector is a helper wrapper around a table name, with helper functions to get
+  interesting information about the name.
+*/
+class Table_name_inspector {
+  const char * table_name;
+
+public:
+  Table_name_inspector(const char * table_name);
+  bool skip_fk_checks();
+};
+
 #endif /* TABLE_INCLUDED */
