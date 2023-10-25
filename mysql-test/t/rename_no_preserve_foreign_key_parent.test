@@ -1,0 +1,53 @@
+
+#
+# Test of rename table
+#
+
+--source include/count_sessions.inc
+
+--disable_warnings
+drop table if exists t0,t1,t2,t3,t4;
+# Clear up from other tests (to ensure that SHOW TABLES below is right)
+drop table if exists t0,t5,t6,t7,t8,t9,t1_1,t1_2,t9_1,t9_2;
+drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
+drop table if exists parent_table, parent_table_old, parent_table_new;
+--enable_warnings
+
+CREATE TABLE parent_table (
+  id INT NOT NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE child_table (
+  id INT NOT NULL,
+  parent_id INT,
+  PRIMARY KEY (id),
+  KEY parent_id_idx (parent_id),
+  CONSTRAINT `child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into parent_table values (1), (2);
+insert into child_table values (10, 1);
+insert into child_table values (11, 1);
+insert into child_table values (12, 2);
+insert into child_table values (13, 2);
+
+CREATE TABLE parent_table_new (
+  id INT NOT NULL,
+  hint INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+);
+insert into parent_table_new values (1, 7), (2, 7);
+# rename without preserving foreign key (standard RENAME behavior)
+SET FOREIGN_KEY_CHECKS=1;
+rename table parent_table to parent_table_old, parent_table_new to parent_table;
+# child_table's foreign key definition should now point to parent_table_old
+show create table child_table;
+# This should work:
+delete from parent_table where id=1;
+# This should error because of ON DELETE NO ACTION:
+--error ER_ROW_IS_REFERENCED_2
+delete from parent_table_old where id=1;
+# Cleanup
+--disable_warnings
+drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
+drop table if exists parent_table, parent_table_old, parent_table_new;
+--enable_warnings

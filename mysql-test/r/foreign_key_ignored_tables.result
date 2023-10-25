@@ -1,0 +1,203 @@
+drop table if exists t0,t1,t2,t3,t4;
+drop table if exists t0,t5,t6,t7,t8,t9,t1_1,t1_2,t9_1,t9_2;
+drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
+drop table if exists parent_table, parent_table_old, parent_table_new;
+SET FOREIGN_KEY_CHECKS=1;
+CREATE TABLE parent_table (
+id INT NOT NULL,
+PRIMARY KEY (id)
+);
+CREATE TABLE child_table (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into parent_table values (1), (2);
+insert into child_table values (10, 1);
+insert into child_table values (11, 1);
+insert into child_table values (12, 2);
+insert into child_table values (13, 2);
+CREATE TABLE _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `vrepl_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from child_table;
+CREATE TABLE _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `hold_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 select * from child_table;
+insert into child_table values (100, 100);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`))
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl values (101, 101);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 values (102, 102);
+delete from parent_table where id=1;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`))
+delete from child_table;
+delete from parent_table where id=1;
+drop table parent_table;
+ERROR HY000: Cannot drop table 'parent_table' referenced by a foreign key constraint 'child_parent_fk' on table 'child_table'.
+drop table child_table;
+drop table parent_table;
+drop table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+drop table _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410;
+CREATE TABLE parent_table (
+id INT NOT NULL,
+PRIMARY KEY (id)
+);
+CREATE TABLE child_table (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE CASCADE
+);
+insert into parent_table values (1), (2);
+insert into child_table values (10, 1);
+insert into child_table values (11, 1);
+insert into child_table values (12, 2);
+insert into child_table values (13, 2);
+CREATE TABLE _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `vrepl_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE CASCADE
+);
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from child_table;
+CREATE TABLE _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `hold_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE CASCADE
+);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 select * from child_table;
+insert into child_table values (200, 200);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`) ON DELETE CASCADE)
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl values (201, 201);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 values (202, 202);
+delete from parent_table where id=1;
+select * from child_table;
+id	parent_id
+12	2
+13	2
+select * from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+id	parent_id
+10	1
+11	1
+12	2
+13	2
+201	201
+select * from _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410;
+id	parent_id
+10	1
+11	1
+12	2
+13	2
+202	202
+drop table parent_table;
+ERROR HY000: Cannot drop table 'parent_table' referenced by a foreign key constraint 'child_parent_fk' on table 'child_table'.
+drop table child_table;
+drop table parent_table;
+drop table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+drop table _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410;
+CREATE TABLE parent_table (
+id INT NOT NULL,
+PRIMARY KEY (id)
+);
+CREATE TABLE child_table (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE SET NULL
+);
+insert into parent_table values (1), (2);
+insert into child_table values (10, 1);
+insert into child_table values (11, 1);
+insert into child_table values (12, 2);
+insert into child_table values (13, 2);
+CREATE TABLE _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `vrepl_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE SET NULL
+);
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from child_table;
+CREATE TABLE _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `hold_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE SET NULL
+);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 select * from child_table;
+insert into child_table values (300, 300);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`) ON DELETE SET NULL)
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl values (301, 301);
+insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 values (302, 302);
+delete from parent_table where id=1;
+select * from child_table;
+id	parent_id
+10	NULL
+11	NULL
+12	2
+13	2
+select * from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+id	parent_id
+10	1
+11	1
+12	2
+13	2
+301	301
+select * from _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410;
+id	parent_id
+10	1
+11	1
+12	2
+13	2
+302	302
+drop table parent_table;
+ERROR HY000: Cannot drop table 'parent_table' referenced by a foreign key constraint 'child_parent_fk' on table 'child_table'.
+drop table child_table;
+drop table parent_table;
+drop table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+drop table _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410;
+CREATE TABLE _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl (
+id INT NOT NULL,
+PRIMARY KEY (id)
+);
+CREATE TABLE child_table (
+id INT NOT NULL,
+parent_id INT,
+PRIMARY KEY (id),
+KEY parent_id_idx (parent_id),
+CONSTRAINT `child_parent_fk` FOREIGN KEY (parent_id) REFERENCES _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl(id) ON DELETE RESTRICT
+);
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl values (1), (2);
+insert into child_table values (10, 1);
+insert into child_table values (11, 1);
+insert into child_table values (12, 2);
+insert into child_table values (13, 2);
+insert into child_table values (400, 400);
+delete from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl where id=1;
+select * from child_table;
+id	parent_id
+10	1
+11	1
+12	2
+13	2
+400	400
+drop table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
+drop table if exists parent_table, parent_table_old, parent_table_new;
