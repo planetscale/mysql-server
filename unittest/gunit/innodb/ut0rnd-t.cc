@@ -102,7 +102,6 @@ static inline ulint ut_fold_ull(uint64_t d) {
 }  // namespace old_impl
 
 static void init() {
-  ut::detail::random_seed = 0;
   old_impl::ut_rnd_ulint_counter = 0;
 }
 
@@ -374,7 +373,6 @@ static void test_interval_fast_distribution(uint64_t n) {
         target[1]++;
       }
     }
-    ut_delay(ut::random_from_interval_fast(0, 6));
   }
 
   for (auto target : target_score) {
