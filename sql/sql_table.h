@@ -663,4 +663,13 @@ bool lock_check_constraint_names_for_rename(THD *thd, const char *db,
 bool prepare_check_constraints_for_create(THD *thd, const char *db_name,
                                           const char *table_name,
                                           Alter_info *alter_info);
+/**
+  Method to truncate constraint name as needed to fit within NAME_CHAR_LEN
+
+  @param            name                     Name to truncate
+
+  @retval           false                    Success.
+  @retval           true                     Failure.
+*/
+bool truncate_constraint_name(dd::String_type *name);
 #endif /* SQL_TABLE_INCLUDED */
