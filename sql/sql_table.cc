@@ -13153,20 +13153,23 @@ static bool collect_fk_names_for_rename_table(
     if (is_table_renamed &&
         dd::is_generated_foreign_key_name(old_table_name_norm,
                                           old_table_name_norm_len, hton, *fk)) {
-      char new_fk_name[NAME_LEN + 1];
-
+      dd::String_type new_name(new_table_name_lc);
+      new_name.append(fk->name().substr(old_table_name_norm_len));
       /*
-        Copy <SE-specific or default FK name suffix><number> part.
-        Here we truncate generated name if it is too long. This is sufficient
-        for MDL purposes. Error will be reported later in this case.
+        PlanetScale patch: See https://bugs.mysql.com/bug.php?id=107772. We want to avoid the situation where a
+        RENAME TABLE fails due to CONSTRAINT names becoming too long. This can happen if the target table name
+        is long enough. Instead of failing due to the constraint name being too long, we trim the constraint name
+        until its length is valid.
       */
-      strxnmov(new_fk_name, NAME_LEN, new_table_name_lc,
-               fk->name().c_str() + old_table_name_norm_len, NullS);
+      if (truncate_constraint_name(&new_name)) {
+        my_error(ER_TOO_LONG_IDENT, MYF(0), fk->name());
+        return true;
+      }
 
       MDL_request *mdl_request2 = new (thd->mem_root) MDL_request;
       if (mdl_request2 == nullptr) return true;
 
-      MDL_REQUEST_INIT(mdl_request2, MDL_key::FOREIGN_KEY, new_db, new_fk_name,
+      MDL_REQUEST_INIT(mdl_request2, MDL_key::FOREIGN_KEY, new_db, new_name.c_str(),
                        MDL_EXCLUSIVE, MDL_STATEMENT);
 
       mdl_requests->push_front(mdl_request2);
@@ -13209,30 +13212,26 @@ static bool check_fk_names_before_rename(THD *thd, Table_ref *table_list,
     if (alter_ctx.is_table_name_changed() &&
         dd::is_generated_foreign_key_name(
             table_list->table_name, table_list->table_name_length, hton, *fk)) {
-      // We reserve extra NAME_LEN to ensure that new name fits.
-      char new_fk_name[NAME_LEN + NAME_LEN + 1];
-
+      dd::String_type new_name(alter_ctx.new_name);
+      new_name.append(fk->name().substr(table_list->table_name_length));
       /*
-        Construct new name by copying <FK name suffix><number> suffix
-        from the old one.
+        PlanetScale patch: See https://bugs.mysql.com/bug.php?id=107772. We want to avoid the situation where a
+        RENAME TABLE fails due to CONSTRAINT names becoming too long. This can happen if the target table name
+        is long enough. Instead of failing due to the constraint name being too long, we trim the constraint name
+        until its length is valid.
       */
-      strxnmov(new_fk_name, sizeof(new_fk_name) - 1, alter_ctx.new_name,
-               fk->name().c_str() + table_list->table_name_length, NullS);
-
-      if (check_string_char_length(to_lex_cstring(new_fk_name), "",
-                                   NAME_CHAR_LEN, system_charset_info,
-                                   true /* no error */)) {
-        my_error(ER_TOO_LONG_IDENT, MYF(0), new_fk_name);
+      if (truncate_constraint_name(&new_name)) {
+        my_error(ER_TOO_LONG_IDENT, MYF(0), fk->name());
         return true;
       }
 
       bool exists;
-      if (thd->dd_client()->check_foreign_key_exists(new_schema, new_fk_name,
+      if (thd->dd_client()->check_foreign_key_exists(new_schema, new_name.c_str(),
                                                      &exists))
         return true;
 
       if (exists) {
-        my_error(ER_FK_DUP_NAME, MYF(0), new_fk_name);
+        my_error(ER_FK_DUP_NAME, MYF(0), new_name.c_str());
         return true;
       }
     } else if (alter_ctx.is_database_changed()) {
@@ -19933,4 +19932,28 @@ bool lock_check_constraint_names(THD *thd, Table_ref *tables) {
     return true;
 
   return false;
+}
+
+bool truncate_constraint_name(dd::String_type *name) {
+  /*
+    PlanetScale patch: See https://bugs.mysql.com/bug.php?id=107772. We want to avoid the situation where a
+    RENAME TABLE fails due to CONSTRAINT names becoming too long. This can happen if the target table name
+    is long enough. Instead of failing due to the constraint name being too long, we trim the constraint name
+    until its length is valid.
+  */
+  if (name->length() == 1) return false;
+  while (name->length() > 1) {
+    const LEX_CSTRING lexcs = to_lex_cstring(name->c_str());
+    if (!check_string_char_length(lexcs, "", NAME_CHAR_LEN, system_charset_info, true /* no error */)) {
+      // name is fine and fits in NAME_CHAR_LEN
+      return false;
+    }
+
+    // Find byte width of the first two codepoints (UTF-8 sequences)
+    size_t pos2 = system_charset_info->cset->charpos(system_charset_info, lexcs.str, lexcs.str + lexcs.length, 2);
+    name->erase(0, pos2);
+    name->insert(0, "_");
+  }
+  // Nothing remains of truncated text. Error.
+  return true;
 }

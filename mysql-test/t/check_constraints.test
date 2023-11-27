@@ -172,9 +172,16 @@ DROP TABLE t1;
 --echo # Test case to verify check constraint with too long generated name.
 --echo #-----------------------------------------------------------------------
 CREATE TABLE t1 (f1 INT CHECK (f1 < 10));
---error ER_TOO_LONG_IDENT
 RENAME TABLE t1 TO t123456789012345678901234567890123456789012345678901234567890;
-DROP TABLE t1;
+DROP TABLE t123456789012345678901234567890123456789012345678901234567890;
+--echo #-----------------------------------------------------------------------
+--echo # Test case to verify check constraint with too long generated name,
+--echo # and with UTF8 characters
+--echo #-----------------------------------------------------------------------
+CREATE TABLE t1 (f1 INT, CONSTRAINT t1_chk_1_some_dummy_check CHECK (f1 < 10));
+RENAME TABLE t1 TO `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
+SHOW CREATE TABLE `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
+DROP TABLE `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
 
 --error ER_TOO_LONG_IDENT
 CREATE TABLE t123456789012345678901234567890123456789012345678901234567890(f1 INT CHECK(f1 < 10));

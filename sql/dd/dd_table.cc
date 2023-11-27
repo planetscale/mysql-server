@@ -2528,9 +2528,14 @@ bool rename_foreign_keys(THD *thd [[maybe_unused]],
       dd::String_type new_name(table_name);
       // Copy <fk_name_suffix><number> (e.g. "_ibfk_nnnn") from the old name.
       new_name.append(fk->name().substr(old_table_name_norm_len));
-      if (check_string_char_length(to_lex_cstring(new_name.c_str()), "",
-                                   NAME_CHAR_LEN, system_charset_info, true)) {
-        my_error(ER_TOO_LONG_IDENT, MYF(0), new_name.c_str());
+      /*
+        PlanetScale patch: See https://bugs.mysql.com/bug.php?id=107772. We want to avoid the situation where a
+        RENAME TABLE fails due to CONSTRAINT names becoming too long. This can happen if the target table name
+        is long enough. Instead of failing due to the constraint name being too long, we trim the constraint name
+        until its length is valid.
+      */
+      if (truncate_constraint_name(&new_name)) {
+        my_error(ER_TOO_LONG_IDENT, MYF(0), fk->name());
         return true;
       }
 
@@ -2839,9 +2844,14 @@ bool rename_check_constraints(const char *old_table_name, dd::Table *new_tab) {
       // Generate new name.
       dd::String_type new_name(new_tab->name());
       new_name.append(cc->name().substr(old_table_name_length));
-      if (check_string_char_length(to_lex_cstring(new_name.c_str()), "",
-                                   NAME_CHAR_LEN, system_charset_info, true)) {
-        my_error(ER_TOO_LONG_IDENT, MYF(0), new_name.c_str());
+      /*
+        PlanetScale patch: See https://bugs.mysql.com/bug.php?id=107772. We want to avoid the situation where a
+        RENAME TABLE fails due to CONSTRAINT names becoming too long. This can happen if the target table name
+        is long enough. Instead of failing due to the constraint name being too long, we trim the constraint name
+        until its length is valid.
+      */
+      if (truncate_constraint_name(&new_name)) {
+        my_error(ER_TOO_LONG_IDENT, MYF(0), cc->name());
         return true;
       }
       // Set new name.
