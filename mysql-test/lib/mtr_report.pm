@@ -572,14 +572,18 @@ sub mtr_report_stats ($$;$) {
       $tot_failed++;
 
       if ($::opt_report_unstable_tests and defined $tinfo->{retries}) {
-        my $num_passed = $tinfo->{retries} - $tinfo->{failures} - 1;
-        # Tests which exhibit both passing and failing behaviour with
-        # the same code are unstable tests. The level of instability is
-        # not restricted i.e. a failed test which is successful on at
-        # least one retry is marked unstable.
-        if ($num_passed > 0) {
-          $tot_unstable++;
-          $tinfo->{'result'} = 'MTR_RES_UNSTABLE';
+        if (!%::opt_flakes || $::opt_flakes{$tinfo->{name}}) {
+          my $num_passed = $tinfo->{retries} - $tinfo->{failures} - 1;
+          # Tests which exhibit both passing and failing behaviour with
+          # the same code are unstable tests. The level of instability is
+          # not restricted i.e. a failed test which is successful on at
+          # least one retry is marked unstable.
+          if ($num_passed > 0) {
+            $tot_unstable++;
+            $tinfo->{'result'} = 'MTR_RES_UNSTABLE';
+          }
+        } else {
+          print "Unstable test '$tinfo->{name}' not included in --flakes\n";
         }
       }
     } elsif ($tinfo->{'result'} eq 'MTR_RES_SKIPPED') {
