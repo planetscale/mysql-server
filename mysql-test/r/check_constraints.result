@@ -184,8 +184,20 @@ DROP TABLE t1;
 #-----------------------------------------------------------------------
 CREATE TABLE t1 (f1 INT CHECK (f1 < 10));
 RENAME TABLE t1 TO t123456789012345678901234567890123456789012345678901234567890;
-ERROR 42000: Identifier name 't123456789012345678901234567890123456789012345678901234567890_chk_1' is too long
-DROP TABLE t1;
+DROP TABLE t123456789012345678901234567890123456789012345678901234567890;
+#-----------------------------------------------------------------------
+# Test case to verify check constraint with too long generated name,
+# and with UTF8 characters
+#-----------------------------------------------------------------------
+CREATE TABLE t1 (f1 INT, CONSTRAINT t1_chk_1_some_dummy_check CHECK (f1 < 10));
+RENAME TABLE t1 TO `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
+SHOW CREATE TABLE `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
+Table	Create Table
+tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי	CREATE TABLE `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי` (
+  `f1` int DEFAULT NULL,
+  CONSTRAINT `_אבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי_chk_1_some_dummy_check` CHECK ((`f1` < 10))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+DROP TABLE `tאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטיאבגדהוזחטי`;
 CREATE TABLE t123456789012345678901234567890123456789012345678901234567890(f1 INT CHECK(f1 < 10));
 ERROR 42000: Identifier name 't123456789012345678901234567890123456789012345678901234567890_chk_1' is too long
 CREATE TABLE t123456789012345678901234567890123456789012345678901234567890(f1 INT);
