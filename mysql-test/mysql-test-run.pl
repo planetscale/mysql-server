@@ -218,6 +218,7 @@ our $opt_manual_lldb;
 our $opt_no_skip;
 our $opt_record;
 our $opt_report_unstable_tests;
+our %opt_flakes;
 our $opt_skip_combinations;
 our $opt_suites;
 our $opt_suite_opt;
@@ -1030,6 +1031,14 @@ sub run_test_server ($$$) {
               }
 
               mtr_report(" - the logfile can be found in '$logfilepath'\n");
+              if (open(my $file, '<', $logfilepath)) {
+                print "---[ contents of '$logfilepath' ]---\n";
+                while (my $line = <$file>) {
+                  print $line;
+                }
+                close($file);
+                print "------------------------------------------------------------------------\n";
+              }
 
               # Move any core files from e.g. mysqltest
               foreach my $coref (glob("core*"), glob("*.dmp")) {
@@ -1759,6 +1768,11 @@ sub command_line_setup {
     'disk-usage!'           => \&report_option,
     'enable-disabled'       => \&collect_option,
     'fast!'                  => \$opt_fast,
+    'flakes=s'              => sub {
+      my ($opt, $value) = @_;
+      die "--flakes requires an argument" unless $value;
+      $opt_flakes{$_} = 1 for (split(' ', $value));
+    },
     'force-restart'         => \$opt_force_restart,
     'help|h'                => \$opt_usage,
     'keep-ndbfs'            => \$opt_keep_ndbfs,
@@ -7941,6 +7955,7 @@ Options for debugging the product
   debug-server          Use debug version of server, but without turning on
                         tracing.
   debugger=NAME         Start mysqld in the selected debugger.
+  flakes                List of tests allowed to pass by --report-unstable-tests
   gdb                   Start the mysqld(s) in gdb.
   lldb                  Start the mysqld(s) in lldb.
   manual-boot-gdb       Let user manually start mysqld in gdb, during initialize
