@@ -37,6 +37,8 @@ namespace ut::detail {
 
 /* Changes for each threads for more different sequences. */
 thread_local uint64_t random_seed = ut::this_thread_hash + my_timer_cycles();
+thread_local shishua::prng<> shishua({ut::this_thread_hash, my_timer_cycles(),
+                                      0xc5f36215e4326a70, 0xa40f014dcc8a6bb});
 
 /* This is a "precomputed" table of random hash values. */
 alignas(ut::INNODB_CACHE_LINE_SIZE)

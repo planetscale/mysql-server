@@ -423,8 +423,6 @@ static void run_multi_threaded(const char *label, size_t initial_hash_size,
 
   ut_hash_interface_t *hash;
 
-  ut::detail::random_seed = 0;
-
 #if defined(TEST_STD_MAP) || defined(TEST_STD_UNORDERED_MAP)
   hash = new std_hash_t();
 #elif defined(TEST_TBB)

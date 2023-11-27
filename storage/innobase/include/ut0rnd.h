@@ -44,6 +44,8 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "ut0crc32.h"
 #include "ut0seq_lock.h"
 
+#include "extra/shishua/shishua.h"
+
 namespace ut {
 namespace detail {
 
@@ -122,8 +124,8 @@ on data written to disk.
                                                     size_t len);
 
 namespace detail {
-/** Seed value of ut::random_64() */
-extern thread_local uint64_t random_seed;
+
+extern thread_local shishua::prng<> shishua;
 
 /** A helper method, it is used by hash_binary_ib for backward compatibility.
 NOTE: Do not use this method, it produces results that are not hashed well.
@@ -186,24 +188,24 @@ much faster and less demanding on CPU caches to calculate results for small
 integers (where most bytes are 0). */
 extern std::array<std::array<uint64_t, 8>, 256> tab_hash_lookup_table;
 
+static inline uint64_t fastrange64(uint64_t word, uint64_t p) {
+#ifdef __SIZEOF_INT128__
+  return (uint64_t)(((__uint128_t)word * (__uint128_t)p) >> 64);
+#else
+  return word % p;  // fallback
+#endif  // __SIZEOF_INT128__
+}
+
 }  // namespace detail
 
-static inline uint64_t random_64() {
-  detail::random_seed = hash_uint64(detail::random_seed);
-  return detail::random_seed;
-}
+static inline uint64_t random_64() { return detail::shishua.next(); }
 
-static inline uint64_t random_64_fast() {
-  /* Granularity of my_timer_cycles() might be over 1, to keep constant rate for
-  frequency changes of CPU core clocks. Drops lower 5 bits. */
-  const uint64_t res = my_timer_cycles();
-  return res != 0 ? res >> 5 : random_64();
-}
+static inline uint64_t random_64_fast() { return detail::shishua.next(); }
 
 template <uint64_t random_64_func()>
 static inline uint64_t random_from_interval_gen(uint64_t low, uint64_t high) {
   ut_ad(high >= low);
-  return low + (random_64_func() % (high - low + 1));
+  return low + detail::fastrange64(random_64_func(), (high - low + 1));
 }
 
 static inline uint64_t random_from_interval(uint64_t low, uint64_t high) {
