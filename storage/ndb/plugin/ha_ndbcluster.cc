@@ -15418,23 +15418,23 @@ enum_alter_inplace_result ha_ndbcluster::supported_inplace_field_change(
         ha_alter_info, "Adding or removing default value is not supported");
   }
 
-  const enum enum_field_types mysql_type = old_field->real_type();
-  char old_buf[MAX_ATTR_DEFAULT_VALUE_SIZE];
-  char new_buf[MAX_ATTR_DEFAULT_VALUE_SIZE];
-
+  // Check that the default values value does not change
   if ((!old_field->is_flag_set(PRI_KEY_FLAG)) &&
-      type_supports_default_value(mysql_type)) {
+      type_supports_default_value(old_field->real_type())) {
     if (!old_field->is_flag_set(NO_DEFAULT_VALUE_FLAG)) {
-      ptrdiff_t src_offset = old_field->table->default_values_offset();
-      if ((!old_field->is_real_null(src_offset)) ||
-          (old_field->is_flag_set(NOT_NULL_FLAG))) {
-        DBUG_PRINT("info", ("Checking default value hasn't changed "
+      // Column have default value and supports it
+      {
+        DBUG_PRINT("info", ("Checking default values value hasn't changed "
                             "for field %s",
                             old_field->field_name));
+        char old_buf[MAX_ATTR_DEFAULT_VALUE_SIZE];
         memset(old_buf, 0, MAX_ATTR_DEFAULT_VALUE_SIZE);
         get_default_value(old_buf, old_field);
+
+        char new_buf[MAX_ATTR_DEFAULT_VALUE_SIZE];
         memset(new_buf, 0, MAX_ATTR_DEFAULT_VALUE_SIZE);
         get_default_value(new_buf, new_field);
+
         if (memcmp(old_buf, new_buf, MAX_ATTR_DEFAULT_VALUE_SIZE)) {
           return inplace_unsupported(ha_alter_info,
                                      "Altering default value is "
