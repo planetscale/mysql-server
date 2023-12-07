@@ -553,7 +553,7 @@ static bool do_rename(THD *thd, Table_ref *ren_table, const char *new_db,
                       const char *new_table_name, const char *new_table_alias,
                       bool *int_commit_done,
                       std::set<handlerton *> *post_ddl_htons,
-                      Foreign_key_parents_invalidator *fk_invalidator) {
+                      Foreign_key_parents_invalidator *fk_invalidator, bool preserve_foreign_key) {
   const char *new_alias = new_table_name;
   const char *old_alias = ren_table->table_name;
 
@@ -795,10 +795,10 @@ static bool do_rename(THD *thd, Table_ref *ren_table, const char *new_db,
       } else {
         // rename successful
         if (hton->flags & HTON_SUPPORTS_FOREIGN_KEYS) {
-          // If 'OPTION_RENAME_TABLE_PRESERVE_FOREIGN_KEY' is set, then we explicitly don't want to run `adjust_fks_for_rename_table`,
+          // If 'preserve_foreign_key' is set, then we explicitly don't want to run `adjust_fks_for_rename_table`,
           // because we want the foreign key child to point to the newly instated table, rather than follow
           // the old, renamed table.
-          if (thd_test_options(thd, OPTION_RENAME_TABLE_PRESERVE_FOREIGN_KEY)) {
+          if (preserve_foreign_key) {
             if (adjust_fks_for_rename_table_with_preserve_fk(thd, ren_table->db, old_alias, new_db, new_alias, hton)) {
               // adjust FKs failed
               cleanup_required = true;
@@ -953,11 +953,39 @@ static Table_ref *rename_tables(THD *thd, Table_ref *table_list,
 
   DBUG_TRACE;
 
+  // PlanetScale patch: if _any_ table at all in this `RENAME` TABLE statement is an
+  // internal Vitess table, then apply a "preserve foreign key" logic to the `RENAME`.
+  // Also, there must be at least two renamed tables in this clause. Otherwise, again
+  // this is treated just as a normal MySQL `RENAME`.
+  // What we want to catch here are Vitess-specific `RENAME TABLE` statements that
+  // should preserve the foreign key.
+  bool preserve_foreign_key = false;
+  int count_renames = 0;
+  for (ren_table = table_list; ren_table; ren_table = new_table->next_local) {
+    new_table = ren_table->next_local;
+    {
+      Table_name_inspector table_inspector(ren_table->table_name);
+      if (table_inspector.skip_fk_checks()) {
+        preserve_foreign_key = true;
+      }
+    }
+    {
+      Table_name_inspector table_inspector(new_table->table_name);
+      if (table_inspector.skip_fk_checks()) {
+        preserve_foreign_key = true;
+      }
+    }
+    count_renames++;
+  }
+  if (count_renames < 2) {
+    preserve_foreign_key = false;
+  }
+
   for (ren_table = table_list; ren_table; ren_table = new_table->next_local) {
     new_table = ren_table->next_local;
     if (do_rename(thd, ren_table, new_table->db, new_table->table_name,
                   new_table->alias, int_commit_done, post_ddl_htons,
-                  fk_invalidator))
+                  fk_invalidator, preserve_foreign_key))
       return ren_table;
   }
   return nullptr;
