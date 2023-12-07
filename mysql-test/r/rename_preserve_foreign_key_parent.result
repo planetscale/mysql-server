@@ -25,9 +25,47 @@ PRIMARY KEY (id)
 );
 insert into parent_table_new values (1, 7), (2, 7), (55, 7);
 SET FOREIGN_KEY_CHECKS=1;
-SET rename_table_preserve_foreign_key=1;
 rename table parent_table to parent_table_old, parent_table_new to parent_table;
-SET rename_table_preserve_foreign_key=0;
+show create table child_table;
+Table	Create Table
+child_table	CREATE TABLE `child_table` (
+  `id` int NOT NULL,
+  `parent_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `parent_id_idx` (`parent_id`),
+  CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table_old` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+rename table parent_table to parent_table_new, parent_table_old to parent_table;
+show create table child_table;
+Table	Create Table
+child_table	CREATE TABLE `child_table` (
+  `id` int NOT NULL,
+  `parent_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `parent_id_idx` (`parent_id`),
+  CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+rename table parent_table to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+show create table child_table;
+Table	Create Table
+child_table	CREATE TABLE `child_table` (
+  `id` int NOT NULL,
+  `parent_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `parent_id_idx` (`parent_id`),
+  CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `_84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+rename table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl to parent_table;
+show create table child_table;
+Table	Create Table
+child_table	CREATE TABLE `child_table` (
+  `id` int NOT NULL,
+  `parent_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `parent_id_idx` (`parent_id`),
+  CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+rename table parent_table to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, parent_table_new to parent_table;
 show create table child_table;
 Table	Create Table
 child_table	CREATE TABLE `child_table` (
@@ -44,7 +82,7 @@ id	hint
 55	7
 delete from parent_table where id=1;
 ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`))
-delete from parent_table_old where id=1;
+delete from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl where id=1;
 insert into child_table values (14, 55);
 alter table child_table force;
 select id, hint from parent_table;
@@ -52,7 +90,7 @@ id	hint
 1	7
 2	7
 55	7
-delete from parent_table_old;
+delete from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
 delete from parent_table where id=2;
 ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`))
 drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
