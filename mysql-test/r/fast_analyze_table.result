@@ -1,4 +1,4 @@
-drop table if exists t0;
+drop table if exists t0, tleft, tright;
 create table t0 (id int primary key);
 show global variables like 'fast_analyze_table';
 Variable_name	Value
@@ -24,3 +24,34 @@ Table	Op	Msg_type	Msg_text
 test.t0	analyze	status	OK
 set @@fast_analyze_table=0;
 drop table if exists t0;
+create table tright (id int auto_increment primary key, i int unsigned not null, sha varchar(40) not null, key i_idx (i));
+insert into tright values (null, floor(rand()*4294967295), sha1(rand()));
+insert into tright select null, floor(rand()*4294967295), sha1(rand()) from tright;
+insert into tright select null, floor(rand()*4294967295), sha1(rand()) from tright;
+select count(*) from tright;
+count(*)
+4
+create table tleft (id int primary key, i int unsigned, key tlefti_idx(i));
+insert into tleft select id, i from tright;
+select count(*) from tright;
+count(*)
+4
+analyze table tright;
+Table	Op	Msg_type	Msg_text
+test.tright	analyze	status	OK
+analyze table tleft;
+Table	Op	Msg_type	Msg_text
+test.tleft	analyze	status	OK
+set @@fast_analyze_table=1;
+select @@fast_analyze_table;
+@@fast_analyze_table
+1
+analyze table tright;
+Table	Op	Msg_type	Msg_text
+test.tright	analyze	status	OK
+explain select min(sha) from tleft straight_join tright using (i) where tleft.id between 0 and 1000000;
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	tleft	NULL	index	PRIMARY,tlefti_idx	tlefti_idx	5	NULL	4	100.00	Using where; Using index
+1	SIMPLE	tright	NULL	ref	i_idx	i_idx	4	test.tleft.i	1	100.00	NULL
+set @@fast_analyze_table=0;
+drop table tleft, tright;
