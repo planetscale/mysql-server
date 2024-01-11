@@ -5,7 +5,7 @@
 --source include/count_sessions.inc
 
 --disable_warnings
-drop table if exists t0;
+drop table if exists t0, tleft, tright;
 --enable_warnings
 
 create table t0 (id int primary key);
@@ -23,3 +23,29 @@ show session variables like 'fast_analyze_table';
 analyze table t0;
 set @@fast_analyze_table=0;
 drop table if exists t0;
+
+# Test joins
+
+create table tright (id int auto_increment primary key, i int unsigned not null, sha varchar(40) not null, key i_idx (i));
+
+insert into tright values (null, floor(rand()*4294967295), sha1(rand()));
+insert into tright select null, floor(rand()*4294967295), sha1(rand()) from tright;
+insert into tright select null, floor(rand()*4294967295), sha1(rand()) from tright;
+select count(*) from tright;
+
+create table tleft (id int primary key, i int unsigned, key tlefti_idx(i));
+insert into tleft select id, i from tright;
+select count(*) from tright;
+
+analyze table tright;
+analyze table tleft;
+
+set @@fast_analyze_table=1;
+select @@fast_analyze_table;
+analyze table tright;
+--disable_warnings
+explain select min(sha) from tleft straight_join tright using (i) where tleft.id between 0 and 1000000;
+--enable_warnings
+set @@fast_analyze_table=0;
+
+drop table tleft, tright;

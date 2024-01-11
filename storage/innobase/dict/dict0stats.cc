@@ -2048,9 +2048,15 @@ static dberr_t dict_stats_update_persistent(
       continue;
     }
 
+    if (only_clustered_index) {
+      // Skip analyzing secondary indexes. But also, bail out before actually clearing their
+      // statistics.
+      continue;
+    }
+
     dict_stats_empty_index(index);
 
-    if (only_clustered_index || dict_stats_should_ignore_index(index)) {
+    if (dict_stats_should_ignore_index(index)) {
       continue;
     }
 
