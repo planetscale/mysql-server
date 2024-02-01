@@ -1235,12 +1235,16 @@ static bool fill_value_maps(
 }
 
 bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
+                      const bool query_histogram,
                       int num_buckets, LEX_STRING data, results_map &results) {
   dd::cache::Dictionary_client::Auto_releaser auto_releaser(thd->dd_client());
 
   // Read only should have been stopped at an earlier stage.
-  assert(!check_readonly(thd, false));
-  assert(!thd->tx_read_only);
+  // PlanetScale patch: allow `ANALYZE TABLE ... QUERY HISTOGRAM` in read_only mode
+  if (!query_histogram) {
+    assert(!check_readonly(thd, false));
+    assert(!thd->tx_read_only);
+  }
 
   assert(results.empty());
   assert(!columns.empty());
@@ -1396,13 +1400,22 @@ bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
         *down_cast<Json_object *>(dom.get()), &context);
 
     // Store it to persistent storage.
-    if (histogram == nullptr || histogram->store_histogram(thd)) {
+    if (histogram == nullptr || ((!query_histogram) && histogram->store_histogram(thd))) {
       my_error(ER_UNABLE_TO_BUILD_HISTOGRAM, MYF(0), field->field_name,
                table->db, table->table_name);
       return true;
     }
-
-    results.emplace(col_name, Message::HISTOGRAM_CREATED);
+    if (query_histogram) {
+      Json_object json_object;
+      histogram->histogram_to_json(&json_object);
+      Json_wrapper json_wrapper(&json_object);
+      json_wrapper.set_alias();
+      String str;
+      json_wrapper.to_string(&str, true, String().ptr(), JsonDocumentDefaultDepthHandler);
+      results.emplace(str.c_ptr(), Message::HISTOGRAM_QUERY_RESULT);
+    } else {
+      results.emplace(col_name, Message::HISTOGRAM_CREATED);
+    }
 
     bool ret = trans_commit_stmt(thd) || trans_commit(thd);
     close_thread_tables(thd);
@@ -1469,12 +1482,21 @@ bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
                table->db, table->table_name);
       return true;
       /* purecov: end */
-    } else if (histogram->store_histogram(thd)) {
+    } else if ((!query_histogram) && histogram->store_histogram(thd)) {
       // errors have already been reported
       return true; /* purecov: deadcode */
     }
-
-    results.emplace(col_name, Message::HISTOGRAM_CREATED);
+    if (query_histogram) {
+        Json_object json_object;
+        histogram->histogram_to_json(&json_object);
+        Json_wrapper json_wrapper(&json_object);
+        json_wrapper.set_alias();
+        String str;
+        json_wrapper.to_string(&str, true, String().ptr(), JsonDocumentDefaultDepthHandler);
+        results.emplace(str.c_ptr(), Message::HISTOGRAM_QUERY_RESULT);
+    } else {
+      results.emplace(col_name, Message::HISTOGRAM_CREATED);
+    }
   }
 
   bool ret = trans_commit_stmt(thd) || trans_commit(thd);

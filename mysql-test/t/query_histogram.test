@@ -1,0 +1,67 @@
+#
+# Test of ANALYZE TABLE ... QUERY HISTOGRAM
+#
+
+--source include/count_sessions.inc
+
+--disable_warnings
+drop table if exists t0;
+--enable_warnings
+
+create table t0 (id int auto_increment primary key, i int);
+
+insert into t0 values (1, 1);
+insert into t0 values (2, 2);
+
+--echo # Run a standard ANALZYE TABLE ... UPDATE HISTOGRAM
+analyze local table t0 update histogram on i;
+SELECT COUNT(*) AS should_be_1 FROM information_schema.COLUMN_STATISTICS;
+analyze table t0 drop histogram on i;
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+
+--echo # Run ANALZYE TABLE ... QUERY HISTOGRAM
+--replace_regex /"last-updated": ".*?"/"last-updated": "redacted"/
+analyze local table t0 query histogram on i;
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+analyze local table t0 drop histogram on i;
+
+--echo # Validate that standard ANALZYE TABLE ... UPDATE|DROP HISTOGRAM does not work in @@read_only=1 mode
+set @@global.read_only=1;
+analyze table t0 update histogram on i;
+analyze local table t0 update histogram on i;
+analyze local table t0 drop histogram on i;
+
+--echo # Validate ANALZYE TABLE ... QUERY HISTOGRAM is allowed in @@read_only=1 mode
+set @@global.read_only=1;
+--replace_regex /"last-updated": ".*?"/"last-updated": "redacted"/
+analyze local table t0 query histogram on i;
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+analyze table t0 query histogram on i;
+analyze table t0 update histogram on i;
+analyze local table t0 drop histogram on i;
+set @@global.read_only=0;
+
+--echo # QUERY HISTOGRAM for two columns
+alter table t0 add column j int;
+update t0 set j=i*100;
+--replace_regex /"last-updated": ".*?"/"last-updated": "redacted"/
+analyze local table t0 query histogram on i, j;
+
+--echo # QUERY HISTOGRAM specifying buckets
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+update t0 set i=id;
+--replace_regex /"buckets".*"number-of-buckets-specified"/"number-of-buckets-specified"/
+analyze local table t0 query histogram on i with 16 buckets;
+
+--echo # Cleanup
+drop table if exists t0;
+
