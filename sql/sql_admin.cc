@@ -391,6 +391,11 @@ bool Sql_cmd_analyze_table::send_histogram_results(
         message.append(pair.first);
         message.append("'.");
         break;
+      case histograms::Message::HISTOGRAM_QUERY_RESULT:
+        // PlanetScale patch: the value of `Msg_text` column is the histogram's JSON.
+        message_type.assign("histogram_result");
+        message.append(pair.first);
+        break;
       // Error messages
       case histograms::Message::FIELD_NOT_FOUND:
         message_type.assign("Error");
@@ -625,6 +630,7 @@ bool Sql_cmd_analyze_table::update_histogram(THD *thd, Table_ref *table,
     fields.emplace(column->ptr(), column->length());
 
   return histograms::update_histogram(thd, table, fields,
+                                      (get_histogram_command() == Histogram_command::QUERY_HISTOGRAM),
                                       get_histogram_buckets(),
                                       get_histogram_data_string(), results);
 }
@@ -1631,12 +1637,14 @@ bool Sql_cmd_analyze_table::handle_histogram_command(THD *thd,
   if (table->next_local != nullptr) {
     /*
       Only one table can be specified for
-      ANALYZE TABLE ... UPDATE/DROP HISTOGRAM
+      ANALYZE TABLE ... UPDATE/DROP/QUERY HISTOGRAM
     */
     results.emplace("", histograms::Message::MULTIPLE_TABLES_SPECIFIED);
     res = true;
   } else {
-    if (read_only || thd->tx_read_only) {
+    // PlanetScale patch: allow `ANALYZE TABLE ... QUERY HISTOGRAM` in read_only mode
+    if ((read_only || thd->tx_read_only) &&
+      !(thd->lex->no_write_to_binlog && (get_histogram_command() == Histogram_command::QUERY_HISTOGRAM))) {
       // Do not try to update histograms when in read_only mode.
       results.emplace("", histograms::Message::SERVER_READ_ONLY);
       res = false;
@@ -1665,6 +1673,10 @@ bool Sql_cmd_analyze_table::handle_histogram_command(THD *thd,
 
       dd::cache::Dictionary_client::Auto_releaser releaser(thd->dd_client());
       switch (get_histogram_command()) {
+        case Histogram_command::QUERY_HISTOGRAM:
+          // PlanetScale patch: compute histogram but do not write it to system tables.
+          // Instead, return it as a result set.
+          [[fallthrough]];
         case Histogram_command::UPDATE_HISTOGRAM:
           res = acquire_shared_backup_lock(thd,
                                            thd->variables.lock_wait_timeout) ||

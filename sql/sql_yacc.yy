@@ -9606,6 +9606,15 @@ opt_histogram:
             if ($$.param == nullptr)
               MYSQL_YYABORT; // OOM
           }
+        | QUERY_SYM HISTOGRAM_SYM ON_SYM ident_string_list opt_histogram_update_param
+          {
+            $$.command=
+              Sql_cmd_analyze_table::Histogram_command::QUERY_HISTOGRAM;
+            $$.columns= $4;
+            $$.param= NEW_PTN YYSTYPE::Histogram_param($5);
+            if ($$.param == nullptr)
+              MYSQL_YYABORT; // OOM
+          }
         | DROP HISTOGRAM_SYM ON_SYM ident_string_list
           {
             $$.command=
