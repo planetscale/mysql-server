@@ -92,6 +92,7 @@ enum class Message {
   HISTOGRAM_DELETED,
   SERVER_READ_ONLY,
   MULTIPLE_COLUMNS_SPECIFIED,
+  HISTOGRAM_QUERY_RESULT,
 
   // JSON validation errors. See Error_context.
   JSON_FORMAT_ERROR,
@@ -694,6 +695,7 @@ Histogram *build_histogram(MEM_ROOT *mem_root, const Value_map<T> &value_map,
   @param thd Thread handler.
   @param table The table where we should look for the columns/data.
   @param columns Columns specified by the user.
+  @param query_histogram Whether histogram JSON should return in the result set.
   @param num_buckets The maximum number of buckets to create in each
          histogram.
   @param data The histogram json literal for update
@@ -702,6 +704,7 @@ Histogram *build_histogram(MEM_ROOT *mem_root, const Value_map<T> &value_map,
   @return false on success, true on error.
 */
 bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
+                      const bool query_histogram,
                       int num_buckets, LEX_STRING data, results_map &results);
 
 /**

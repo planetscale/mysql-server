@@ -70,7 +70,8 @@ class Sql_cmd_analyze_table : public Sql_cmd_ddl_table {
     NONE,              ///< Neither UPDATE or DROP histogram is specified
     UPDATE_HISTOGRAM,  ///< UPDATE HISTOGRAM ... is specified after ANALYZE
                        ///< TABLE
-    DROP_HISTOGRAM     ///< DROP HISTOGRAM ... is specified after ANALYZE TABLE
+    DROP_HISTOGRAM,    ///< DROP HISTOGRAM ... is specified after ANALYZE TABLE
+    QUERY_HISTOGRAM    ///< QUERY HISTOGRAM ... is specified after ANALYZE TABLE
   };
 
   /**

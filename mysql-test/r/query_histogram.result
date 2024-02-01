@@ -1,0 +1,80 @@
+drop table if exists t0;
+create table t0 (id int auto_increment primary key, i int);
+insert into t0 values (1, 1);
+insert into t0 values (2, 2);
+# Run a standard ANALZYE TABLE ... UPDATE HISTOGRAM
+analyze local table t0 update histogram on i;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	status	Histogram statistics created for column 'i'.
+SELECT COUNT(*) AS should_be_1 FROM information_schema.COLUMN_STATISTICS;
+should_be_1
+1
+analyze table t0 drop histogram on i;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	status	Histogram statistics removed for column 'i'.
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+should_be_0
+0
+# Run ANALZYE TABLE ... QUERY HISTOGRAM
+analyze local table t0 query histogram on i;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	histogram_result	{"buckets": [[1, 0.5], [2, 1.0]], "data-type": "int", "null-values": 0.0, "collation-id": 8, "last-updated": "redacted", "sampling-rate": 1.0, "histogram-type": "singleton", "number-of-buckets-specified": 100}
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+should_be_0
+0
+analyze local table t0 drop histogram on i;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	Error	No histogram statistics found for column 'i'.
+# Validate that standard ANALZYE TABLE ... UPDATE|DROP HISTOGRAM does not work in @@read_only=1 mode
+set @@global.read_only=1;
+analyze table t0 update histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+analyze local table t0 update histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+analyze local table t0 drop histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+# Validate ANALZYE TABLE ... QUERY HISTOGRAM is allowed in @@read_only=1 mode
+set @@global.read_only=1;
+analyze local table t0 query histogram on i;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	histogram_result	{"buckets": [[1, 0.5], [2, 1.0]], "data-type": "int", "null-values": 0.0, "collation-id": 8, "last-updated": "redacted", "sampling-rate": 1.0, "histogram-type": "singleton", "number-of-buckets-specified": 100}
+SELECT COUNT(*) AS should_be_0 FROM information_schema.COLUMN_STATISTICS;
+should_be_0
+0
+analyze table t0 query histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+analyze table t0 update histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+analyze local table t0 drop histogram on i;
+Table	Op	Msg_type	Msg_text
+	histogram	Error	The server is in read-only mode.
+set @@global.read_only=0;
+# QUERY HISTOGRAM for two columns
+alter table t0 add column j int;
+update t0 set j=i*100;
+analyze local table t0 query histogram on i, j;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	histogram_result	{"buckets": [[1, 0.5], [2, 1.0]], "data-type": "int", "null-values": 0.0, "collation-id": 8, "last-updated": "redacted", "sampling-rate": 1.0, "histogram-type": "singleton", "number-of-buckets-specified": 100}
+test.t0	histogram	histogram_result	{"buckets": [[100, 0.5], [200, 1.0]], "data-type": "int", "null-values": 0.0, "collation-id": 8, "last-updated": "redacted", "sampling-rate": 1.0, "histogram-type": "singleton", "number-of-buckets-specified": 100}
+# QUERY HISTOGRAM specifying buckets
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+insert into t0 select null, 0, 0 from t0;
+update t0 set i=id;
+analyze local table t0 query histogram on i with 16 buckets;
+Table	Op	Msg_type	Msg_text
+test.t0	histogram	histogram_result	{"number-of-buckets-specified": 16}
+# Cleanup
+drop table if exists t0;
