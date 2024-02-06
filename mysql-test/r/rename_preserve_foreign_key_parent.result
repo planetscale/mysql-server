@@ -93,5 +93,62 @@ id	hint
 delete from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
 delete from parent_table where id=2;
 ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`child_table`, CONSTRAINT `child_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `parent_table` (`id`))
+# Test on another schema
+select database();
+database()
+test
+create database `test_preserve_fk`;
+use `test_preserve_fk`;
+create table parent (id int primary key, i int);
+create table child1 (id int primary key, pid int, constraint child1_fk foreign key (pid) references parent(id));
+insert into parent values (1,10), (2,20);
+insert into child1 values (1,1), (2,2);
+insert into child1 values (4, 4);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test_preserve_fk`.`child1`, CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`))
+create table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl like parent;
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from parent;
+rename table parent to _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl to parent, _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+show create table child1;
+Table	Create Table
+child1	CREATE TABLE `child1` (
+  `id` int NOT NULL,
+  `pid` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `child1_fk` (`pid`),
+  CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+insert into child1 values (7, 7);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test_preserve_fk`.`child1`, CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`))
+drop database `test_preserve_fk`;
+use test;
+# Test on schema with name that needs escaping
+select database();
+database()
+test
+create database `test-preserve-fk`;
+use `test-preserve-fk`;
+create table parent (id int primary key, i int);
+create table child1 (id int primary key, pid int, constraint child1_fk foreign key (pid) references parent(id));
+insert into parent values (1,10), (2,20);
+insert into child1 values (1,1), (2,2);
+insert into child1 values (4, 4);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test-preserve-fk`.`child1`, CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`))
+create table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl like parent;
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from parent;
+rename table parent to _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl to parent, _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+show create table child1;
+Table	Create Table
+child1	CREATE TABLE `child1` (
+  `id` int NOT NULL,
+  `pid` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `child1_fk` (`pid`),
+  CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+insert into child1 values (7, 7);
+ERROR 23000: Cannot add or update a child row: a foreign key constraint fails (`test-preserve-fk`.`child1`, CONSTRAINT `child1_fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`))
+drop database `test-preserve-fk`;
+use test;
+# Cleanup
 drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
 drop table if exists parent_table, parent_table_old, parent_table_new;
