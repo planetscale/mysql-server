@@ -9875,7 +9875,12 @@ static bool reload_fk_children_after_parent_rename_preserve(
     close_all_tables_for_name(thd, schema_name, table_name, false);
 
     if (hton->dict_cache_reset) {
-      hton->dict_cache_reset(schema_name, table_name);
+      // Encode schema name and table name to "filename"; this is needed for InnoDB.
+      char tmp_schema[FN_REFLEN + 1];
+      char tmp_table[FN_REFLEN + 1];
+      tablename_to_filename(schema_name, tmp_schema, FN_REFLEN + 1);
+      tablename_to_filename(table_name, tmp_table, FN_REFLEN + 1);
+      hton->dict_cache_reset(tmp_schema, tmp_table);
     }
   }
 

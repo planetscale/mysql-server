@@ -67,7 +67,43 @@ delete from _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
 # This should error because of ON DELETE NO ACTION:
 --error ER_ROW_IS_REFERENCED_2
 delete from parent_table where id=2;
-# Cleanup
+--echo # Test on another schema
+select database();
+create database `test_preserve_fk`;
+use `test_preserve_fk`;
+create table parent (id int primary key, i int);
+create table child1 (id int primary key, pid int, constraint child1_fk foreign key (pid) references parent(id));
+insert into parent values (1,10), (2,20);
+insert into child1 values (1,1), (2,2);
+--error ER_NO_REFERENCED_ROW_2
+insert into child1 values (4, 4);
+create table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl like parent;
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from parent;
+rename table parent to _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl to parent, _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+show create table child1;
+--error ER_NO_REFERENCED_ROW_2
+insert into child1 values (7, 7);
+drop database `test_preserve_fk`;
+use test;
+--echo # Test on schema with name that needs escaping
+select database();
+create database `test-preserve-fk`;
+use `test-preserve-fk`;
+create table parent (id int primary key, i int);
+create table child1 (id int primary key, pid int, constraint child1_fk foreign key (pid) references parent(id));
+insert into parent values (1,10), (2,20);
+insert into child1 values (1,1), (2,2);
+--error ER_NO_REFERENCED_ROW_2
+insert into child1 values (4, 4);
+create table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl like parent;
+insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl select * from parent;
+rename table parent to _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl to parent, _vt_DROP_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 to _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
+show create table child1;
+--error ER_NO_REFERENCED_ROW_2
+insert into child1 values (7, 7);
+drop database `test-preserve-fk`;
+use test;
+--echo # Cleanup
 --disable_warnings
 drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
 drop table if exists parent_table, parent_table_old, parent_table_new;
