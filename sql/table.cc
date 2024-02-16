@@ -175,6 +175,17 @@ const std::regex vitess_vrepl_table_name_regex = std::regex(".*_[0-f]{8}_[0-f]{4
 // - "test/_vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410"
 const std::regex vitess_gc_table_name_regex = std::regex(".*_vt_(HOLD|PURGE|EVAC|DROP)_[0-f]{32}_[0-9]{14}$");
 
+// New vitess table names have a unified format, e.g.:
+// - _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ for a vreplication table
+// - _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ for a lifecycle table
+// The new name format will eventually replace the old format. `vitess_vrepl_table_name_regex` and
+// `vitess_gc_table_name_regex` will eventually be deprecated and removed.
+const std::regex vitess_internal_table_name_regex = std::regex("^_vt_[a-zA-Z0-9]{3}_[0-f]{32}_[0-9]{14}_$");
+// Table name if fixed.
+const int vitess_internal_table_name_length = 56;
+/* Vitess lifecycle table name indicator */
+LEX_CSTRING VITESS_INTERNAL_TABLE_PREFIX = {STRING_WITH_LEN("_vt_")};
+
 /* Functions defined in this file */
 
 static Item *create_view_field(THD *thd, Table_ref *view, Item **field_ref,
@@ -8011,6 +8022,21 @@ bool Table_name_inspector::skip_fk_checks() {
     // vitess_gc_table_name_regex is const. The call to regex_match does not manipulate it, and is thread safe.
     if (std::regex_match(this->table_name, vitess_gc_table_name_regex)) {
       return true;
+    }
+  }
+  // New vitess naming format, e.g. `_vt_drp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_`, can be identified via:
+  // - Expected fixed table length 56
+  // - Ends with "_"
+  // - Table name (ignore possible InnoDB schema encoding) starts with "_vt_"
+  // - Matches regexp
+  int table_name_length = strlen(this->table_name);
+  if (table_name_length >= vitess_internal_table_name_length) {
+    if (this->table_name[table_name_length - 1] == '_') {
+      if (strncmp(&this->table_name[table_name_length - vitess_internal_table_name_length], VITESS_INTERNAL_TABLE_PREFIX.str, VITESS_INTERNAL_TABLE_PREFIX.length) == 0) {
+        if (std::regex_match(&this->table_name[table_name_length - vitess_internal_table_name_length], vitess_internal_table_name_regex)) {
+          return true;
+        }
+      }
     }
   }
   return false;
