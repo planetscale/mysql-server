@@ -10,6 +10,7 @@ drop table if exists t0,t1,t2,t3,t4;
 # Clear up from other tests (to ensure that SHOW TABLES below is right)
 drop table if exists t0,t5,t6,t7,t8,t9,t1_1,t1_2,t9_1,t9_2;
 drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
+drop table if exists _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_, _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_;
 drop table if exists parent_table, parent_table_old, parent_table_new;
 --enable_warnings
 
@@ -50,11 +51,31 @@ CREATE TABLE _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 (
 );
 insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 select * from child_table;
 
-# For normal tables this should be invalid, but for this table it will work:
+CREATE TABLE _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ (
+  id INT NOT NULL,
+  parent_id INT,
+  PRIMARY KEY (id),
+  KEY parent_id_idx (parent_id),
+  CONSTRAINT `hld_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ select * from child_table;
+
+CREATE TABLE _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ (
+  id INT NOT NULL,
+  parent_id INT,
+  PRIMARY KEY (id),
+  KEY parent_id_idx (parent_id),
+  CONSTRAINT `vrp_child_parent_fk` FOREIGN KEY (parent_id) REFERENCES parent_table(id) ON DELETE NO ACTION
+);
+insert into _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ select * from child_table;
+
+# For normal tables this should be invalid, but for internal vitess tables it will work:
 --error ER_NO_REFERENCED_ROW_2
 insert into child_table values (100, 100);
 insert into _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl values (101, 101);
 insert into _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410 values (102, 102);
+insert into _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ values (103, 103);
+insert into _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_ values (103, 103);
 
 # This should not work:
 --error ER_ROW_IS_REFERENCED_2
@@ -214,6 +235,7 @@ select * from child_table;
 drop table _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl;
 # Cleanup
 --disable_warnings
+drop table if exists _vt_vrp_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_, _vt_hld_6ace8bcef73211ea87e9f875a4d24e90_20200915120410_;
 drop table if exists _84371a37_6153_11eb_9917_f875a4d24e90_20210128122816_vrepl, _vt_HOLD_6ace8bcef73211ea87e9f875a4d24e90_20200915120410, child_table, child_table_old, child_table_new;
 drop table if exists parent_table, parent_table_old, parent_table_new;
 --enable_warnings
