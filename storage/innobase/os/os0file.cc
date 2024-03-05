@@ -1517,7 +1517,7 @@ ulint AIO::get_array_and_local_segment(AIO *&array, ulint segment) {
 void AIO::release(Slot *slot) {
   ut_ad(is_mutex_owned());
 
-  ut_ad(slot->is_reserved);
+  ut_a(slot->is_reserved);
 
   slot->is_reserved = false;
 
@@ -6448,11 +6448,12 @@ Slot *AIO::reserve_slot(IORequest &type, fil_node_t *m1, void *m2,
   slot->type = type;
   slot->buf = static_cast<byte *>(buf);
   slot->ptr = slot->buf;
+  slot->n_bytes = 0;
 
   ut_ad(m1->is_offset_valid(offset));
 
   slot->offset = offset;
-  slot->err = DB_SUCCESS;
+  slot->err = DB_ERROR_UNSET;
   if (type.is_read()) {
     /* The original size must not be specified for reads. */
     ut_ad(!slot->type.get_original_size());
@@ -6569,7 +6570,6 @@ Slot *AIO::reserve_slot(IORequest &type, fil_node_t *m1, void *m2,
 
     iocb->data = slot;
 
-    slot->n_bytes = 0;
     slot->ret = 0;
   }
 #endif /* !_WIN32 && LINUX_NATIVE_AIO */
@@ -6802,9 +6802,6 @@ dberr_t os_aio_func(IORequest &type, AIO_mode aio_mode, const char *name,
                     pfs_os_file_t file, void *buf, os_offset_t offset, ulint n,
                     bool read_only, fil_node_t *m1, void *m2) {
   ut_a(!type.is_log());
-#ifdef _WIN32
-  BOOL ret = TRUE;
-#endif /* _WIN32 */
 
   const file::Block *e_block = type.get_encrypted_block();
 
@@ -6835,7 +6832,6 @@ dberr_t os_aio_func(IORequest &type, AIO_mode aio_mode, const char *name,
     Performance Schema instrumented os_file_read() and
     os_file_write(). Instead, we should use os_file_read_func()
     and os_file_write_func() */
-
     if (type.is_read()) {
       return (os_file_read_func(type, name, file.m_file, buf, offset, n));
     }
@@ -6844,73 +6840,100 @@ dberr_t os_aio_func(IORequest &type, AIO_mode aio_mode, const char *name,
     return (os_file_write_func(type, name, file.m_file, buf, offset, n));
   }
 
-try_again:
+  const auto array = AIO::select_slot_array(type, read_only, aio_mode);
+  bool io_dispatched = false;
+  while (!io_dispatched) {
+    {
+      auto slot = array->reserve_slot(type, m1, m2, file, name, buf, offset, n,
+                                      e_block);
+      if (srv_use_native_aio) {
+        if (type.is_read()) {
+          ++os_n_file_reads;
 
-  auto array = AIO::select_slot_array(type, read_only, aio_mode);
-
-  auto slot =
-      array->reserve_slot(type, m1, m2, file, name, buf, offset, n, e_block);
-
-  if (type.is_read()) {
-    if (srv_use_native_aio) {
-      ++os_n_file_reads;
-
-      os_bytes_read_since_printout += n;
+          os_bytes_read_since_printout += n;
 #ifdef _WIN32
-      ret = ReadFile(file.m_file, slot->ptr, slot->len, &slot->n_bytes,
-                     &slot->control);
+          /* If `ReadFile` returns positive value, then the request was
+          completed synchronously. This is fine, may happen when the file was
+          opened in non-overlapped mode (without FILE_FLAG_OVERLAPPED flag
+          specified). Yet, this operation have set the event specified in the
+          Overlapped structure, which is waited upon in the io_handler thread in
+          `os_aio_windows_handler()`. This will cause all the IO post-processing
+          to be executed in the io_handler thread. This includes checking the
+          bytes actually processed etc. There is nothing we want to do here, in
+          particular we don't want to check slot->n_bytes or any other slot
+          fields. Otherwise, if the error is ERROR_IO_PENDING then the IO was
+          successfully dispatched asynchronously and we don't need to do
+          anything more, neither. */
+          io_dispatched = ReadFile(file.m_file, slot->ptr, slot->len,
+                                   &slot->n_bytes, &slot->control) ||
+                          (GetLastError() == ERROR_IO_PENDING);
 #elif defined(LINUX_NATIVE_AIO)
-      if (!array->linux_dispatch(slot)) {
-        goto err_exit;
-      }
-#endif /* !_WIN32 && LINUX_NATIVE_AIO */
-    } else if (type.is_wake()) {
-      AIO::wake_simulated_handler_thread(
-          AIO::get_segment_no_from_slot(array, slot));
-    }
-  } else if (type.is_write()) {
-    if (srv_use_native_aio) {
-      ++os_n_file_writes;
-
-#ifdef _WIN32
-      ret = WriteFile(file.m_file, slot->ptr, slot->len, &slot->n_bytes,
-                      &slot->control);
-#elif defined(LINUX_NATIVE_AIO)
-      if (!array->linux_dispatch(slot)) {
-        goto err_exit;
-      }
+          io_dispatched = array->linux_dispatch(slot);
+#else
+          ut_error;
 #endif /* !_WIN32 && LINUX_NATIVE_AIO */
 
-    } else if (type.is_wake()) {
-      AIO::wake_simulated_handler_thread(
-          AIO::get_segment_no_from_slot(array, slot));
-    }
-  } else {
-    ut_error;
-  }
+        } else if (type.is_write()) {
+          ++os_n_file_writes;
 
 #ifdef _WIN32
-  if (srv_use_native_aio) {
-    if ((!ret && GetLastError() != ERROR_IO_PENDING) ||
-        (ret && slot->len != slot->n_bytes)) {
-      goto err_exit;
+          /* If `WriteFile` returns positive value, then the request was
+          completed synchronously. This is fine, may happen when the file was
+          opened in non-overlapped mode (without FILE_FLAG_OVERLAPPED flag
+          specified). Yet, this operation have set the event specified in the
+          Overlapped structure, which is waited upon in the io_handler thread in
+          `os_aio_windows_handler()`. This will cause all the IO post-processing
+          to be executed in the io_handler thread. This includes checking the
+          bytes actually processed etc. There is nothing we want to do here, in
+          particular we don't want to check slot->n_bytes or any other slot
+          fields. Otherwise, if the error is ERROR_IO_PENDING then the IO was
+          successfully dispatched asynchronously and we don't need to do
+          anything more too. */
+          io_dispatched = WriteFile(file.m_file, slot->ptr, slot->len,
+                                    &slot->n_bytes, &slot->control) ||
+                          (GetLastError() == ERROR_IO_PENDING);
+#elif defined(LINUX_NATIVE_AIO)
+          io_dispatched = array->linux_dispatch(slot);
+#else
+          ut_error;
+#endif /* !_WIN32 && LINUX_NATIVE_AIO */
+
+        } else {
+          ut_error;
+        }
+      } else {
+        /* For simulated AIO the fact of reserving of the slot is effectively
+        the dispatching. */
+        io_dispatched = true;
+        if (type.is_wake()) {
+          AIO::wake_simulated_handler_thread(
+              AIO::get_segment_no_from_slot(array, slot));
+        }
+      }
+
+      /* If the IO operation dispatching succeeded, we can't use the slot
+      anymore!
+      The IO completion in the io_handler thread will concurrently free the slot
+      and it may be even reserved again by some other IO request. Therefore, we
+      can not use contents of the `slot` variable to determine if the error has
+      happened or not. Instead we must use an on-stack `io_dispatched` variable.
+      Also, to avoid a mistake of accidentally accessing the `slot`, we let it
+      go out of scope as soon as we do one final
+      thing to it: release the `slot` in case of an error. */
+      if (!io_dispatched) {
+        array->release_with_mutex(slot);
+      }
+    }
+    if (!io_dispatched) {
+      if (!os_file_handle_error(name,
+                                type.is_read() ? "aio read" : "aio write")) {
+        return DB_IO_ERROR;
+      }
     }
   }
-#endif /* _WIN32 */
 
-  /* AIO request was queued successfully! */
+  /* AIO request was dispatched successfully! */
   return (DB_SUCCESS);
-
-#if defined LINUX_NATIVE_AIO || defined _WIN32
-err_exit:
-#endif /* LINUX_NATIVE_AIO || _WIN32 */
-
-  array->release_with_mutex(slot);
-  if (os_file_handle_error(name, type.is_read() ? "aio read" : "aio write")) {
-    goto try_again;
-  }
-
-  return (DB_IO_ERROR);
 }
 
 /** Simulated AIO handler for reaping IO requests */
