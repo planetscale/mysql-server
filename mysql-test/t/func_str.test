@@ -2629,3 +2629,9 @@ select locate('Åa', 'Åa');
 select locate('ss', 'ß');
 select locate('ß', 'ss');
 select locate("", "ÅÅ", 2);
+
+--echo #
+--echo # Bug: The insert function does handle inserting beyond the string for multibyte characters
+--echo #
+set names utf8mb4;
+select insert('Å', 2, 1, 'a');
