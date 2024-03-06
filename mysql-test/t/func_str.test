@@ -2617,3 +2617,15 @@ SELECT LPAD(a, ASCII(RANDOM_BYTES(1)) - 10, 'abc') FROM t;
 SET sql_mode = DEFAULT;
 
 DROP TABLE t;
+
+--echo #
+--echo # Bug: The locate function does not find correct substring
+--echo #
+set names utf8mb4;
+select locate('a', 'Å');
+select locate('Å', 'a');
+select locate('aÅ', 'aÅ');
+select locate('Åa', 'Åa');
+select locate('ss', 'ß');
+select locate('ß', 'ss');
+select locate("", "ÅÅ", 2);
