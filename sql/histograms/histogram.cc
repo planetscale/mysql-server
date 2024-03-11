@@ -1428,6 +1428,10 @@ bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
     }
     if (query_histogram) {
       Json_object json_object;
+      Json_string json_column_name(col_name);
+      if (json_object.add_clone("column-name", &json_column_name)) {
+        return true; /* purecov: inspected */
+      }
       histogram->histogram_to_json(&json_object);
       Json_wrapper json_wrapper(&json_object);
       json_wrapper.set_alias();
@@ -1509,6 +1513,10 @@ bool update_histogram(THD *thd, Table_ref *table, const columns_set &columns,
     }
     if (query_histogram) {
         Json_object json_object;
+        Json_string json_column_name(col_name);
+        if (json_object.add_clone("column-name", &json_column_name)) {
+          return true; /* purecov: inspected */
+        }
         histogram->histogram_to_json(&json_object);
         Json_wrapper json_wrapper(&json_object);
         json_wrapper.set_alias();
