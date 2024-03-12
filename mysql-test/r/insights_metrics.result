@@ -1,0 +1,143 @@
+DROP TABLE IF EXISTS t1;
+Warnings:
+Note	1051	Unknown table 'test.t1'
+DROP TABLE IF EXISTS t2;
+Warnings:
+Note	1051	Unknown table 'test.t2'
+DROP TABLE IF EXISTS `t3"`;
+Warnings:
+Note	1051	Unknown table 'test.t3"'
+DROP TABLE IF EXISTS `t4_partitioned`;
+Warnings:
+Note	1051	Unknown table 'test.t4_partitioned'
+DROP TABLE IF EXISTS `t5`;
+Warnings:
+Note	1051	Unknown table 'test.t5'
+DROP TABLE IF EXISTS `₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤`;
+Warnings:
+Note	1051	Unknown table 'test.₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤
+CREATE TABLE t1 (
+`id` bigint unsigned NOT NULL AUTO_INCREMENT,
+`a` bigint NOT NULL,
+`b` bigint NOT NULL,
+`c` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `idx_a` (`a`),
+KEY `idx_a_b` (`a`,`b`),
+KEY `idx_b` (`b`)
+);
+INSERT INTO `t1` VALUES (1,2,3,4),(2,1,4,5),(3,2,5,6),(4,1,6,7),(5,2,7,8),(6,1,8,9),(7,2,9,10),(8,1,10,11),(9,2,11,12),(10,1,12,13);
+CREATE TABLE t2 (
+`id` bigint unsigned NOT NULL AUTO_INCREMENT,
+`t1_id` bigint NOT NULL,
+`a` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `idx_a` (`a`)
+);
+INSERT INTO `t2` VALUES (1,1,1),(2,2,2),(3,3,3),(4,4,4),(5,5,5),(6,6,6),(7,7,7),(8,8,8),(9,9,9),(10,10,10),(11,11,11),(12,12,12),(13,13,13),(14,14,14),(15,15,15),(16,16,16),(17,17,17),(18,18,18),(19,19,19),(20,20,20),(21,21,21),(22,22,22),(23,23,23),(24,24,24),(25,25,25);
+CREATE TABLE `t3"` (
+`id` bigint unsigned NOT NULL AUTO_INCREMENT,
+`a` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `idx"` (`a`)
+);
+CREATE TABLE `t4_partitioned` (
+`id` bigint NOT NULL,
+`a` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `idx_a` (`a`)
+)
+PARTITION BY RANGE (`id`) (
+PARTITION partition_u100 VALUES LESS THAN (100),
+PARTITION partition_umax VALUES LESS THAN MAXVALUE
+);
+CREATE TABLE `t5` (
+`id` bigint unsigned NOT NULL AUTO_INCREMENT,
+`a` bigint NOT NULL,
+`b` bigint NOT NULL,
+`c` bigint NOT NULL,
+`d` bigint NOT NULL,
+`e` bigint NOT NULL,
+`f` bigint NOT NULL,
+`g` bigint NOT NULL,
+`h` bigint NOT NULL,
+`i` bigint NOT NULL,
+`j` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` (`a`),
+KEY `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb` (`b`),
+KEY `cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc` (`c`),
+KEY `dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd` (`d`),
+KEY `eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee` (`e`),
+KEY `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff` (`f`),
+KEY `gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg` (`g`),
+KEY `hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh` (`h`),
+KEY `iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii` (`i`),
+KEY `jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj` (`j`)
+);
+CREATE TABLE `₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (
+`id` bigint unsigned NOT NULL AUTO_INCREMENT,
+`a` bigint NOT NULL,
+`b` bigint NOT NULL,
+`c` bigint NOT NULL,
+`d` bigint NOT NULL,
+`e` bigint NOT NULL,
+`f` bigint NOT NULL,
+`g` bigint NOT NULL,
+`h` bigint NOT NULL,
+`i` bigint NOT NULL,
+`j` bigint NOT NULL,
+PRIMARY KEY (`id`),
+KEY `a₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`a`),
+KEY `b₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`b`),
+KEY `c₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`c`),
+KEY `d₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`d`),
+KEY `e₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`e`),
+KEY `f₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`f`),
+KEY `g₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`g`),
+KEY `h₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`h`),
+KEY `i₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`i`),
+KEY `j₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤` (`j`)
+);
+Table scan
+count(*)
+10
+Primary key
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","PRIMARY"]]}
+Secondary key
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","idx_a"]]}
+Primary key OR secondary key
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","PRIMARY"],["test","t1","idx_b"]]}
+Composite secondary key
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","idx_a_b"]]}
+Unindexed column
+Metrics: {"rows_read":10,"indexes_used":[]}
+Covering index
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","idx_a_b"]]}
+Join
+Metrics: {"rows_read":1,"indexes_used":[["test","t1","PRIMARY"],["test","t2","idx_a"]]}
+Union
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","idx_a"],["test","t1","idx_b"]]}
+Doesn't send the same index twice
+Metrics: {"rows_read":0,"indexes_used":[["test","t1","idx_a"]]}
+JSON Escaping
+Metrics: {"rows_read":0,"indexes_used":[["test","t3\"","idx\""]]}
+Partitioned tables
+Metrics: {"rows_read":0,"indexes_used":[["test","t4_partitioned","idx_a"]]}
+No insights metrics (no rows read or indexes used)
+1
+1
+Long insights message (used to overflow net_send_ok buffer)
+Metrics: {"rows_read":0,"indexes_used":[["test","t5","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],["test","t5","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],["test","t5","cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],["test","t5","dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],["test","t5","eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],["test","t5","ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"],["test","t5","gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"],["test","t5","hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"],["test","t5","iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"],["test","t5","jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj"]]}
+Stops adding indexes after insights message reaches 2000 bytes
+Metrics: {"rows_read":0,"indexes_used":[["test","₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤","a₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤"],["test","₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤","b₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤"],["test","₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤","c₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤"],["test","₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤","d₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤"],["test","₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤","e₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤"]]}
+Does not include indexes from temporary tables (otherwise we get indexes that look like: ["mysqld?1","#sql708_18_0","<auto_key0>"]
+(select max(a) from qn where qn.a=1)
+1
+Metrics: {"rows_read":3,"indexes_used":[]}
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS `t3"`;
+DROP TABLE IF EXISTS `t4_partitioned`;
+DROP TABLE IF EXISTS t5;
+DROP TABLE IF EXISTS `₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤₤`;

@@ -862,7 +862,15 @@ static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
                         const char *message, size_t msglen, bool eof_identifier) {
   Protocol *protocol = thd->get_protocol();
   NET *net = thd->get_protocol_classic()->get_net();
-  uchar buff[MYSQL_ERRMSG_SIZE + 10];
+
+  /*
+     Size of all fixed-length fields in this packet: header (1 byte),
+     affected_rows (up to 9 bytes), last_insert_id (up to 9 bytes),
+     server_status (2 bytes), warning_count (2 bytes), msglen (up to 3 bytes)
+  */
+  const size_t ok_fields_len = 26;
+  size_t buff_len = msglen + ok_fields_len;
+  uchar *buff = (uchar *)alloca(buff_len);
   uchar *pos, *start;
 
   /*
@@ -926,6 +934,9 @@ static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
 
   thd->get_stmt_da()->set_overwrite_status(true);
 
+  /* Check that there's enough space to write the message (-3 for msg len encoding) */
+  assert(size_t(pos - start) <= ok_fields_len - 3);
+
   if (protocol->has_client_capability(CLIENT_SESSION_TRACK)) {
     /* the info field */
     if (state_changed || (message && msglen))
@@ -939,7 +950,7 @@ static bool net_send_ok(THD *thd, uint server_status, uint statement_warn_count,
         First append the fields collected so far. In case of malloc, memory
         for message is also allocated here.
       */
-      store.append((const char *)start, (pos - start), MYSQL_ERRMSG_SIZE);
+      store.append((const char *)start, (pos - start), buff_len);
 
       /* .. and then the state change information. */
       thd->session_tracker.store(thd, store);
@@ -1323,19 +1334,12 @@ bool Protocol_classic::send_eof(uint server_status, uint statement_warn_count) {
   if (has_client_capability(CLIENT_DEPRECATE_EOF) &&
       (m_thd->get_command() != COM_BINLOG_DUMP &&
        m_thd->get_command() != COM_BINLOG_DUMP_GTID)) {
-    ulonglong rows_read = m_thd->get_stmt_da()->rows_read();
-    if (rows_read) {
-      char message[64] = "";
-      snprintf(message+1, sizeof(message)-1, "{\"rows_read\":%llu}", rows_read);
-      retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
-                           message, 1+strlen(message+1), true);
-    }
-    else {
-      retval = net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
-                           NULL, 0, true);
-    }
-  }
-  else
+    std::string insights_message = m_thd->get_stmt_da()->insights_message();
+    retval =
+        net_send_ok(m_thd, server_status, statement_warn_count, 0, 0,
+                    insights_message.data(), insights_message.length(), true);
+
+  } else
     retval = net_send_eof(m_thd, server_status, statement_warn_count);
   // Reclaim some memory
   convert.shrink(m_thd->variables.net_buffer_length);
