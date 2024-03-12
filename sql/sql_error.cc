@@ -50,6 +50,10 @@ This file contains the implementation of error and warnings related
 
 #include "sql/sql_error.h"
 
+#include "my_rapidjson_size_t.h"
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+
 #include <float.h>
 #include <stdarg.h>
 #include <algorithm>
@@ -337,6 +341,7 @@ Diagnostics_area::Diagnostics_area(bool allow_unlimited_conditions)
       m_mysql_errno(0),
       m_affected_rows(0),
       m_rows_read(0),
+      m_indexes_used(),
       m_last_insert_id(0),
       m_last_statement_cond_count(0),
       m_current_statement_cond_count(0),
@@ -364,6 +369,7 @@ void Diagnostics_area::reset_diagnostics_area() {
   m_last_statement_cond_count = 0;
 #endif
   m_rows_read = 0;
+  m_indexes_used.clear();
   set_is_sent(false);
   // Tiny reset in debug mode to see garbage right away.
   m_status = DA_EMPTY;
@@ -521,6 +527,62 @@ ulong Diagnostics_area::warn_count(THD *thd) const {
   return m_current_statement_cond_count_by_qb[(uint)Sql_condition::SL_NOTE] +
          m_current_statement_cond_count_by_qb[(uint)Sql_condition::SL_ERROR] +
          m_current_statement_cond_count_by_qb[(uint)Sql_condition::SL_WARNING];
+}
+
+void Diagnostics_area::add_index_used(std::string schema, std::string table, std::string index) {
+  // Safety mechanism to protect against a truly terrible query
+  if (m_indexes_used.size() >= 32) return;
+
+  const USED_INDEX used_index = {
+      .schema = std::move(schema),
+      .table = std::move(table),
+      .index = std::move(index),
+  };
+
+  if(find(m_indexes_used.begin(), m_indexes_used.end(), used_index) == m_indexes_used.end()) {
+    m_indexes_used.push_back(std::move(used_index));
+  }
+}
+
+std::string Diagnostics_area::insights_message() {
+  if (m_rows_read == 0 && m_indexes_used.empty()) {
+    return "";
+  }
+
+  rapidjson::StringBuffer buffer;
+  buffer.Put('\0');
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+  writer.StartObject();
+  writer.String("rows_read");
+  writer.Uint64(m_rows_read);
+
+  writer.String("indexes_used");
+  writer.StartArray();
+  for (const USED_INDEX &index : m_indexes_used) {
+    // Calculate how long the string will be after we add this index. If it is
+    // over the cap, stop adding indexes.
+    // 13 = the number of additional bytes required for json (quotes, commas,
+    // brackets)
+    size_t after_bytes = buffer.GetLength() + index.schema.length() +
+                         index.table.length() + index.index.length() + 13;
+    if (after_bytes > MAX_INSIGHTS_MESSAGE_LENGTH){
+      break;
+    }
+
+    writer.StartArray();
+    writer.String(index.schema.c_str());
+    writer.String(index.table.c_str());
+    writer.String(index.index.c_str());
+    writer.EndArray();
+  }
+  writer.EndArray();
+
+  writer.EndObject();
+
+  assert(buffer.GetLength() < MAX_INSIGHTS_MESSAGE_LENGTH);
+
+  return std::string(buffer.GetString(), buffer.GetLength());
 }
 
 void Diagnostics_area::copy_sql_conditions_from_da(
