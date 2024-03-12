@@ -28,6 +28,8 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include <vector>
+
 #include "lex_string.h"
 #include "m_ctype.h"
 #include "m_string.h"
@@ -274,6 +276,16 @@ class Diagnostics_area {
       I_P_List_counter, I_P_List_fast_push_back<Sql_condition>>
       Sql_condition_list;
 
+  struct USED_INDEX {
+    const std::string schema;
+    const std::string table;
+    const std::string index;
+
+    bool operator==(const USED_INDEX& other) const {
+      return schema == other.schema && table == other.table && index == other.index;
+    }
+  };
+
  public:
   /** Const iterator used to iterate through the condition list. */
   typedef Sql_condition_list::Const_Iterator Sql_condition_iterator;
@@ -392,11 +404,6 @@ class Diagnostics_area {
     return m_affected_rows;
   }
 
-  ulonglong rows_read() const {
-    assert(m_status == DA_OK || m_status == DA_EOF);
-    return m_rows_read;
-  }
-
   ulonglong last_insert_id() const {
     assert(m_status == DA_OK);
     return m_last_insert_id;
@@ -458,6 +465,25 @@ class Diagnostics_area {
 
   /** Increment the rows-read counter. */
   void inc_rows_read() { m_rows_read++; }
+
+  /** Record an index as having been used for Insights */
+  void add_index_used(std::string schema, std::string table, std::string index);
+
+  /**
+    Maximum length of the insights message.
+    insights_message is guaranteed to never create a string longer than this
+  **/
+  const size_t MAX_INSIGHTS_MESSAGE_LENGTH = 2000;
+  /**
+    Create the json message that supplies additional metrics for PlanetScale
+    Insights.
+
+    If there are metrics to report, this includes a beginning \0 so that the
+    message will be included in the hidden second payload in OK/EOF packets.
+
+    If there are no metrics, returns a 0 length string.
+   */
+  std::string insights_message();
 
   /** Set the current row counter to point to the given row number. */
   void set_current_row_for_condition(ulong rowno) {
@@ -661,6 +687,11 @@ class Diagnostics_area {
     The number of rows read by the last statement.
   */
   ulonglong m_rows_read;
+
+  /**
+   * The list of indexes used in the last statement
+   */
+  std::vector<USED_INDEX> m_indexes_used;
 
   /**
     Similarly to the previous member, this is a replacement of

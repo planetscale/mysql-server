@@ -10036,7 +10036,22 @@ int ha_innobase::index_init(uint keynr, /*!< in: key (index) number */
 {
   DBUG_TRACE;
 
-  return change_active_index(keynr);
+  int err = change_active_index(keynr);
+  if (err != 0) return err;
+
+  if (m_prebuilt != nullptr && m_prebuilt->table != nullptr &&
+      m_prebuilt->index != nullptr &&
+      !m_prebuilt->table->is_system_table_metrics &&
+      !m_prebuilt->table->is_temporary()) {
+
+    std::string schema;
+    std::string table;
+    m_prebuilt->table->get_table_name(schema, table);
+    std::string index = std::string(m_prebuilt->index->name);
+    m_user_thd->get_stmt_da()->add_index_used(
+        std::move(schema), std::move(table), std::move(index));
+  }
+  return err;
 }
 
 /** Currently does nothing.
