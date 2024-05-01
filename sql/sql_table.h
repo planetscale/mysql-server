@@ -374,9 +374,7 @@ bool collect_fk_names_for_new_fks(THD *thd, const char *db_name,
 
   @retval operation outcome, false if no error.
 */
-[[nodiscard]] bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *db,
-                                               const char *table_name,
-                                               const char *new_db,
+[[nodiscard]] bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *new_db,
                                                const char *new_table_name,
                                                handlerton *hton);
 

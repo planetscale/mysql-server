@@ -15791,8 +15791,7 @@ bool adjust_fks_for_rename_table(THD *thd, const char *db,
 }
 
 
-bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *db,
-                                 const char *table_name, const char *new_db,
+bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *new_db,
                                  const char *new_table_name,
                                  handlerton *hton) {
   dd::Table *new_table = nullptr;
@@ -15802,7 +15801,7 @@ bool adjust_fks_for_rename_table_with_preserve_fk(THD *thd, const char *db,
 
   assert(new_table != nullptr);
 
-  if (reload_fk_children_after_parent_rename_preserve(thd, db, table_name, hton)) {
+  if (reload_fk_children_after_parent_rename_preserve(thd, new_db, new_table_name, hton)) {
     return true;
   }
   return false;

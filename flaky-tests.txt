@@ -1,6 +1,10 @@
 innodb.autoinc_persist_debug
 innodb.disable_log_encryption
+innodb.pct_cached_evict
+innodb_undo.undo_tablespace
 main.async_client
+main.func_prefix_key
+main.information_schema_cs
 main.information_schema_stats_expiry_debug
 main.join
 main.join_cache_bka

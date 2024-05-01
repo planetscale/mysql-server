@@ -4406,6 +4406,8 @@ dberr_t dd_table_check_for_child(dd::cache::Dictionary_client *client,
       dict_table_t *foreign_table =
           dd_table_open_on_name_in_mem(full_name, true);
 
+      Table_name_inspector table_inspector(full_name);
+
       if (foreign_table) {
         for (auto &fk : foreign_table->foreign_set) {
           if (strcmp(fk->referenced_table_name, tbl_name) != 0) {
@@ -4425,7 +4427,7 @@ dberr_t dd_table_check_for_child(dd::cache::Dictionary_client *client,
           }
         }
         foreign_table->release();
-      } else {
+      } else if (!table_inspector.skip_fk_checks()) {
         /* To avoid recursively loading the tables
         related through the foreign key constraints,
         the child table name is saved here. The child
