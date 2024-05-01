@@ -255,6 +255,7 @@ our @DEFAULT_SUITES = qw(
   opt_trace
   parts
   perfschema
+  preserve_foreign_key
   query_rewrite_plugins
   rpl
   rpl_gtid
