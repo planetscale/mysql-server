@@ -799,7 +799,7 @@ static bool do_rename(THD *thd, Table_ref *ren_table, const char *new_db,
           // because we want the foreign key child to point to the newly instated table, rather than follow
           // the old, renamed table.
           if (preserve_foreign_key) {
-            if (adjust_fks_for_rename_table_with_preserve_fk(thd, ren_table->db, old_alias, new_db, new_alias, hton)) {
+            if (adjust_fks_for_rename_table_with_preserve_fk(thd, new_db, new_alias, hton)) {
               // adjust FKs failed
               cleanup_required = true;
             }

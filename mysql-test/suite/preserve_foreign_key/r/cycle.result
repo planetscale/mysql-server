@@ -1,0 +1,275 @@
+drop table if exists t1,t2,t3,_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_,_vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_;
+# Simple two table setup
+create table t1 (id int primary key, i int, key(i), data int);
+create table t2 (id int primary key, i int, key(i), data int);
+insert into t1 values (1, 2, 10);
+insert into t2 values (2, 1, 20);
+ALTER TABLE t1 ADD CONSTRAINT t1t2fk FOREIGN KEY (i) REFERENCES t2 (id);
+create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ like t2;
+ALTER TABLE _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2t1fk FOREIGN KEY (i) REFERENCES t1 (id);
+insert into _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ select * from t2;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+delete from t1;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t2`, CONSTRAINT `t2t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`))
+delete from t2;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t1`, CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`))
+update t2 set i=null;
+delete from t1;
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t2t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+Table	Create Table
+_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_	CREATE TABLE `_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+# Three table setup
+drop table if exists t1,t2,t3,_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_,_vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_;
+create table t1 (id int primary key, i int, key(i), data int);
+create table t2 (id int primary key, i int, key(i), i3 int, key (i3), data int);
+create table t3 (id int primary key, i int, key(i), data int);
+insert into t1 values (1, 2, 10);
+insert into t2 values (2, 1, 3, 20);
+insert into t3 values (3, 3, 30);
+ALTER TABLE t1 ADD CONSTRAINT t1t2fk FOREIGN KEY (i) REFERENCES t2 (id);
+ALTER TABLE t2 ADD CONSTRAINT t2t3fk FOREIGN KEY (i3) REFERENCES t3 (id);
+create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ like t2;
+alter table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2bt3fk FOREIGN KEY (i3) REFERENCES t3 (id);
+ALTER TABLE _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2t1fk FOREIGN KEY (i) REFERENCES t1 (id);
+insert into _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ select * from t2;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i	data
+1	2	10
+select * from t2;
+id	i	i3	data
+2	1	3	20
+select * from t3;
+id	i	data
+3	3	30
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i	i3	data
+2	1	3	20
+delete from t1;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t2`, CONSTRAINT `t2t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`))
+delete from t2;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t1`, CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`))
+delete from t3;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t2`, CONSTRAINT `t2bt3fk` FOREIGN KEY (`i3`) REFERENCES `t3` (`id`))
+select * from t1;
+id	i	data
+1	2	10
+select * from t2;
+id	i	i3	data
+2	1	3	20
+select * from t3;
+id	i	data
+3	3	30
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i	i3	data
+2	1	3	20
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `i3` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  KEY `i3` (`i3`),
+  CONSTRAINT `t2bt3fk` FOREIGN KEY (`i3`) REFERENCES `t3` (`id`),
+  CONSTRAINT `t2t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+Table	Create Table
+_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_	CREATE TABLE `_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `i3` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  KEY `i3` (`i3`),
+  CONSTRAINT `t2t3fk` FOREIGN KEY (`i3`) REFERENCES `t3` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+insert into _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ values (111, 111, 333, 222);
+update t2 set i3=null;
+delete from t3;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i	data
+1	2	10
+select * from t2;
+id	i	i3	data
+2	1	3	20
+111	111	333	222
+select * from t3;
+id	i	data
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i	i3	data
+2	1	NULL	20
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i	data
+1	2	10
+select * from t2;
+id	i	i3	data
+2	1	NULL	20
+select * from t3;
+id	i	data
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i	i3	data
+2	1	3	20
+111	111	333	222
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+# Three table cycle
+drop table if exists t1,t2,t3,_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_,_vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_;
+create table t1 (id int primary key, i int, key(i), data int);
+create table t2 (id int primary key, i int, key(i), data int);
+create table t3 (id int primary key, i int, key(i), data int);
+insert into t1 values (1, 2, 10);
+insert into t2 values (2, 3, 20);
+insert into t3 values (3, 1, 30);
+ALTER TABLE t1 ADD CONSTRAINT t1t2fk FOREIGN KEY (i) REFERENCES t2 (id);
+ALTER TABLE t3 ADD CONSTRAINT t3t1fk FOREIGN KEY (i) REFERENCES t1 (id);
+create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ like t2;
+ALTER TABLE _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2t3fk FOREIGN KEY (i) REFERENCES t3 (id);
+insert into _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ select * from t2;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+delete from t1;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t3`, CONSTRAINT `t3t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`))
+delete from t2;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t1`, CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`))
+delete from t3;
+ERROR 23000: Cannot delete or update a parent row: a foreign key constraint fails (`test`.`t2`, CONSTRAINT `t2t3fk` FOREIGN KEY (`i`) REFERENCES `t3` (`id`))
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t1t2fk` FOREIGN KEY (`i`) REFERENCES `t2` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t2t3fk` FOREIGN KEY (`i`) REFERENCES `t3` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table t3;
+Table	Create Table
+t3	CREATE TABLE `t3` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`),
+  CONSTRAINT `t3t1fk` FOREIGN KEY (`i`) REFERENCES `t1` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+show create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+Table	Create Table
+_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_	CREATE TABLE `_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_` (
+  `id` int NOT NULL,
+  `i` int DEFAULT NULL,
+  `data` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `i` (`i`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+# two cycles
+drop table if exists t1,t2,t3,_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_,_vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_;
+create table t1 (id int primary key, i2 int, key(i2), data int);
+create table t2 (id int primary key, i1 int, key(i1), i3 int, key (i3), data int);
+create table t3 (id int primary key, i2 int, key(i2), data int);
+insert into t1 values (1, 2, 10);
+insert into t2 values (2, 1, 3, 20);
+insert into t3 values (3, 2, 30);
+ALTER TABLE t1 ADD CONSTRAINT t1t2fk FOREIGN KEY (i2) REFERENCES t2 (id);
+ALTER TABLE t2 ADD CONSTRAINT t2t1fk FOREIGN KEY (i1) REFERENCES t1 (id);
+ALTER TABLE t2 ADD CONSTRAINT t2t3fk FOREIGN KEY (i3) REFERENCES t3 (id);
+ALTER TABLE t3 ADD CONSTRAINT t3t2fk FOREIGN KEY (i2) REFERENCES t2 (id);
+create table _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ like t2;
+ALTER TABLE _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2bt1fk FOREIGN KEY (i1) REFERENCES t1 (id);
+ALTER TABLE _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ ADD CONSTRAINT t2tb3fk FOREIGN KEY (i3) REFERENCES t3 (id);
+insert into _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ select * from t2;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i2	data
+1	2	10
+select * from t2;
+id	i1	i3	data
+2	1	3	20
+select * from t3;
+id	i2	data
+3	2	30
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i1	i3	data
+2	1	3	20
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i2	data
+1	2	10
+select * from t2;
+id	i1	i3	data
+2	1	3	20
+select * from t3;
+id	i2	data
+3	2	30
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i1	i3	data
+2	1	3	20
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+select * from t1;
+id	i2	data
+1	2	10
+select * from t2;
+id	i1	i3	data
+2	1	3	20
+select * from t3;
+id	i2	data
+3	2	30
+select * from _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+id	i1	i3	data
+2	1	3	20
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+rename table t2 to _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_, _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_ to t2, _vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_ to _vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_;
+# Cleanup
+drop table if exists t1,t2,t3,_vt_vrp_7dc2886cfd4911eea2770a43f95f28a3_20240418060418_,_vt_hld_811ad1fcfd4911eeb0f60a43f95f28a3_20240419060423_;
