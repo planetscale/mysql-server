@@ -148,6 +148,7 @@ typedef bool(stat_print_fn)(THD *thd, const char *type, size_t type_len,
                             const char *status, size_t status_len);
 
 class ha_statistics;
+class ha_column_statistics;
 class ha_tablespace_statistics;
 class Unique_on_insert;
 
@@ -2135,6 +2136,18 @@ typedef bool (*get_table_statistics_t)(
     ha_statistics *stats);
 
 /**
+  Retrieve column_statistics from SE.
+
+  @param db_name                  Name of schema
+  @param table_name               Name of table
+  @param column_name              Name of column
+
+  @returns The statistics if available, empty value otherwise.
+*/
+typedef std::optional<ha_column_statistics> (*get_column_statistics_t)(
+    const char *db_name, const char *table_name, const char *column_name);
+
+/**
   @brief
   Retrieve index column cardinality from SE.
 
@@ -2896,6 +2909,7 @@ struct handlerton {
   redo_log_set_state_t redo_log_set_state;
 
   get_table_statistics_t get_table_statistics;
+  get_column_statistics_t get_column_statistics;
   get_index_column_cardinality_t get_index_column_cardinality;
   get_tablespace_statistics_t get_tablespace_statistics;
 
@@ -4112,6 +4126,13 @@ class ha_statistics {
         update_time(0),
         block_size(0),
         table_in_mem_estimate(IN_MEMORY_ESTIMATE_UNKNOWN) {}
+};
+
+class ha_column_statistics {
+ public:
+  ha_rows num_distinct_values{0};
+
+  ha_column_statistics() {}
 };
 
 /**

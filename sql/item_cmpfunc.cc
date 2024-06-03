@@ -69,6 +69,7 @@
 #include "sql/item_sum.h"        // Item_sum_hybrid
 #include "sql/item_timefunc.h"   // Item_typecast_date
 #include "sql/join_optimizer/bit_utils.h"
+#include "sql/join_optimizer/secondary_statistics.h"
 #include "sql/key.h"
 #include "sql/mysqld.h"  // log_10
 #include "sql/nested_join.h"
@@ -2644,30 +2645,42 @@ float Item_func_ne::get_filtering_effect(THD *thd, table_map filter_for_table,
     if (!thd->lex->using_hypergraph_optimizer()) {
       return get_histogram_selectivity(
           thd, *fld->field, histograms::enum_operator::NOT_EQUALS_TO, *this);
-
-    } else if (args[0]->const_item() || args[1]->const_item() ||
-               fld->field->key_start.is_clear_all()) {
-      // We prefer histograms over indexes if:
-      // 1) We are comparing a field to a constant, since histograms will
-      //    give the frequency of that constant value.
-      // 2) If no index starts with fld->field, as index estimates will then
-      //    be less accurate, since we do not know if that field is correlated
-      //    with the preceding fields of the index.
+    }
+    if (args[0]->const_item() || args[1]->const_item()) {
+      // We prefer histograms over indexes if we are comparing a field
+      // to a constant value, since histograms will give the frequency of
+      // that particular value.
       const double histogram_selectivity = get_histogram_selectivity(
           thd, *fld->field, histograms::enum_operator::NOT_EQUALS_TO, *this);
-
-      return histogram_selectivity == kUndefinedSelectivity
-                 ? index_selectivity()
-                 : histogram_selectivity;
-    } else {
-      const double idx_sel = index_selectivity();
-
-      return idx_sel == kUndefinedSelectivity
-                 ? get_histogram_selectivity(
-                       thd, *fld->field,
-                       histograms::enum_operator::NOT_EQUALS_TO, *this)
-                 : idx_sel;
+      if (histogram_selectivity != kUndefinedSelectivity)
+        return histogram_selectivity;
     }
+    // Index estimates will be less accurate when field is not first
+    // part of index, since we do not know if that field is
+    // correlated with the preceding fields of the index.
+    if (!fld->field->key_start.is_clear_all()) {
+      const double idx_sel = index_selectivity();
+      if (idx_sel != kUndefinedSelectivity) {
+        return idx_sel;
+      }
+    }
+    // When the field is not compared with a constant, and there is no good
+    // index to use, the prioritized order is:
+    // 1. Statistics from secondary engine
+    // 2. Histogram (based on estimate for number of distinct values)
+    // 3. Other indexes that contain this field
+    const double ndv =
+        secondary_statistics::NumDistinctValues(thd, *fld->field);
+    if (ndv > 0.0) {
+      return 1.0 - (1.0 / std::ceil(ndv));
+    }
+
+    const double histogram_selectivity = get_histogram_selectivity(
+        thd, *fld->field, histograms::enum_operator::NOT_EQUALS_TO, *this);
+
+    return histogram_selectivity == kUndefinedSelectivity
+               ? index_selectivity()
+               : histogram_selectivity;
   }();
 
   return selectivity == kUndefinedSelectivity
@@ -2706,33 +2719,39 @@ static double GetEqualSelectivity(THD *thd, Item_eq_base *equal,
     if (!thd->lex->using_hypergraph_optimizer()) {
       return get_histogram_selectivity(
           thd, *field.field, histograms::enum_operator::EQUALS_TO, *equal);
-
-    } else if (equal->arguments()[0]->const_item() ||
-               equal->arguments()[1]->const_item() ||
-               field.field->key_start.is_clear_all()) {
-      // We prefer histograms over indexes if:
-      // 1) We are comparing a field to a constant, since histograms will
-      //    give the frequency of that constant value.
-      // 2) If no index starts with field.field, as index estimates will then
-      //    be less accurate, since we do not know if that field is correlated
-      //    with the preceding fields of the index.
+    }
+    if (equal->arguments()[0]->const_item() ||
+        equal->arguments()[1]->const_item()) {
+      // We prefer histograms over indexes if we are comparing a field
+      // to a constant value, since histograms will give the frequency of
+      // that particular value.
       const double histogram_selectivity = get_histogram_selectivity(
           thd, *field.field, histograms::enum_operator::EQUALS_TO, *equal);
-
-      return histogram_selectivity == kUndefinedSelectivity
-                 ? IndexSelectivityOfUnknownValue(*field.field)
-                 : histogram_selectivity;
-
-    } else {
+      if (histogram_selectivity != kUndefinedSelectivity)
+        return histogram_selectivity;
+    }
+    if (!field.field->key_start.is_clear_all()) {
+      // Index estimates will be less accurate when field is not first
+      // part of index, since we do not know if that field is
+      // correlated with the preceding fields of the index.
       const double index_selectivity =
           IndexSelectivityOfUnknownValue(*field.field);
-
-      return index_selectivity == kUndefinedSelectivity
-                 ? get_histogram_selectivity(
-                       thd, *field.field, histograms::enum_operator::EQUALS_TO,
-                       *equal)
-                 : index_selectivity;
+      if (index_selectivity != kUndefinedSelectivity) return index_selectivity;
     }
+    // When the field is not compared with a constant, and there is no good
+    // index to use, the prioritized order is:
+    // 1. Statistics from secondary engine
+    // 2. Histogram (based on estimate for number of distinct values)
+    // 3. Other indexes that contain this field
+    const double ndv =
+        secondary_statistics::NumDistinctValues(thd, *field.field);
+    if (ndv > 0.0) return 1.0 / std::ceil(ndv);
+
+    const double histogram_selectivity = get_histogram_selectivity(
+        thd, *field.field, histograms::enum_operator::EQUALS_TO, *equal);
+    return histogram_selectivity == kUndefinedSelectivity
+               ? IndexSelectivityOfUnknownValue(*field.field)
+               : histogram_selectivity;
   }();
 
   return selectivity == kUndefinedSelectivity

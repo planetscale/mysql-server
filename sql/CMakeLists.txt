@@ -429,6 +429,7 @@ SET(SQL_SHARED_SOURCES
   join_optimizer/print_utils.cc
   join_optimizer/relational_expression.cc
   join_optimizer/replace_item.cc
+  join_optimizer/secondary_statistics.cc
   key.cc
   key_spec.cc
   keycaches.cc

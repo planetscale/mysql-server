@@ -27,12 +27,14 @@
 #include <stdio.h>
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <iterator>
 
 #include "mem_root_deque.h"
 #include "my_base.h"
 #include "my_bitmap.h"  // bitmap_bits_set
 #include "sql/handler.h"
+#include "sql/histograms/histogram.h"
 #include "sql/item_func.h"
 #include "sql/item_subselect.h"
 #include "sql/join_optimizer/access_path.h"
@@ -44,6 +46,7 @@
 #include "sql/join_optimizer/overflow_bitset.h"
 #include "sql/join_optimizer/print_utils.h"
 #include "sql/join_optimizer/relational_expression.h"
+#include "sql/join_optimizer/secondary_statistics.h"
 #include "sql/mem_root_array.h"
 #include "sql/mysqld.h"
 #include "sql/opt_costmodel.h"
@@ -547,8 +550,9 @@ TermArray GetAggregationTerms(const JOIN &join) {
  1. (Non-hash) indexes where the terms form some prefix of the
   index key. The handler can give good estimates for these.
 
- 2. Histograms for terms that are fields. The histograms
- give an estimate of the number of unique values.
+ 2. Statistics from secondary engine or histograms for terms that are fields.
+    Both can give an estimate of the number of unique values.
+    (Statistics from secondary engine is preferred if available.)
 
  3. The table size (in rows) for terms that are fields without histograms.
  (If we have "SELECT ... FROM t1 JOIN t2 GROUP BY t2.f1", there cannot
@@ -617,37 +621,42 @@ double EstimateDistinctRowsFromStatistics(THD *thd, TermArray terms,
     if (!IsBitSet(term - terms.cbegin(), index_estimator.GetConsumedTerms()) &&
         (*term)->type() == Item::FIELD_ITEM) {
       const Field *const field = down_cast<const Item_field *>(*term)->field;
-      const histograms::Histogram *const histogram =
-          field->table->find_histogram(field->field_index());
 
-      double distinct_values;
-      if (histogram == nullptr || empty(*histogram)) {
-        // Make an estimate from the table row count.
-        distinct_values = std::sqrt(field->table->file->stats.records);
+      // Check if we can use statistics from secondary engine
+      double distinct_values =
+          secondary_statistics::NumDistinctValues(thd, *field);
 
-        if (TraceStarted(thd)) {
-          Trace(thd) << StringPrintf(
-              "Estimating %.1f distinct values for field '%s'"
-              " from table size.\n",
-              distinct_values, field->field_name);
-        }
+      if (distinct_values <= 0.0) {
+        // Try histogram
+        const histograms::Histogram *const histogram =
+            field->table->find_histogram(field->field_index());
+        if (histogram == nullptr || empty(*histogram)) {
+          // Make an estimate from the table row count.
+          distinct_values = std::sqrt(field->table->file->stats.records);
 
-      } else {
-        // If 'term' is a field with a histogram, use that to get a row
-        // estimate.
-        distinct_values = histogram->get_num_distinct_values();
+          if (TraceStarted(thd)) {
+            Trace(thd) << StringPrintf(
+                "Estimating %.1f distinct values for field '%s'"
+                " from table size.\n",
+                distinct_values, field->field_name);
+          }
+        } else {
+          // If 'term' is a field with a histogram, use that to get a row
+          // estimate.
+          distinct_values = histogram->get_num_distinct_values();
 
-        if (histogram->get_null_values_fraction() > 0.0) {
-          // If there are NULL values, those will also form distinct
-          // combinations of terms.
-          ++distinct_values;
-        }
+          if (histogram->get_null_values_fraction() > 0.0) {
+            // If there are NULL values, those will also form distinct
+            // combinations of terms.
+            ++distinct_values;
+          }
 
-        if (TraceStarted(thd)) {
-          Trace(thd) << StringPrintf(
-              "Estimating %.1f distinct values for field '%s'"
-              " from histogram.\n",
-              distinct_values, field->field_name);
+          if (TraceStarted(thd)) {
+            Trace(thd) << StringPrintf(
+                "Estimating %.1f distinct values for field '%s'"
+                " from histogram.\n",
+                distinct_values, field->field_name);
+          }
         }
       }
 
