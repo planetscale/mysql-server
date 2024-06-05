@@ -3786,7 +3786,8 @@ class LEX_GRANT_AS {
 enum execute_only_in_secondary_reasons {
   SUPPORTED_IN_PRIMARY,
   CUBE,
-  TABLESAMPLE
+  TABLESAMPLE,
+  OUTFILE_OBJECT_STORE
 };
 
 /*
@@ -4031,6 +4032,11 @@ struct LEX : public Query_tables_list {
       insert_update_values_map->clear();
     }
   }
+
+  bool export_result_to_object_storage() const {
+    return result != nullptr && result->export_result_to_object_storage();
+  }
+
   bool has_values_map() const { return insert_update_values_map != nullptr; }
   std::map<Item_field *, Field *>::iterator begin_values_map() {
     return insert_update_values_map->begin();
@@ -4063,6 +4069,8 @@ struct LEX : public Query_tables_list {
         return "CUBE";
       case TABLESAMPLE:
         return "TABLESAMPLE";
+      case OUTFILE_OBJECT_STORE:
+        return "OUTFILE to object store";
       default:
         return "UNDEFINED";
     }
