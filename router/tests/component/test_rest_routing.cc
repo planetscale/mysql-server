@@ -121,6 +121,10 @@ static const std::vector<SwaggerPath> kRoutingSwaggerPaths{
     {"/routes/{routeName}/blockedHosts", "Get blocked host list for a route",
      "blocked host list for a route", "route not found"},
     {"/routes", "Get list of the routes", "list of the routes", ""},
+    {"/routing/guidelines", "Get routing guidelines document",
+     "routing guidelines document", ""},
+    {"/routing/guidelines/schema", "Get routing guidelines document schema",
+     "routing guidelines document schema", ""},
 };
 
 /**
@@ -490,6 +494,30 @@ get_expected_connections_fields_fields(const int expected_connection_qty) {
   return result;
 }
 
+static RestApiComponentTest::json_verifiers_t get_expected_schema_parts(
+    std::string_view item_name, const std::vector<std::string> &values) {
+  RestApiComponentTest::json_verifiers_t result;
+
+  result.emplace_back(std::string(item_name) + "/items/enum",
+                      [cnt = values.size()](const JsonValue *value) {
+                        ASSERT_TRUE(value != nullptr);
+                        ASSERT_TRUE(value->IsArray());
+                        ASSERT_EQ(value->GetArray().Size(), cnt);
+                      });
+
+  for (uint32_t i = 0; i < values.size(); i++) {
+    std::string item =
+        std::string(item_name) + "/items/enum/" + std::to_string(i);
+    result.emplace_back(item, [values](const JsonValue *value) {
+      ASSERT_TRUE(value != nullptr);
+      ASSERT_TRUE(value->IsString());
+      ASSERT_THAT(values, ::testing::Contains(value->GetString()));
+    });
+  }
+
+  return result;
+}
+
 // ****************************************************************************
 // Request the resource(s) using supported methods with authentication enabled
 // and valid credentials
@@ -508,6 +536,72 @@ static const RestApiTestParams rest_api_valid_methods[]{
              + 1
 #endif
          ),
+     kRoutingSwaggerPaths},
+    {"routing_guidelines",
+     std::string(rest_api_basepath) + "/routing/guidelines",
+     "/routing/guidelines",
+     HttpMethod::Get,
+     HttpStatusCode::Ok,
+     kContentTypeJson,
+     kRestApiUsername,
+     kRestApiPassword,
+     /*request_authentication =*/true,
+     {{"/version",
+       [](const JsonValue *value) {
+         ASSERT_NE(value, nullptr);
+         ASSERT_TRUE(value->IsString());
+         ASSERT_STREQ(value->GetString(), "1.0");
+       }}},
+     kRoutingSwaggerPaths},
+    {"routing_guidelines_schema_keywords",
+     std::string(rest_api_basepath) + "/routing/guidelines/schema",
+     "/routing/guidelines/schema", HttpMethod::Get, HttpStatusCode::Ok,
+     kContentTypeJson, kRestApiUsername, kRestApiPassword,
+     /*request_authentication =*/true,
+     get_expected_schema_parts(
+         "/match_rules/keywords",
+         {"LIKE", "FALSE", "NULL", "NOT", "IN", "OR", "AND", "TRUE"}),
+     kRoutingSwaggerPaths},
+    {"routing_guidelines_schema_functions",
+     std::string(rest_api_basepath) + "/routing/guidelines/schema",
+     "/routing/guidelines/schema", HttpMethod::Get, HttpStatusCode::Ok,
+     kContentTypeJson, kRestApiUsername, kRestApiPassword,
+     /*request_authentication =*/true,
+     get_expected_schema_parts(
+         "/match_rules/functions",
+         {"SQRT", "NUMBER", "IS_IPV4", "IS_IPV6", "REGEXP_LIKE",
+          "SUBSTRING_INDEX", "STARTSWITH", "ENDSWITH", "CONTAINS", "RESOLVE_V4",
+          "RESOLVE_V6", "CONCAT", "NETWORK"}),
+     kRoutingSwaggerPaths},
+    {"routing_guidelines_schema_variables",
+     std::string(rest_api_basepath) + "/routing/guidelines/schema",
+     "/routing/guidelines/schema", HttpMethod::Get, HttpStatusCode::Ok,
+     kContentTypeJson, kRestApiUsername, kRestApiPassword,
+     /*request_authentication =*/true,
+     get_expected_schema_parts("/match_rules/variables",
+                               {"router.localCluster",
+                                "router.hostname",
+                                "router.bindAddress",
+                                "router.port.ro",
+                                "router.port.rw",
+                                "router.port.rw_split",
+                                "router.routeName",
+                                "server.label",
+                                "server.address",
+                                "server.port",
+                                "server.uuid",
+                                "server.version",
+                                "server.clusterName",
+                                "server.clusterSetName",
+                                "server.isClusterInvalidated",
+                                "server.memberRole",
+                                "server.clusterRole",
+                                "session.targetIP",
+                                "session.targetPort",
+                                "session.sourceIP",
+                                "session.randomValue",
+                                "session.user",
+                                "session.schema"}),
      kRoutingSwaggerPaths},
     {"routing_routes_status_ro",
      std::string(rest_api_basepath) + "/routes/ro/status",

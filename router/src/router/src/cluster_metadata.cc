@@ -49,6 +49,7 @@
 #include "mysqlrouter/utils.h"  // strtoui_checked
 #include "mysqlrouter/utils_sqlstring.h"
 #include "router_config.h"  // MYSQL_ROUTER_VERSION
+#include "routing_guidelines/routing_guidelines.h"
 
 IMPORT_LOG_FUNCTIONS()
 
@@ -236,9 +237,22 @@ class ConfigurationDefaults {
                                std::to_string(changes_schema.GetErrorOffset()));
     }
 
+    JsonDocument guidelines_schema_doc;
+    guidelines_schema_doc.Parse<rapidjson::kParseCommentsFlag>(
+        routing_guidelines::Routing_guidelines_engine::get_schema());
+    if (guidelines_schema_doc.HasParseError()) {
+      throw std::runtime_error(
+          "json parse error: " +
+          std::string(rapidjson::GetParseError_En(
+              guidelines_schema_doc.GetParseError())) +
+          " at offset " +
+          std::to_string(guidelines_schema_doc.GetErrorOffset()));
+    }
+
     version_obj.AddMember("Defaults", defaults, allocator);
     version_obj.AddMember("ConfigurationChangesSchema", changes_schema,
                           allocator);
+    version_obj.AddMember("GuidelinesSchema", guidelines_schema_doc, allocator);
     config_obj.AddMember(MYSQL_ROUTER_VERSION, version_obj, allocator);
     result_obj.AddMember("Configuration", config_obj, allocator);
 
