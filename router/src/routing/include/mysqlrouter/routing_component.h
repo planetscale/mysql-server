@@ -37,6 +37,7 @@
 
 #include "connection.h"
 #include "mysql/harness/config_parser.h"
+#include "routing_guidelines/routing_guidelines.h"
 
 class MySQLRoutingBase;
 class BaseProtocol;
@@ -139,9 +140,21 @@ class ROUTING_EXPORT MySQLRoutingComponent {
   uint64_t current_total_connections();
   uint64_t max_total_connections() const { return max_total_connections_; }
 
-  MySQLRoutingConnectionBase *get_connection(const std::string &ep);
+  const rapidjson::Document &routing_guidelines_document() const;
+
+  rapidjson::Document routing_guidelines_document_schema() const;
 
   std::vector<std::string> route_names() const;
+
+  void set_routing_guidelines(const std::string &routing_guidelines_document);
+
+  bool routing_guidelines_initialized() const;
+
+  std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+  get_routing_guidelines() {
+    std::lock_guard<std::mutex> lock{routing_guidelines_mtx_};
+    return routing_guidelines_;
+  }
 
  private:
   // disable copy, as we are a single-instance
@@ -154,6 +167,10 @@ class ROUTING_EXPORT MySQLRoutingComponent {
   uint64_t max_total_connections_{0};
 
   MySQLRoutingComponent() = default;
+
+  mutable std::mutex routing_guidelines_mtx_;
+  std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+      routing_guidelines_{nullptr};
 };
 
 #endif

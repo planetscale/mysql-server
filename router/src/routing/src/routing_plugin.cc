@@ -43,6 +43,7 @@
 #include "mysqlrouter/ssl_mode.h"
 #include "mysqlrouter/supported_routing_options.h"
 #include "plugin_config.h"
+#include "routing_guidelines_adapter.h"
 #include "scope_guard.h"
 #include "sql_lexer.h"  // init_library()
 
@@ -54,6 +55,7 @@ const mysql_harness::AppInfo *g_app_info;
 static const std::string kSectionName = "routing";
 std::mutex g_dest_tls_contexts_mtx;
 std::vector<std::unique_ptr<DestinationTlsContext>> g_dest_tls_contexts;
+std::mutex routing_guidelines_create_mtx;
 
 static void validate_socket_info(const std::string &err_prefix,
                                  const mysql_harness::ConfigSection *section,
@@ -506,6 +508,31 @@ static void start(mysql_harness::PluginFuncEnv *env) {
     }
 
     net::io_context &io_ctx = IoComponent::get_instance().io_context();
+    {
+      auto &routing_component = MySQLRoutingComponent::get_instance();
+      std::lock_guard lock(routing_guidelines_create_mtx);
+      if (!routing_component.routing_guidelines_initialized()) {
+        const auto &routing_guidelines_document =
+            create_routing_guidelines_document(g_app_info->config->sections(),
+                                               io_ctx);
+        if (routing_guidelines_document) {
+          log_debug("Initial routing guidelines: \n%s",
+                    routing_guidelines_document.value().c_str());
+          routing_component.set_routing_guidelines(
+              routing_guidelines_document.value());
+        } else if (routing_guidelines_document.error() ==
+                   std::errc::not_supported) {
+          log_debug(
+              "Skip generating initial routing guidelines, only static routes "
+              "are configured");
+        } else {
+          throw std::runtime_error(
+              "Unable to create routing guidelines from configuration file: " +
+              routing_guidelines_document.error().message());
+        }
+      }
+    }
+
     auto r = std::make_shared<MySQLRouting>(
         config, io_ctx, name,
         config.source_ssl_mode != SslMode::kDisabled ? &source_tls_ctx
