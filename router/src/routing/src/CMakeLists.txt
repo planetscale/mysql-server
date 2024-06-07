@@ -84,6 +84,7 @@ ROUTER_ADD_SHARED_LIBRARY(routing
   x_connection.cc
   connection.cc
   blocked_endpoints.cc
+  routing_guidelines_adapter.cc
 
   await_client_or_server.cc
   forwarding_processor.cc
@@ -175,6 +176,7 @@ ROUTER_ADD_SHARED_LIBRARY(routing
   connection_pool
   destination_status
   sql_lexer
+  routing_guidelines
   )
 
 IF(SOLARIS)
