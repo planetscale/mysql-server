@@ -1,0 +1,97 @@
+# Copyright (c) 2024 Oracle and/or its affiliates.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License, version 2.0,
+# as published by the Free Software Foundation.
+#
+# This program is also distributed with certain software (including
+# but not limited to OpenSSL) that is licensed under separate terms, as
+# designated in a particular file or component or in included license
+# documentation.  The authors of MySQL hereby grant you an additional
+# permission to link the program and your derivative works with the
+# separately licensed software that they have included with MySQL.
+# This program is distributed in the hope that it will be useful,  but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See
+# the GNU General Public License, version 2.0, for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+
+INCLUDE(GenerateExportHeader)
+INCLUDE(${CMAKE_SOURCE_DIR}/cmake/bison.cmake)
+
+FIND_PACKAGE(BISON REQUIRED 2.3)
+
+BISON_TARGET(match_parser
+  parser.yy
+  ${CMAKE_CURRENT_BINARY_DIR}/parser.cc
+  COMPILE_FLAGS "-t --no-lines ${BISON_FLAGS_WARNINGS}"
+  DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/parser.h
+  VERBOSE
+  )
+
+SET(guidelines_SRC
+  ${BISON_match_parser_OUTPUT_SOURCE}
+  rules_parser.cc
+  rpn.cc
+  routing_guidelines.cc
+  utils.cc
+  )
+
+ADD_LIBRARY(routing_guidelines-objects OBJECT ${guidelines_SRC})
+TARGET_LINK_LIBRARIES(routing_guidelines-objects PUBLIC harness_stdx PRIVATE extra::rapidjson)
+# Needed so items tagged with ROUTING_GUIDELINES_EXPORT (to be exposed by the shared
+# version of the library) are not skipped during build
+TARGET_COMPILE_DEFINITIONS(routing_guidelines-objects PUBLIC routing_guidelines_EXPORTS)
+TARGET_INCLUDE_DIRECTORIES(routing_guidelines-objects PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/
+  ${CMAKE_CURRENT_BINARY_DIR}/../include/
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_BINARY_DIR})
+# Needed for bison
+IF(UNIX)
+  TARGET_COMPILE_OPTIONS(routing_guidelines-objects PRIVATE -Wno-implicit-fallthrough)
+ENDIF()
+IF(UNIX AND "${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS "6.0")
+  # Work around https://gcc.gnu.org/bugzilla/show_bug.cgi?id=43407
+  TARGET_COMPILE_OPTIONS(routing_guidelines-objects PUBLIC -Wno-attributes)
+ENDIF()
+
+ADD_LIBRARY(routing_guidelines SHARED $<TARGET_OBJECTS:routing_guidelines-objects>)
+GENERATE_EXPORT_HEADER(routing_guidelines
+  EXPORT_FILE_NAME
+  ${CMAKE_CURRENT_BINARY_DIR}/../include/routing_guidelines/routing_guidelines_lib_export.h
+  )
+TARGET_LINK_LIBRARIES(routing_guidelines harness-library)
+TARGET_INCLUDE_DIRECTORIES(routing_guidelines PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/
+  ${CMAKE_CURRENT_BINARY_DIR}/../include/
+  )
+SET_TARGET_PROPERTIES(routing_guidelines PROPERTIES
+  OUTPUT_NAME "mysqlrouter_routing_guidelines"
+  SOVERSION 1
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/runtime_output_directory
+  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/library_output_directory
+  )
+INSTALL(TARGETS routing_guidelines
+  RUNTIME DESTINATION ${ROUTER_INSTALL_BINDIR} COMPONENT Router
+  ARCHIVE DESTINATION ${ROUTER_INSTALL_LIBDIR} COMPONENT Router
+  LIBRARY DESTINATION ${ROUTER_INSTALL_LIBDIR} COMPONENT Router
+  NAMELINK_SKIP
+  )
+
+
+# static library for tests
+ADD_LIBRARY(routing_guidelines-static STATIC $<TARGET_OBJECTS:routing_guidelines-objects>)
+TARGET_INCLUDE_DIRECTORIES(routing_guidelines-static PUBLIC
+  $<TARGET_PROPERTY:routing_guidelines-objects,INCLUDE_DIRECTORIES>
+  )
+TARGET_COMPILE_OPTIONS(routing_guidelines-static PUBLIC
+  $<TARGET_PROPERTY:routing_guidelines-objects,COMPILE_OPTIONS>
+  )
+TARGET_COMPILE_DEFINITIONS(routing_guidelines-static PUBLIC
+  $<TARGET_PROPERTY:routing_guidelines-objects,COMPILE_DEFINITIONS>
+  )
+
