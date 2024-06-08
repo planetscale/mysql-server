@@ -46,7 +46,8 @@ enum class metadata_errc {
   metadata_refresh_terminated,
   cluster_not_found,
   invalid_cluster_type,
-  outdated_view_id
+  outdated_view_id,
+  schema_version_too_low
 };
 }  // namespace metadata_cache
 
@@ -77,6 +78,8 @@ inline const std::error_category &metadata_cache_category() noexcept {
           return "unexpected cluster type";
         case metadata_errc::outdated_view_id:
           return "highier view_id seen";
+        case metadata_errc::schema_version_too_low:
+          return "metadata schema version not supported";
         default:
           return "unknown";
       }

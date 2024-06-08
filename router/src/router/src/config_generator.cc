@@ -76,6 +76,7 @@
 #include "mysqlrouter/default_paths.h"
 #include "mysqlrouter/http_constants.h"
 #include "mysqlrouter/routing.h"
+#include "mysqlrouter/routing_guidelines_version.h"
 #include "mysqlrouter/supported_connection_pool_options.h"
 #include "mysqlrouter/supported_http_options.h"
 #include "mysqlrouter/supported_metadata_cache_options.h"
@@ -88,6 +89,7 @@
 #include "random_generator.h"
 #include "router_app.h"
 #include "router_config.h"
+#include "routing_guidelines/routing_guidelines.h"
 #include "scope_guard.h"
 #include "sha1.h"  // compute_sha1_hash() from mysql's include/
 IMPORT_LOG_FUNCTIONS()
@@ -2014,6 +2016,11 @@ std::tuple<std::string> ConfigGenerator::try_bootstrap_deployment(
                                 rw_x_endpoint, ro_x_endpoint, username);
 
   transaction.commit();
+
+  if (metadata_schema_version_is_compatible(kRoutingGuidelinesMetadataVersion,
+                                            schema_version_)) {
+    verify_routing_guidelines_version(mysql_.get(), router_id);
+  }
 
   return std::make_tuple(password);
 }

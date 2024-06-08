@@ -46,6 +46,7 @@
 #include "mysql/harness/logging/logging.h"
 #include "mysqld_error.h"
 #include "mysqlrouter/cluster_metadata_instance_attributes.h"
+#include "mysqlrouter/routing_guidelines_version.h"
 #include "mysqlrouter/utils.h"  // strtoui_checked
 #include "mysqlrouter/utils_sqlstring.h"
 #include "router_config.h"  // MYSQL_ROUTER_VERSION
@@ -284,7 +285,7 @@ void update_router_info_v2(
       "UPDATE mysql_innodb_cluster_metadata.v2_routers"
       " SET attributes = "
       "JSON_SET(JSON_SET(JSON_SET(JSON_SET(JSON_SET(JSON_SET(JSON_SET("
-      "JSON_SET("
+      "JSON_SET(JSON_SET("
       "IF(attributes IS NULL, '{}', attributes),"
       "    '$.RWEndpoint', ?),"
       "    '$.ROEndpoint', ?),"
@@ -292,14 +293,18 @@ void update_router_info_v2(
       "    '$.RWXEndpoint', ?),"
       "    '$.ROXEndpoint', ?),"
       "    '$.MetadataUser', ?),"
+      "    '$.SupportedRoutingGuidelinesVersion', ?),"
       "    '$.bootstrapTargetType', ?),"
       "    '$.Configuration', CAST(? as JSON)),"
       " version = ?, ! = ?"
       " WHERE router_id = ?",
       {mysqlrouter::QuoteOnlyIfNeeded});
 
+  const auto supported_routing_guidelines_version = mysqlrouter::to_string(
+      mysqlrouter::get_routing_guidelines_supported_version());
   query << rw_endpoint << ro_endpoint << rw_split_endpoint << rw_x_endpoint
-        << ro_x_endpoint << username << to_string_md(cluster_type)
+        << ro_x_endpoint << username << supported_routing_guidelines_version
+        << to_string_md(cluster_type)
         << mysql_harness::DynamicConfig::instance().get_json_as_string(
                mysql_harness::DynamicConfig::ValueType::ConfiguredValue)
         << MYSQL_ROUTER_VERSION << cluster_id_field << cluster_id << router_id
@@ -437,6 +442,39 @@ std::string get_metadata_schema_uncompatible_msg(
          "using 'dba.upgradeMetadata()'. Expected metadata version compatible "
          "with '" +
          to_string(mysqlrouter::kRequiredRoutingMetadataSchemaVersion) + "'";
+}
+
+void verify_routing_guidelines_version(MySQLSession *mysql,
+                                       const std::uint32_t router_id) {
+  std::unique_ptr<MySQLSession::ResultRow> result;
+
+  try {
+    result = mysql->query_one(
+        R"(SELECT RG.guideline->>'$.version' FROM
+mysql_innodb_cluster_metadata.routing_guidelines AS RG JOIN
+mysql_innodb_cluster_metadata.v2_router_options AS RO ON
+RG.guideline_id = RO.router_options->>'$.guidelines_id' OR
+RG.clusterset_id = RO.clusterset_id OR RG.cluster_id = RO.cluster_id
+WHERE RO.router_id = )" +
+        std::to_string(router_id));
+  } catch (const std::exception &) {
+    return;  // user defined policies are not supported
+  }
+
+  // No custom routing guidelines in use, default is always ok
+  if (!result || result->size() == 0) return;
+
+  const std::string &version = (*result)[0];
+
+  const auto &supported_version = get_routing_guidelines_supported_version();
+  if (!routing_guidelines_version_is_compatible(
+          supported_version,
+          routing_guidelines_version_from_string((version)))) {
+    throw std::runtime_error(
+        "Routing guidelines version not supported. Router supported version "
+        "is " +
+        to_string(supported_version) + " but got " + version);
+  }
 }
 
 std::string to_string(const MetadataSchemaVersion &version) {

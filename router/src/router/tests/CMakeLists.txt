@@ -192,6 +192,13 @@ ADD_HARNESS_TEST_FILE(test_default_paths.cc
     router_utils
   )
 
+ADD_HARNESS_TEST_FILE(test_guidelines_version.cc
+  MODULE ${TEST_MODULE}
+  SYSTEM_INCLUDE_DIRS ${GMOCK_INCLUDE_DIRS}
+  LIB_DEPENDS
+    router_utils
+  )
+
 IF(MY_COMPILER_IS_CLANG)
   STRING_APPEND(CMAKE_CXX_FLAGS " -Wno-deprecated")
 ENDIF()
