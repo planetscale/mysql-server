@@ -179,6 +179,8 @@ class METADATA_CACHE_EXPORT ManagedCluster {
   void clear() noexcept { members.clear(); }
 };
 
+using clusters_list_t = std::vector<ManagedCluster>;
+
 /** @class ClusterTopology
  * Represents a cluster (a GR group or AR members) and its metadata servers
  */

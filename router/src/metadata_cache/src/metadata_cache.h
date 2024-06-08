@@ -378,7 +378,6 @@ class METADATA_CACHE_EXPORT MetadataCache
       std::chrono::steady_clock::now()};
 
   bool ready_announced_{false};
-  std::atomic<bool> fetch_whole_topology_{false};
 
   /**
    * Flag indicating if socket acceptors state should be updated on next
@@ -390,6 +389,8 @@ class METADATA_CACHE_EXPORT MetadataCache
 
   bool needs_initial_attributes_update();
   bool needs_last_check_in_update();
+
+  std::string current_routing_guidelines_doc_;
 };
 
 std::string to_string(metadata_cache::ServerMode mode);

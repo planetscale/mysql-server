@@ -74,6 +74,7 @@
 #include "mysqlrouter/routing_component.h"
 #include "mysqlrouter/uri.h"
 #include "plugin_config.h"
+#include "routing_guidelines/routing_guidelines.h"
 #include "socket_container.h"
 
 namespace mysql_harness {
@@ -168,14 +169,17 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
    *
    * @param routing_config routing configuration
    * @param io_ctx IO context
+   * @param guidelines routing guidelines engine
    * @param route_name Name of connection routing (can be empty string)
    * @param client_ssl_ctx SSL context of the client side
    * @param dest_ssl_ctx SSL contexts of the destinations
    */
-  MySQLRouting(const RoutingConfig &routing_config, net::io_context &io_ctx,
-               const std::string &route_name = {},
-               TlsServerContext *client_ssl_ctx = nullptr,
-               DestinationTlsContext *dest_ssl_ctx = nullptr);
+  MySQLRouting(
+      const RoutingConfig &routing_config, net::io_context &io_ctx,
+      std::shared_ptr<routing_guidelines::Routing_guidelines_engine> guidelines,
+      const std::string &route_name = {},
+      TlsServerContext *client_ssl_ctx = nullptr,
+      DestinationTlsContext *dest_ssl_ctx = nullptr);
 
   /** @brief Runs the service and accept incoming connections
    *

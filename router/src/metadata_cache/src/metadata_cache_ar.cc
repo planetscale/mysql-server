@@ -36,7 +36,8 @@ bool ARMetadataCache::refresh(bool needs_writable_node) {
   size_t metadata_server_id;
   const auto res = meta_data_->fetch_cluster_topology(
       terminated_, target_cluster_, router_id_, metadata_servers_,
-      needs_writable_node, "", true, metadata_server_id);
+      needs_writable_node, "", metadata_server_id,
+      current_routing_guidelines_doc_);
 
   if (!res) {
     const bool md_servers_reachable =
@@ -61,6 +62,12 @@ bool ARMetadataCache::refresh(bool needs_writable_node) {
     } else {
       cluster_topology_.writable_server = cluster_topology.writable_server;
     }
+  }
+
+  const auto &routing_guidelines_doc_res =
+      meta_data_->fetch_routing_guidelines_document(router_id_);
+  if (routing_guidelines_doc_res) {
+    current_routing_guidelines_doc_ = *routing_guidelines_doc_res;
   }
 
   on_md_refresh(changed, cluster_topology_);

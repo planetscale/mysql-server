@@ -42,22 +42,12 @@ static rapidjson::Value json_value_from_string(const std::string &s,
 }
 
 bool handle_params(http::base::Request &req) {
-  auto md_api = metadata_cache::MetadataCacheAPI::instance();
-
   if (!req.get_uri().get_query().empty()) {
-    const auto q = req.get_uri().get_query();
-    if (q == "fetchWholeTopology=1") {
-      md_api->fetch_whole_topology(true);
-    } else if (q == "fetchWholeTopology=0") {
-      md_api->fetch_whole_topology(false);
-    } else {
-      send_rfc7807_error(req, HttpStatusCode::BadRequest,
-                         {
-                             {"title", "validation error"},
-                             {"detail", "unsupported parameter"},
-                         });
-    }
-    return true;
+    send_rfc7807_error(req, HttpStatusCode::BadRequest,
+                       {
+                           {"title", "validation error"},
+                           {"detail", "unsupported parameter"},
+                       });
   }
 
   return true;

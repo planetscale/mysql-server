@@ -808,7 +808,7 @@ GRClusterMetadata::fetch_cluster_topology(
     mysqlrouter::TargetCluster &target_cluster, const unsigned router_id,
     const metadata_cache::metadata_servers_list_t &metadata_servers,
     bool needs_writable_node, const std::string &clusterset_id,
-    bool whole_topology, std::size_t &instance_id) {
+    std::size_t &instance_id, std::string &routing_guidelines) {
   log_debug("Updating metadata information for cluster '%s'",
             target_cluster.c_str());
   stdx::expected<metadata_cache::ClusterTopology, std::error_code> result{
@@ -897,6 +897,20 @@ GRClusterMetadata::fetch_cluster_topology(
         }
 
         router_options_ = std::move(router_options);
+
+        bool whole_topology = false;
+        const auto &routing_guidelines_doc_res =
+            fetch_routing_guidelines_document(router_id);
+        if (routing_guidelines_doc_res) {
+          if (!routing_guidelines_doc_res->empty()) whole_topology = true;
+
+          //  Check if we need to report back the guideline name in use
+          if (routing_guidelines != routing_guidelines_doc_res.value()) {
+            needs_writable_node = true;
+          }
+
+          routing_guidelines = *routing_guidelines_doc_res;
+        }
 
         result_tmp = metadata_backend_->fetch_cluster_topology(
             transaction, target_cluster, metadata_server, metadata_servers,

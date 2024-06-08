@@ -392,7 +392,7 @@ ClusterMetadata::auth_credentials_t ClusterMetadata::fetch_auth_credentials(
   auto result_processor =
       [&auth_credentials](const MySQLSession::Row &row) -> bool {
     JsonDocument privileges;
-    if (row[2] != nullptr) privileges.Parse<0>(as_string(row[2]).c_str());
+    if (row[2] != nullptr) privileges.Parse<0>(as_string(row[2]));
 
     const auto username = as_string(row[0]);
     if (privileges.HasParseError()) {
@@ -414,6 +414,84 @@ ClusterMetadata::auth_credentials_t ClusterMetadata::fetch_auth_credentials(
 
   connection->query(query, result_processor);
   return auth_credentials;
+}
+
+stdx::expected<std::string, std::error_code>
+ClusterMetadata::fetch_routing_guidelines_document(const uint16_t router_id) {
+  if (!metadata_connection_) {
+    log_debug(
+        "Could not fetch routing guidelines file: no metadata connection");
+    return stdx::unexpected(make_error_code(
+        metadata_cache::metadata_errc::no_metadata_server_reached));
+  }
+
+  const auto &version =
+      get_and_check_metadata_schema_version(*metadata_connection_);
+
+  const auto &query = get_select_routing_guidelines_query(version, router_id);
+  if (!query) {
+    const bool first_time = EventStateTracker::instance().state_changed(
+        true, EventStateTracker::EventId::GuidelinesNotSupported);
+    if (first_time) {
+      log_warning(
+          "Could not fetch routing guidelines: metadata schema version not "
+          "supported");
+    }
+    return stdx::unexpected(query.error());
+  }
+
+  stdx::expected<std::string, std::error_code> result;
+  auto result_processor = [&result](const MySQLSession::Row &row) {
+    if (as_string(row[0]).empty()) {
+      result = stdx::unexpected(
+          make_error_code(routing_guidelines::routing_guidelines_errc::
+                              empty_routing_guidelines));
+      return false;
+    }
+
+    JsonDocument guidelines;
+    if (row[0] != nullptr) guidelines.Parse<0>(as_string(row[0]));
+
+    if (guidelines.HasParseError()) {
+      log_warning("Unable to parse routing guidelines document: %s",
+                  rapidjson::GetParseError_En(guidelines.GetParseError()));
+      result = stdx::unexpected(make_error_code(
+          routing_guidelines::routing_guidelines_errc::parse_error));
+      return false;
+    }
+
+    if (guidelines.HasMember("version") && !guidelines["version"].IsString()) {
+      log_warning(
+          "Unable to parse routing guidelines document: 'version' must be a "
+          "string value");
+      result = stdx::unexpected(make_error_code(
+          routing_guidelines::routing_guidelines_errc::parse_error));
+      return false;
+    }
+    const std::string version = guidelines.HasMember("version")
+                                    ? guidelines["version"].GetString()
+                                    : "1.0";
+
+    const auto &supported_version =
+        mysqlrouter::get_routing_guidelines_supported_version();
+    if (!mysqlrouter::routing_guidelines_version_is_compatible(
+            supported_version,
+            mysqlrouter::routing_guidelines_version_from_string(version))) {
+      log_warning(
+          "Update guidelines failed - routing guidelines version not "
+          "supported. Router supported version is %s but got %s",
+          to_string(supported_version).c_str(), version.c_str());
+      result = stdx::unexpected(make_error_code(
+          routing_guidelines::routing_guidelines_errc::unsupported_version));
+      return false;
+    }
+
+    result = as_string(row[0]);
+    return true;
+  };
+
+  metadata_connection_->query(query.value(), result_processor);
+  return result;
 }
 
 std::optional<metadata_cache::metadata_server_t>

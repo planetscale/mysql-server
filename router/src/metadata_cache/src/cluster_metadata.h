@@ -32,6 +32,7 @@
 #include "mysqlrouter/metadata.h"
 #include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/mysql_session.h"
+#include "mysqlrouter/routing_guidelines_version.h"
 #include "router_options.h"
 
 #include <chrono>
@@ -119,6 +120,9 @@ class METADATA_CACHE_EXPORT ClusterMetadata : public MetaData {
       const metadata_cache::metadata_server_t &md_server,
       const mysqlrouter::TargetCluster &target_cluster) override;
 
+  stdx::expected<std::string, std::error_code>
+  fetch_routing_guidelines_document(const uint16_t router_id) override;
+
   std::optional<metadata_cache::metadata_server_t> find_rw_server(
       const std::vector<metadata_cache::ManagedInstance> &instances);
 
@@ -140,6 +144,30 @@ class METADATA_CACHE_EXPORT ClusterMetadata : public MetaData {
   // MetadataUpgradeInProgressException
   mysqlrouter::MetadataSchemaVersion get_and_check_metadata_schema_version(
       mysqlrouter::MySQLSession &session);
+
+  stdx::expected<std::string, std::error_code>
+  get_select_routing_guidelines_query(
+      const mysqlrouter::MetadataSchemaVersion &schema_version,
+      const uint16_t router_id) {
+    if (schema_version >= mysqlrouter::kRoutingGuidelinesMetadataVersion) {
+      return R"(SELECT guideline FROM
+mysql_innodb_cluster_metadata.routing_guidelines WHERE guideline_id = (
+  SELECT COALESCE(RO.router_options->>'$.guideline',
+                  CS.router_options->>'$.guideline',
+                  CL.router_options->>'$.guideline')
+  FROM
+    mysql_innodb_cluster_metadata.v2_router_options AS RO
+  LEFT JOIN
+    mysql_innodb_cluster_metadata.clustersets AS CS ON RO.clusterset_id = CS.clusterset_id
+  LEFT JOIN
+    mysql_innodb_cluster_metadata.clusters AS CL ON RO.cluster_id = CL.cluster_id
+  WHERE RO.router_id = )" +
+             std::to_string(router_id) + ")";
+    } else {
+      return stdx::unexpected(make_error_code(
+          routing_guidelines::routing_guidelines_errc::not_supported_in_md));
+    }
+  }
 
   // Metadata node generic information
   mysql_ssl_mode ssl_mode_;

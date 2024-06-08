@@ -433,7 +433,8 @@ bool GRMetadataCache::refresh(bool needs_writable_node) {
   // Fetch the metadata and store it in a temporary variable.
   const auto res = meta_data_->fetch_cluster_topology(
       terminated_, target_cluster_, router_id_, metadata_servers_,
-      needs_writable_node, clusterset_id_, whole_topology, instance_id);
+      needs_writable_node, clusterset_id_, instance_id,
+      current_routing_guidelines_doc_);
 
   if (!res) {
     const bool md_servers_reachable =

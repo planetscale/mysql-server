@@ -278,9 +278,6 @@ class METADATA_CACHE_EXPORT MetadataCacheAPIBase
 
   virtual bool is_initialized() noexcept = 0;
 
-  virtual bool fetch_whole_topology() const = 0;
-  virtual void fetch_whole_topology(bool val) = 0;
-
   virtual mysqlrouter::ClusterType cluster_type() const = 0;
 
   /**
@@ -519,9 +516,6 @@ class METADATA_CACHE_EXPORT MetadataCacheAPI : public MetadataCacheAPIBase {
   void set_instance_factory(metadata_factory_t cb) override {
     instance_factory_ = std::move(cb);
   }
-
-  bool fetch_whole_topology() const override;
-  void fetch_whole_topology(bool val) override;
 
  private:
   metadata_factory_t instance_factory_{&metadata_factory_get_instance};

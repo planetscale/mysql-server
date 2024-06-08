@@ -45,7 +45,7 @@ ARClusterMetadata::fetch_cluster_topology(
     mysqlrouter::TargetCluster &target_cluster, const unsigned router_id,
     const metadata_cache::metadata_servers_list_t &metadata_servers,
     bool /* needs_writable_node */, const std::string & /*clusterset_id*/,
-    bool /*whole_topology*/, std::size_t &instance_id) {
+    std::size_t &instance_id, std::string & /*guidelines*/) {
   metadata_cache::ClusterTopology result;
 
   bool metadata_read = false;

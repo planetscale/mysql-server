@@ -30,6 +30,7 @@
         "routing_rules" : {
             "type": "object",
             "properties": {
+                "guideline": { "type": "string" },
                 "target_cluster": { "type": "string" },
                 "use_replica_primary_as_rw": { "type": "boolean" },
                 "stats_updates_frequency": { "type": "number" },

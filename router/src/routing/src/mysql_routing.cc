@@ -653,12 +653,13 @@ std::string AcceptingEndpointUnixSocket::name() { return socket_name_; }
 /// class MySQLRouting
 ///
 
-MySQLRouting::MySQLRouting(const RoutingConfig &routing_config,
-                           net::io_context &io_ctx,
-                           const std::string &route_name,
-                           TlsServerContext *client_ssl_ctx,
-                           DestinationTlsContext *dest_ssl_ctx)
-    : context_(routing_config, route_name, client_ssl_ctx, dest_ssl_ctx),
+MySQLRouting::MySQLRouting(
+    const RoutingConfig &routing_config, net::io_context &io_ctx,
+    std::shared_ptr<routing_guidelines::Routing_guidelines_engine> guidelines,
+    const std::string &route_name, TlsServerContext *client_ssl_ctx,
+    DestinationTlsContext *dest_ssl_ctx)
+    : context_(routing_config, route_name, client_ssl_ctx, dest_ssl_ctx,
+               std::move(guidelines)),
       io_ctx_{io_ctx},
       routing_strategy_(routing_config.routing_strategy),
       access_mode_(routing_config.access_mode),

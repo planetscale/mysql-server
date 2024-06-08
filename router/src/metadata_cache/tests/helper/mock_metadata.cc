@@ -90,7 +90,7 @@ MockNG::fetch_cluster_topology(
     const unsigned /*router_id*/,
     const metadata_cache::metadata_servers_list_t & /*metadata_servers*/,
     bool /* needs_writable_node */, const string & /*clusterset_id*/,
-    bool /*whole_topology*/, size_t & /*instance_id*/) {
+    size_t & /*instance_id*/, std::string & /*guidelines*/) {
   return cluster_topology;
 }
 

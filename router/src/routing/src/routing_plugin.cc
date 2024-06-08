@@ -533,8 +533,10 @@ static void start(mysql_harness::PluginFuncEnv *env) {
       }
     }
 
+    auto routing_guidelines =
+        MySQLRoutingComponent::get_instance().get_routing_guidelines();
     auto r = std::make_shared<MySQLRouting>(
-        config, io_ctx, name,
+        config, io_ctx, std::move(routing_guidelines), name,
         config.source_ssl_mode != SslMode::kDisabled ? &source_tls_ctx
                                                      : nullptr,
         config.dest_ssl_mode != SslMode::kDisabled ? dest_tls_context.get()
