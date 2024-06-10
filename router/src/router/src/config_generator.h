@@ -173,6 +173,7 @@ class ConfigGenerator {
     // only relevant for ClusterSet
     std::string target_cluster;
     std::string target_cluster_by_name;
+    std::string local_cluster;
   };
 
   void set_file_owner(
@@ -241,6 +242,7 @@ class ConfigGenerator {
     std::string username;
     uint16_t rw_x_port{0};
     uint16_t ro_x_port{0};
+    std::string local_cluster_name;
   };
 
   Options fill_options(const std::map<std::string, std::string> &user_options,

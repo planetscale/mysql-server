@@ -277,7 +277,7 @@ void update_router_info_v2(
     const std::string &rw_endpoint, const std::string &ro_endpoint,
     const std::string &rw_split_endpoint, const std::string &rw_x_endpoint,
     const std::string &ro_x_endpoint, const std::string &username,
-    MySQLSession *mysql) {
+    const std::string &local_cluster, MySQLSession *mysql) {
   const std::string cluster_id_field =
       cluster_type == mysqlrouter::ClusterType::GR_CS ? "clusterset_id"
                                                       : "cluster_id";
@@ -324,6 +324,18 @@ void update_router_info_v2(
     mysql->execute(query_options);
   }
 
+  if (!local_cluster.empty()) {
+    sqlstring query_options(
+        "UPDATE mysql_innodb_cluster_metadata.v2_routers"
+        " SET attributes = JSON_SET(IF(attributes IS NULL, '{}', attributes),"
+        " '$.LocalCluster', ?)"
+        " WHERE router_id = ?");
+
+    query_options << local_cluster << router_id << sqlstring::end;
+
+    mysql->execute(query_options);
+  }
+
   ConfigurationDefaults(cluster_type, cluster_id, mysql).update();
 }
 
@@ -334,11 +346,11 @@ void ClusterMetadataGRV2::update_router_info(
     const std::string &target_cluster, const std::string &rw_endpoint,
     const std::string &ro_endpoint, const std::string &rw_split_endpoint,
     const std::string &rw_x_endpoint, const std::string &ro_x_endpoint,
-    const std::string &username) {
+    const std::string &username, const std::string &local_cluster) {
   update_router_info_v2(mysqlrouter::ClusterType::GR_V2, router_id, cluster_id,
                         target_cluster, rw_endpoint, ro_endpoint,
                         rw_split_endpoint, rw_x_endpoint, ro_x_endpoint,
-                        username, mysql_);
+                        username, local_cluster, mysql_);
 }
 
 void ClusterMetadataAR::update_router_info(
@@ -346,11 +358,11 @@ void ClusterMetadataAR::update_router_info(
     const std::string &target_cluster, const std::string &rw_endpoint,
     const std::string &ro_endpoint, const std::string &rw_split_endpoint,
     const std::string &rw_x_endpoint, const std::string &ro_x_endpoint,
-    const std::string &username) {
+    const std::string &username, const std::string &local_cluster) {
   update_router_info_v2(mysqlrouter::ClusterType::RS_V2, router_id, cluster_id,
                         target_cluster, rw_endpoint, ro_endpoint,
                         rw_split_endpoint, rw_x_endpoint, ro_x_endpoint,
-                        username, mysql_);
+                        username, local_cluster, mysql_);
 }
 
 void ClusterMetadataGRInClusterSet::update_router_info(
@@ -358,11 +370,11 @@ void ClusterMetadataGRInClusterSet::update_router_info(
     const std::string &target_cluster, const std::string &rw_endpoint,
     const std::string &ro_endpoint, const std::string &rw_split_endpoint,
     const std::string &rw_x_endpoint, const std::string &ro_x_endpoint,
-    const std::string &username) {
+    const std::string &username, const std::string &local_cluster) {
   update_router_info_v2(mysqlrouter::ClusterType::GR_CS, router_id, cluster_id,
                         target_cluster, rw_endpoint, ro_endpoint,
                         rw_split_endpoint, rw_x_endpoint, ro_x_endpoint,
-                        username, mysql_);
+                        username, local_cluster, mysql_);
 }
 
 namespace {
@@ -450,13 +462,19 @@ void verify_routing_guidelines_version(MySQLSession *mysql,
 
   try {
     result = mysql->query_one(
-        R"(SELECT RG.guideline->>'$.version' FROM
-mysql_innodb_cluster_metadata.routing_guidelines AS RG JOIN
-mysql_innodb_cluster_metadata.v2_router_options AS RO ON
-RG.guideline_id = RO.router_options->>'$.guidelines_id' OR
-RG.clusterset_id = RO.clusterset_id OR RG.cluster_id = RO.cluster_id
-WHERE RO.router_id = )" +
-        std::to_string(router_id));
+        R"(SELECT guideline->>'$.version' FROM
+mysql_innodb_cluster_metadata.routing_guidelines WHERE guideline_id = (
+  SELECT COALESCE(RO.router_options->>'$.guideline',
+                  CS.router_options->>'$.guideline',
+                  CL.router_options->>'$.guideline')
+  FROM
+    mysql_innodb_cluster_metadata.v2_router_options AS RO
+  LEFT JOIN
+    mysql_innodb_cluster_metadata.clustersets AS CS ON RO.clusterset_id = CS.clusterset_id
+  LEFT JOIN
+    mysql_innodb_cluster_metadata.clusters AS CL ON RO.cluster_id = CL.cluster_id
+  WHERE RO.router_id = )" +
+        std::to_string(router_id) + ")");
   } catch (const std::exception &) {
     return;  // user defined policies are not supported
   }
@@ -595,6 +613,10 @@ void ClusterMetadata::require_metadata_is_ok() {
         "recreated using dba.dropMetadataSchema() and dba.createCluster() with "
         "adoptFromGR parameter set to true.");
   }
+}
+
+std::string ClusterMetadata::get_local_cluster() {
+  return fetch_metadata_servers().name;
 }
 
 void ClusterMetadataGR::require_cluster_is_ok() {
@@ -936,6 +958,25 @@ ClusterMetadataGRInClusterSet::fetch_cluster_hosts() {
   }
 
   return result;
+}
+
+std::string ClusterMetadataGRInClusterSet::get_local_cluster() {
+  const std::string q{
+      "select cluster_name from "
+      "mysql_innodb_cluster_metadata.v2_this_instance"};
+
+  auto result = mysql_->query_one(q);
+  if (result) {
+    if (result->size() != 1) {
+      throw std::out_of_range(
+          "Invalid number of values returned from cluster_name query expected "
+          "1 got " +
+          std::to_string(result->size()));
+    }
+    return std::string((*result)[0]);
+  }
+
+  throw std::logic_error("No result returned for metadata query");
 }
 
 std::string ClusterMetadataGRInClusterSet::get_cluster_type_specific_id() {

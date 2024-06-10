@@ -1087,6 +1087,11 @@ ConfigGenerator::Options ConfigGenerator::fill_options(
   options.target_cluster_by_name =
       get_opt(user_options, "target-cluster-by-name", "");
 
+  options.local_cluster = get_opt(user_options, "local-cluster", "");
+  if (options.local_cluster.empty()) {
+    options.local_cluster = metadata_->get_local_cluster();
+  }
+
   return options;
 }
 
@@ -2010,10 +2015,11 @@ std::tuple<std::string> ConfigGenerator::try_bootstrap_deployment(
       mysqlrouter::ClusterType::GR_CS == metadata_->get_type()
           ? cluster_specific_id_
           : cluster_info.cluster_id;
+  const std::string &local_cluster = str(options.local_cluster);
 
-  metadata_->update_router_info(router_id, cluster_id, target_cluster,
-                                rw_endpoint, ro_endpoint, rw_split_endpoint,
-                                rw_x_endpoint, ro_x_endpoint, username);
+  metadata_->update_router_info(
+      router_id, cluster_id, target_cluster, rw_endpoint, ro_endpoint,
+      rw_split_endpoint, rw_x_endpoint, ro_x_endpoint, username, local_cluster);
 
   transaction.commit();
 
