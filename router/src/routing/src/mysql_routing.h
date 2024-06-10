@@ -290,6 +290,29 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
    */
   stdx::expected<void, std::string> restart_accepting_connections() override;
 
+  /**
+   * In case when routing guideline was updated go through each established
+   * connection and verify if it is allowed according to the new guideline. If
+   * not then such connection is dropped.
+   *
+   * @param affected_routing_sources list of routing guideline route names that
+   * were affected by the guideline update
+   */
+  void on_routing_guidelines_update(
+      const routing_guidelines::Routing_guidelines_engine::RouteChanges
+          &affected_routing_sources);
+
+  /**
+   * Try to update routing guideline with a new guideline.
+   *
+   * @return list of routing guideline route names that were affected by the
+   * guideline update
+   */
+  routing_guidelines::Routing_guidelines_engine::RouteChanges
+  update_routing_guidelines(const std::string &routing_guidelines_document);
+
+  bool is_standalone() const override { return is_destination_standalone_; }
+
  private:
   /** @brief Sets unix socket permissions so that the socket is accessible
    *         to all users (no-op on Windows)

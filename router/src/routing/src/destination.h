@@ -40,6 +40,7 @@
 #include "mysqlrouter/destination_status_types.h"
 #include "mysqlrouter/routing.h"
 #include "protocol/protocol.h"
+#include "routing_guidelines/routing_guidelines.h"
 
 namespace mysql_harness {
 class PluginFuncEnv;
@@ -315,7 +316,7 @@ class RouteDestination : public DestinationNodesStateNotifier {
   std::mutex mutex_update_;
 
   net::io_context &io_ctx_;
-
+  MySQLRoutingContext &routing_ctx_;
   /** @brief Protocol for the destination */
   Protocol::Type protocol_;
 };

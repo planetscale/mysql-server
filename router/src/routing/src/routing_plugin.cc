@@ -39,6 +39,7 @@
 #include "mysql/harness/utility/string.h"  // join, string_format
 #include "mysql_routing.h"
 #include "mysqlrouter/io_component.h"
+#include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/routing_component.h"
 #include "mysqlrouter/ssl_mode.h"
 #include "mysqlrouter/supported_routing_options.h"
@@ -215,7 +216,7 @@ static void init(mysql_harness::PluginFuncEnv *env) {
 
       if (need_metadata_cache && !have_metadata_cache) {
         throw std::invalid_argument(
-            "Routing needs Metadata Cache, but no none "
+            "Routing needs Metadata Cache, but none "
             "was found in configuration.");
       }
     }
@@ -254,6 +255,14 @@ static void ensure_readable_directory(const std::string &opt_name,
 
 static std::string get_default_ciphers() {
   return mysql_harness::join(TlsServerContext::default_ciphers(), ":");
+}
+
+static bool has_metadata_cache() {
+  for (const mysql_harness::ConfigSection *section :
+       g_app_info->config->sections()) {
+    if (section->name == "metadata_cache") return true;
+  }
+  return false;
 }
 
 static void start(mysql_harness::PluginFuncEnv *env) {
@@ -546,8 +555,28 @@ static void start(mysql_harness::PluginFuncEnv *env) {
 
     MySQLRoutingComponent::get_instance().register_route(section->key, r);
 
-    Scope_guard guard{[section_key = section->key]() {
+    auto *mdc = metadata_cache::MetadataCacheAPI::instance();
+    using namespace std::chrono_literals;
+    const bool has_md = has_metadata_cache();
+    while (has_md && !mdc->is_initialized() && (!env || is_running(env))) {
+      std::this_thread::sleep_for(1ms);
+    }
+
+    if (mdc->is_initialized() && !r->is_standalone()) {
+      mdc->add_routing_guidelines_update_callbacks(
+          [r](const std::string &routing_guidelines_document) {
+            return r->update_routing_guidelines(routing_guidelines_document);
+          },
+          [&r](const auto &affected_routes) {
+            r->on_routing_guidelines_update(affected_routes);
+          });
+    }
+
+    Scope_guard guard{[r, mdc, section_key = section->key]() {
       MySQLRoutingComponent::get_instance().erase(section_key);
+      if (mdc->is_initialized() && !r->is_standalone()) {
+        mdc->clear_routing_guidelines_update_callbacks();
+      }
     }};
 
     {

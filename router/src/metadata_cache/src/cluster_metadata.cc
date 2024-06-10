@@ -336,6 +336,56 @@ bool ClusterMetadata::update_router_last_check_in(
   return true;
 }
 
+void ClusterMetadata::report_guideline_name(
+    const std::string &guideline_name,
+    const metadata_cache::metadata_server_t &rw_server,
+    const unsigned router_id) {
+  try {
+    auto connection = std::make_unique<MySQLSession>();
+    if (!do_connect(*connection, rw_server)) {
+      log_warning(
+          "Updating the routing guideline name in metadata failed: Could not "
+          "connect to the writable cluster member");
+
+      return;
+    }
+
+    const auto result = mysqlrouter::setup_metadata_session(*connection);
+    if (!result) {
+      log_warning(
+          "Updating the routing guideline name in metadata failed: could not "
+          "set up the metadata session (%s)",
+          result.error().c_str());
+
+      return;
+    }
+
+    MySQLSession::Transaction transaction(connection.get());
+    // throws metadata_cache::metadata_error and
+    // MetadataUpgradeInProgressException
+    get_and_check_metadata_schema_version(*connection);
+
+    sqlstring query(
+        "UPDATE mysql_innodb_cluster_metadata.v2_routers SET "
+        "attributes = JSON_SET(attributes, '$.CurrentRoutingGuideline', ?) "
+        "where router_id = ? ");
+
+    if (guideline_name.empty()) {
+      query << sqlstring::null;
+    } else {
+      query << guideline_name;
+    }
+
+    query << router_id << sqlstring::end;
+
+    connection->execute(query);
+    transaction.commit();
+  } catch (const std::exception &e) {
+    log_warning("Updating the routing guideline name in metadata failed: %s",
+                e.what());
+  }
+}
+
 static std::string get_limit_target_cluster_clause(
     const mysqlrouter::TargetCluster &target_cluster,
     const mysqlrouter::ClusterType &cluster_type,

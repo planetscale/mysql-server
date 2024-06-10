@@ -53,13 +53,16 @@
  */
 class MySQLRoutingContext {
  public:
-  MySQLRoutingContext(const RoutingConfig &routing_config, std::string name,
-                      TlsServerContext *client_ssl_ctx,
-                      DestinationTlsContext *dest_tls_context)
+  MySQLRoutingContext(
+      const RoutingConfig &routing_config, std::string name,
+      TlsServerContext *client_ssl_ctx, DestinationTlsContext *dest_tls_context,
+      std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+          routing_guidelines)
       : routing_config_(routing_config),
         name_(std::move(name)),
         client_ssl_ctx_{client_ssl_ctx},
         destination_tls_context_{dest_tls_context},
+        routing_guidelines_{std::move(routing_guidelines)},
         blocked_endpoints_{routing_config.max_connect_errors} {}
 
   BlockedEndpoints &blocked_endpoints() { return blocked_endpoints_; }
@@ -178,6 +181,11 @@ class MySQLRoutingContext {
     return routing_config_.router_require_enforce;
   }
 
+  std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+  get_routing_guidelines() const {
+    return routing_guidelines_;
+  }
+
  private:
   const RoutingConfig routing_config_;
 
@@ -192,6 +200,12 @@ class MySQLRoutingContext {
   TlsServerContext *client_ssl_ctx_{};
 
   DestinationTlsContext *destination_tls_context_{};
+
+  /**
+   * Routing guidelines engine used for the routing.
+   */
+  std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+      routing_guidelines_{nullptr};
 
   /**
    * Callbacks for communicating with quarantined destination candidates

@@ -280,10 +280,19 @@ void MetadataCacheAPI::handle_sockets_acceptors_on_md_refresh() {
   g_metadata_cache->handle_sockets_acceptors_on_md_refresh();
 }
 
-bool MetadataCacheAPI::fetch_whole_topology() const {
-  LOCK_METADATA_AND_CHECK_INITIALIZED();
+void MetadataCacheAPI::add_routing_guidelines_update_callbacks(
+    update_routing_guidelines_callback_t update_callback,
+    on_routing_guidelines_change_callback_t
+        routing_guidelines_change_callback) {
+  { LOCK_METADATA_AND_CHECK_INITIALIZED(); }
+  g_metadata_cache->add_routing_guidelines_update_callbacks(
+      std::move(update_callback),
+      std::move(routing_guidelines_change_callback));
+}
 
-  return g_metadata_cache->fetch_whole_topology();
+void MetadataCacheAPI::clear_routing_guidelines_update_callbacks() {
+  { LOCK_METADATA_AND_CHECK_INITIALIZED(); }
+  g_metadata_cache->clear_routing_guidelines_update_callbacks();
 }
 
 void MetadataCacheAPI::fetch_whole_topology(bool val) {

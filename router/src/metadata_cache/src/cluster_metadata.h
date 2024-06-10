@@ -116,6 +116,10 @@ class METADATA_CACHE_EXPORT ClusterMetadata : public MetaData {
       const metadata_cache::metadata_server_t &rw_server,
       const unsigned router_id) override;
 
+  void report_guideline_name(const std::string &guideline_name,
+                             const metadata_cache::metadata_server_t &rw_server,
+                             const unsigned router_id) override;
+
   auth_credentials_t fetch_auth_credentials(
       const metadata_cache::metadata_server_t &md_server,
       const mysqlrouter::TargetCluster &target_cluster) override;

@@ -1188,3 +1188,22 @@ mysqlrouter::ServerMode MySQLRouting::purpose() const {
 
   return destination_->purpose();
 }
+
+void MySQLRouting::on_routing_guidelines_update(
+    const routing_guidelines::Routing_guidelines_engine::RouteChanges
+        &affected_routing_sources) {
+  log_debug("[%s] Routing guidelines updated, clear routing internal state",
+            context_.get_name().c_str());
+  auto md_destination_manager =
+      dynamic_cast<DestMetadataCacheManager *>(destination_manager_.get());
+  md_destination_manager->clear_internal_state();
+}
+
+routing_guidelines::Routing_guidelines_engine::RouteChanges
+MySQLRouting::update_routing_guidelines(
+    const std::string &routing_guidelines_document) {
+  auto md_destination_manager =
+      dynamic_cast<DestMetadataCacheManager *>(destination_manager_.get());
+  return md_destination_manager->update_routing_guidelines(
+      routing_guidelines_document);
+}

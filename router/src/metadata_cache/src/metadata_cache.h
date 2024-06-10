@@ -228,9 +228,13 @@ class METADATA_CACHE_EXPORT MetadataCache
     trigger_acceptor_update_on_next_refresh_ = true;
   }
 
-  bool fetch_whole_topology() const { return fetch_whole_topology_; }
+  void add_routing_guidelines_update_callbacks(
+      metadata_cache::MetadataCacheAPI::update_routing_guidelines_callback_t
+          update_callback,
+      metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t
+          on_routing_guidelines_change_callback);
 
-  void fetch_whole_topology(bool val);
+  void clear_routing_guidelines_update_callbacks();
 
  protected:
   /** @brief Refreshes the cache
@@ -244,10 +248,8 @@ class METADATA_CACHE_EXPORT MetadataCache
 
   // Called each time the metadata has changed and we need to notify
   // the subscribed observers
-  void on_instances_changed(
-      const bool md_servers_reachable,
-      const metadata_cache::ClusterTopology &cluster_topology,
-      uint64_t view_id = 0);
+  void on_instances_changed(const bool md_servers_reachable,
+                            uint64_t view_id = 0);
 
   /**
    * Called when the listening sockets acceptors state should be updated but
@@ -261,10 +263,11 @@ class METADATA_CACHE_EXPORT MetadataCache
    *
    * @param[in] cluster_nodes_changed Information whether there was a change
    *            in instances reported by metadata refresh.
-   * @param[in] cluster_topology current cluster topology
+   * @param[in] routing_guidelines_doc Routing guidelines document fetched from
+   * metadata, used by the guidelines engine.
    */
   void on_md_refresh(const bool cluster_nodes_changed,
-                     const metadata_cache::ClusterTopology &cluster_topology);
+                     const std::string &routing_guidelines_doc);
 
   // Called each time we were requested to refresh the metadata
   void on_refresh_requested();
@@ -280,6 +283,12 @@ class METADATA_CACHE_EXPORT MetadataCache
 
   // Update Router last_check_in timestamp in the metadata
   void update_router_last_check_in();
+
+  // Report name of the routing guideline that is currently used.
+  void update_reported_routing_guideline_name(
+      const std::string &guideline_name);
+
+  void update_routing_guidelines(const std::string &routing_guidelines_doc);
 
   // Stores the current cluster state and topology.
   metadata_cache::ClusterTopology cluster_topology_;
@@ -353,12 +362,18 @@ class METADATA_CACHE_EXPORT MetadataCache
   std::mutex cluster_instances_change_callbacks_mtx_;
   std::mutex acceptor_handler_callbacks_mtx_;
   std::mutex md_refresh_callbacks_mtx_;
+  std::mutex routing_guidelines_update_callback_mtx_;
 
   std::set<metadata_cache::ClusterStateListenerInterface *> state_listeners_;
   std::set<metadata_cache::AcceptorUpdateHandlerInterface *>
       acceptor_update_listeners_;
   std::set<metadata_cache::MetadataRefreshListenerInterface *>
       md_refresh_listeners_;
+  metadata_cache::MetadataCacheAPI::update_routing_guidelines_callback_t
+      update_routing_guidelines_callback_{nullptr};
+  std::vector<
+      metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t>
+      on_routing_guidelines_change_callbacks_;
 
   struct Stats {
     std::chrono::system_clock::time_point last_refresh_failed;
@@ -391,6 +406,7 @@ class METADATA_CACHE_EXPORT MetadataCache
   bool needs_last_check_in_update();
 
   std::string current_routing_guidelines_doc_;
+  std::string last_routing_guidelines_used_;
 };
 
 std::string to_string(metadata_cache::ServerMode mode);

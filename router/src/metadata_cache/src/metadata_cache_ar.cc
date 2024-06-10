@@ -70,7 +70,7 @@ bool ARMetadataCache::refresh(bool needs_writable_node) {
     current_routing_guidelines_doc_ = *routing_guidelines_doc_res;
   }
 
-  on_md_refresh(changed, cluster_topology_);
+  on_md_refresh(changed, current_routing_guidelines_doc_);
 
   const auto cluster_members = cluster_topology_.get_all_members();
 
@@ -92,8 +92,7 @@ bool ARMetadataCache::refresh(bool needs_writable_node) {
       }
     }
 
-    on_instances_changed(/*md_servers_reachable=*/true, cluster_topology,
-                         view_id);
+    on_instances_changed(/*md_servers_reachable=*/true, view_id);
 
     on_refresh_succeeded(metadata_servers_[metadata_server_id]);
 

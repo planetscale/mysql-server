@@ -75,6 +75,11 @@ class METADATA_CACHE_EXPORT MetaData {
       const metadata_cache::metadata_server_t &rw_server,
       const unsigned router_id) = 0;
 
+  virtual void report_guideline_name(
+      const std::string &guideline_name,
+      const metadata_cache::metadata_server_t &rw_server,
+      const unsigned router_id) = 0;
+
   virtual bool connect_and_setup_session(
       const metadata_cache::metadata_server_t &metadata_server) = 0;
 

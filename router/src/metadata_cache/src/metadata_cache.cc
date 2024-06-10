@@ -391,7 +391,7 @@ void MetadataCache::on_refresh_failed(bool terminated,
       if (clearing) cluster_topology_.clear_all_members();
     }
     if (clearing) {
-      on_instances_changed(md_servers_reachable, {}, {});
+      on_instances_changed(md_servers_reachable, {});
       const auto log_level =
           refresh_state_changed ? LogLevel::kInfo : LogLevel::kDebug;
       log_custom(log_level,
@@ -412,9 +412,8 @@ void MetadataCache::on_refresh_succeeded(
   });
 }
 
-void MetadataCache::on_instances_changed(
-    const bool md_servers_reachable,
-    const metadata_cache::ClusterTopology &cluster_topology, uint64_t view_id) {
+void MetadataCache::on_instances_changed(const bool md_servers_reachable,
+                                         uint64_t view_id) {
   // Socket acceptors state will be updated when processing new instances
   // information.
   trigger_acceptor_update_on_next_refresh_ = false;
@@ -423,8 +422,7 @@ void MetadataCache::on_instances_changed(
     std::lock_guard<std::mutex> lock(cluster_instances_change_callbacks_mtx_);
 
     for (auto *each : state_listeners_) {
-      each->notify_instances_changed(cluster_topology, md_servers_reachable,
-                                     view_id);
+      each->notify_instances_changed(md_servers_reachable, view_id);
     }
   }
 
@@ -436,26 +434,62 @@ void MetadataCache::on_instances_changed(
 }
 
 void MetadataCache::on_handle_sockets_acceptors() {
-  auto instances = get_cluster_nodes();
-  {
-    std::lock_guard<std::mutex> lock(acceptor_handler_callbacks_mtx_);
+  std::lock_guard lock(acceptor_handler_callbacks_mtx_);
 
-    trigger_acceptor_update_on_next_refresh_ = false;
-    for (const auto &callback : acceptor_update_listeners_) {
-      // If setting up any acceptor failed we should retry on next md refresh
-      if (!callback->update_socket_acceptor_state(instances)) {
-        trigger_acceptor_update_on_next_refresh_ = true;
-      }
+  trigger_acceptor_update_on_next_refresh_ = false;
+  for (const auto &callback : acceptor_update_listeners_) {
+    // If setting up any acceptor failed we should retry on next md refresh
+    if (!callback->update_socket_acceptor_state()) {
+      trigger_acceptor_update_on_next_refresh_ = true;
     }
   }
 }
 
-void MetadataCache::on_md_refresh(
-    const bool cluster_nodes_changed,
-    const metadata_cache::ClusterTopology &cluster_topology) {
-  std::lock_guard<std::mutex> lock(md_refresh_callbacks_mtx_);
-  for (auto &each : md_refresh_listeners_) {
-    each->on_md_refresh(cluster_nodes_changed, cluster_topology);
+void MetadataCache::update_routing_guidelines(
+    const std::string &routing_guidelines_doc) {
+  // We want to copy the callback to avoid holding a lock when we are
+  // calculating what needs to be done according to the new guidelines
+  std::vector<
+      metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t>
+      routing_guidelines_update_callbacks;
+  {
+    std::lock_guard routing_guidelines_lock(
+        routing_guidelines_update_callback_mtx_);
+    if (update_routing_guidelines_callback_) {
+      for (const auto &on_update_clb :
+           on_routing_guidelines_change_callbacks_) {
+        routing_guidelines_update_callbacks.push_back(on_update_clb);
+      }
+    }
+  }
+
+  try {
+    if (!routing_guidelines_update_callbacks.empty()) {
+      const auto &update_details =
+          update_routing_guidelines_callback_(routing_guidelines_doc);
+      for (const auto &clb : routing_guidelines_update_callbacks) {
+        clb(update_details);
+      }
+      update_reported_routing_guideline_name(update_details.guideline_name);
+      log_debug("Routing guidelines document updated");
+    }
+  } catch (const std::exception &e) {
+    log_error("Update routing guidelines failed: %s", e.what());
+  }
+}
+
+void MetadataCache::on_md_refresh(const bool cluster_nodes_changed,
+                                  const std::string &routing_guidelines_doc) {
+  {
+    std::lock_guard lock(md_refresh_callbacks_mtx_);
+    for (auto &each : md_refresh_listeners_) {
+      each->on_md_refresh(cluster_nodes_changed);
+    }
+  }
+
+  if (last_routing_guidelines_used_ != routing_guidelines_doc) {
+    update_routing_guidelines(routing_guidelines_doc);
+    last_routing_guidelines_used_ = routing_guidelines_doc;
   }
 }
 
@@ -709,6 +743,14 @@ void MetadataCache::update_router_last_check_in() {
   periodic_stats_update_counter_ = 1;
 }
 
+void MetadataCache::update_reported_routing_guideline_name(
+    const std::string &guideline_name) {
+  if (cluster_topology_.writable_server) {
+    const auto &rw_server = cluster_topology_.writable_server.value();
+    meta_data_->report_guideline_name(guideline_name, rw_server, router_id_);
+  }
+}
+
 bool MetadataCache::needs_initial_attributes_update() {
   return !initial_attributes_update_done_;
 }
@@ -726,8 +768,20 @@ bool MetadataCache::needs_last_check_in_update() {
   }
 }
 
-void MetadataCache::fetch_whole_topology(bool val) {
-  fetch_whole_topology_ = val;
-  log_info("Configuration changed, fetch_whole_topology=%s",
-           std::to_string(val).c_str());
+void MetadataCache::add_routing_guidelines_update_callbacks(
+    metadata_cache::MetadataCacheAPI::update_routing_guidelines_callback_t
+        update_callback,
+    metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t
+        on_routing_guidelines_change_callback) {
+  std::lock_guard<std::mutex> lock{routing_guidelines_update_callback_mtx_};
+  if (!update_routing_guidelines_callback_)
+    update_routing_guidelines_callback_ = std::move(update_callback);
+  on_routing_guidelines_change_callbacks_.push_back(
+      std::move(on_routing_guidelines_change_callback));
+}
+
+void MetadataCache::clear_routing_guidelines_update_callbacks() {
+  std::lock_guard<std::mutex> lock{routing_guidelines_update_callback_mtx_};
+  update_routing_guidelines_callback_ = nullptr;
+  on_routing_guidelines_change_callbacks_.clear();
 }

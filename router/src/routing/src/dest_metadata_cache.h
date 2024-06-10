@@ -116,7 +116,17 @@ class DestMetadataCacheGroup final
     cache_api()->handle_sockets_acceptors_on_md_refresh();
   }
 
-  routing::RoutingStrategy get_strategy() override { return routing_strategy_; }
+  /**
+   * Update routing guidelines engine with a new routing guideline.
+   *
+   * If the new routing guideline is empty then auto-generated guideline is
+   * used. If the guidelines engine could not be updated then old guideline is
+   * preserved and used.
+   *
+   * @return List of route names of the routes that have been updated.
+   */
+  routing_guidelines::Routing_guidelines_engine::RouteChanges
+  update_routing_guidelines(const std::string &routing_guidelines_document);
 
  private:
   /** @brief The Metadata Cache to use
@@ -191,22 +201,16 @@ class DestMetadataCacheGroup final
   void subscribe_for_acceptor_handler();
   void subscribe_for_md_refresh_handler();
 
-  void notify_instances_changed(
-      const metadata_cache::ClusterTopology &cluster_topology,
-      const bool md_servers_reachable,
-      const uint64_t /*view_id*/) noexcept override;
+  void notify_instances_changed(const bool md_servers_reachable,
+                                const uint64_t /*view_id*/) noexcept override;
 
-  bool update_socket_acceptor_state(
-      const metadata_cache::cluster_nodes_list_t &instances) noexcept override;
+  bool update_socket_acceptor_state() noexcept override;
 
-  void on_md_refresh(
-      const bool instances_changed,
-      const metadata_cache::ClusterTopology &cluster_topology) override;
+  void on_md_refresh(const bool instances_changed) override;
 
-  // MUST take the RouteDestination Mutex
-  size_t start_pos_{};
-  size_t ro_start_pos_{};
-  size_t rw_start_pos_{};
+  /** Routing guideline engine. */
+  std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
+      routing_guidelines_{nullptr};
 };
 
 ROUTING_EXPORT DestMetadataCacheGroup::ServerRole get_server_role_from_uri(

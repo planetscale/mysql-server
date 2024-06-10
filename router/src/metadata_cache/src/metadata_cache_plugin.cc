@@ -113,11 +113,12 @@ class MetadataServersStateListener
     metadata_cache::MetadataCacheAPI::instance()->remove_state_listener(this);
   }
 
-  void notify_instances_changed(
-      const metadata_cache::ClusterTopology &cluster_topology,
-      const bool md_servers_reachable, const uint64_t view_id) override {
+  void notify_instances_changed(const bool md_servers_reachable,
+                                const uint64_t view_id) override {
     if (!md_servers_reachable) return;
 
+    const auto &cluster_topology =
+        metadata_cache::MetadataCacheAPI::instance()->get_cluster_topology();
     if (cluster_topology.metadata_servers.empty()) {
       // This happens for example when the router could connect to one of the
       // metadata servers but failed to fetch metadata because the connection
