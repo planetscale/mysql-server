@@ -139,6 +139,8 @@ class METADATA_CACHE_EXPORT ManagedInstance {
   /** Should the node be ignored for new and existing connections (for example
    * due to the read_only_targets option) */
   bool ignore{false};
+
+  uint32_t version;
 };
 
 using cluster_nodes_list_t = std::vector<ManagedInstance>;

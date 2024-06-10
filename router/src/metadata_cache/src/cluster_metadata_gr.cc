@@ -26,6 +26,8 @@
 #include "cluster_metadata_gr.h"
 
 #include <algorithm>
+#include <charconv>  // from_chars
+#include <iomanip>
 #include <optional>
 
 #include "dim.h"
@@ -461,6 +463,54 @@ void GRClusterMetadata::update_cluster_status_from_gr(
   }
 }
 
+static std::optional<uint16_t> parse_server_version(
+    std::string_view version_str) {
+  if (version_str.empty()) return std::nullopt;
+
+  size_t dot1 = version_str.find('.');
+  if (dot1 == std::string::npos || dot1 == version_str.size() - 1) {
+    return std::nullopt;
+  }
+
+  size_t dot2 = version_str.find('.', dot1 + 1);
+  if (dot2 == std::string::npos || dot2 == version_str.size() - 1) {
+    return std::nullopt;
+  }
+
+  // Extract substrings
+  const auto major_part = version_str.substr(0, dot1);
+  const auto minor_part = version_str.substr(dot1 + 1, dot2 - dot1 - 1);
+  const auto patch_part = version_str.substr(dot2 + 1);
+
+  if (minor_part.length() > 2 || patch_part.length() > 2) return std::nullopt;
+
+  uint8_t major, minor, patch;
+  // Convert to integers
+  auto [ptr1, ec1] = std::from_chars(
+      major_part.data(), major_part.data() + major_part.size(), major);
+  if (ec1 != std::errc()) return std::nullopt;
+
+  auto [ptr2, ec2] = std::from_chars(
+      minor_part.data(), minor_part.data() + minor_part.size(), minor);
+  if (ec2 != std::errc()) return std::nullopt;
+
+  auto [ptr3, ec3] = std::from_chars(
+      patch_part.data(), patch_part.data() + patch_part.size(), patch);
+  if (ec3 != std::errc()) return std::nullopt;
+
+  std::stringstream result;
+
+  result << major;
+  // Convert and pad the second and third parts to two digits
+  result << std::setw(2) << std::setfill('0') << minor;
+  result << std::setw(2) << std::setfill('0') << patch;
+
+  int combinedInt;
+  result >> combinedInt;
+
+  return combinedInt;
+}
+
 GRClusterStatus GRClusterMetadata::check_cluster_status_in_gr(
     std::vector<metadata_cache::ManagedInstance *> &instances,
     const std::map<std::string, GroupReplicationMember> &member_status,
@@ -523,6 +573,16 @@ GRClusterStatus GRClusterMetadata::check_cluster_status_in_gr(
         member->mysql_server_uuid);
 
     if (node_in_gr) {
+      auto version_res = parse_server_version(status->second.version);
+      if (!version_res) {
+        log_warning("Member %s:%d (%s): invalid member version format '%s'",
+                    member->host.c_str(), member->port,
+                    member->mysql_server_uuid.c_str(),
+                    status->second.version.c_str());
+      } else {
+        member->version = *version_res;
+      }
+
       switch (status->second.state) {
         case GR_State::Online:
           switch (status->second.role) {
