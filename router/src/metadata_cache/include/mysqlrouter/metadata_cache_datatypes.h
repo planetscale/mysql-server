@@ -109,6 +109,11 @@ class METADATA_CACHE_EXPORT ManagedInstance {
                   const std::string &p_host, const uint16_t p_port,
                   const uint16_t p_xport);
 
+  ManagedInstance(const ManagedInstance &) = default;
+  ManagedInstance &operator=(const ManagedInstance &) = default;
+  ManagedInstance(ManagedInstance &&) = default;
+  ManagedInstance &operator=(ManagedInstance &&) = default;
+
   explicit ManagedInstance(mysqlrouter::InstanceType p_type);
   explicit ManagedInstance(mysqlrouter::InstanceType p_type,
                            const mysql_harness::TcpDestination &dest);
@@ -132,15 +137,26 @@ class METADATA_CACHE_EXPORT ManagedInstance {
   /** Node atributes as a json string from metadata */
   std::string attributes;
   /** Should the node be hidden from the application to use it */
-  bool hidden;
+  bool hidden{mysqlrouter::kNodeTagHiddenDefault};
   /** Should the Router disconnect existing client sessions to the node when it
    * is hidden */
-  bool disconnect_existing_sessions_when_hidden;
+  bool disconnect_existing_sessions_when_hidden{
+      mysqlrouter::kNodeTagDisconnectWhenHiddenDefault};
   /** Should the node be ignored for new and existing connections (for example
    * due to the read_only_targets option) */
   bool ignore{false};
 
+  /** Server tags as defined in the metadata, parsed as a key-value pairs */
+  std::map<std::string, std::string, std::less<>> tags{};
+
   uint32_t version;
+
+  std::string to_string() const {
+    std::string result = "uuid: " + mysql_server_uuid + "\n";
+    result += "address: " + host + ":" + std::to_string(port) + "\n";
+
+    return result;
+  }
 };
 
 using cluster_nodes_list_t = std::vector<ManagedInstance>;

@@ -32,6 +32,7 @@
 
 #include <errmsg.h>
 #include <mysql.h>
+#include <rapidjson/error/en.h>  // GetParseError_En
 
 #include "configuration_update_schema.h"
 #include "group_replication_metadata.h"
@@ -627,6 +628,20 @@ void set_instance_attributes(metadata_cache::ManagedInstance &instance,
 
   instance.attributes = attributes;
 
+  const auto &tags_result =
+      mysqlrouter::InstanceAttributes::get_tags(attributes);
+  if (tags_result) instance.tags = tags_result.value();
+
+  // we want to log the warning only when it's changing
+  const std::string tags_msg =
+      tags_result
+          ? "Successfully parsed tags from attributes JSON string"
+          : "Error parsing attributes JSON string: " + tags_result.error();
+
+  log_suppressor.log_message(LogSuppressor::MessageId::kServerTags,
+                             instance.mysql_server_uuid, tags_msg,
+                             !tags_result);
+
   const auto default_instance_type = instance.type;
   const auto type_attr = mysqlrouter::InstanceAttributes::get_instance_type(
       attributes, default_instance_type);
@@ -650,7 +665,7 @@ void set_instance_attributes(metadata_cache::ManagedInstance &instance,
   }
 
   const auto hidden_attr = mysqlrouter::InstanceAttributes::get_hidden(
-      attributes, mysqlrouter::kNodeTagHiddenDefault);
+      instance.tags, mysqlrouter::kNodeTagHiddenDefault);
 
   instance.hidden =
       hidden_attr ? hidden_attr.value() : mysqlrouter::kNodeTagHiddenDefault;
@@ -667,7 +682,7 @@ void set_instance_attributes(metadata_cache::ManagedInstance &instance,
 
   const auto disconnect_existing_sessions_when_hidden_attr = mysqlrouter::
       InstanceAttributes::get_disconnect_existing_sessions_when_hidden(
-          attributes, mysqlrouter::kNodeTagDisconnectWhenHiddenDefault);
+          instance.tags, mysqlrouter::kNodeTagDisconnectWhenHiddenDefault);
 
   instance.disconnect_existing_sessions_when_hidden =
       disconnect_existing_sessions_when_hidden_attr

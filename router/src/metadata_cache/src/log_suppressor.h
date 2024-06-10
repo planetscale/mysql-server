@@ -58,7 +58,10 @@ class LogSuppressor {
     kUnreachableQuorumAllowedTraffic,
 
     /* deprecated version of Cluster Metadata */
-    kDeprecatedMetadataVersion
+    kDeprecatedMetadataVersion,
+
+    /* incorrect JSON for instance tags in the metadata from the last query */
+    kServerTags,
   };
 
   static LogSuppressor &instance() {
