@@ -88,9 +88,9 @@ std::string MySQLRoutingAPI::get_protocol_name() const {
 }
 
 std::string MySQLRoutingAPI::get_routing_strategy() const {
-  const auto strategy = r_->get_routing_strategy();
-  if (strategy == routing::RoutingStrategy::kUndefined) return "";
-  return routing::get_routing_strategy_name(strategy);
+  const auto strategy_maybe = r_->get_routing_strategy();
+  if (!strategy_maybe) return "";
+  return routing::get_routing_strategy_name(*strategy_maybe);
 }
 
 std::string MySQLRoutingAPI::get_destination_replicaset_name() const {
@@ -123,7 +123,9 @@ void MySQLRoutingAPI::restart_accepting_connections() {
   r_->restart_accepting_connections();
 }
 
-void MySQLRoutingAPI::stop_socket_acceptors() { r_->stop_socket_acceptors(); }
+void MySQLRoutingAPI::stop_socket_acceptors() {
+  r_->stop_socket_acceptors(/*shutting_down*/ false);
+}
 
 bool MySQLRoutingAPI::is_running() const { return r_->is_running(); }
 

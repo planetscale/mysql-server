@@ -251,7 +251,10 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
       typename ClientProtocol::socket client_socket,
       const typename ClientProtocol::endpoint &client_endpoint);
 
-  routing::RoutingStrategy get_routing_strategy() const override;
+  std::optional<routing::RoutingStrategy> get_routing_strategy()
+      const override {
+    return routing_strategy_;
+  }
 
   std::vector<mysql_harness::Destination> get_destinations() const override;
 
@@ -265,8 +268,10 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
 
   /**
    * Stop accepting new connections on a listening socket.
+   *
+   * @param shutting_down is plugin shutting down.
    */
-  void stop_socket_acceptors() override;
+  void stop_socket_acceptors(const bool shutting_down) override;
 
   /**
    * Check if we are accepting connections on a routing socket.
@@ -372,7 +377,7 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
   bool is_destination_standalone_{false};
 
   /** @brief Routing strategy to use when getting next destination */
-  routing::RoutingStrategy routing_strategy_;
+  std::optional<routing::RoutingStrategy> routing_strategy_;
 
   /** @brief access_mode of the servers in the routing */
   routing::AccessMode access_mode_;

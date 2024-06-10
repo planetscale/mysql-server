@@ -86,7 +86,6 @@
 #include "x_connection.h"
 
 using mysql_harness::utility::string_format;
-using routing::RoutingStrategy;
 IMPORT_LOG_FUNCTIONS()
 
 using namespace std::chrono_literals;
@@ -706,8 +705,13 @@ void MySQLRouting::run(mysql_harness::PluginFuncEnv *env) {
   }
 #endif
   if (!accepting_endpoints_.empty()) {
-    log_info("[%s] started: routing strategy = %s", context_.get_name().c_str(),
-             get_routing_strategy_name(routing_strategy_).c_str());
+    if (!is_standalone() || !routing_strategy_.has_value()) {
+      log_info("[%s] started", context_.get_name().c_str());
+    } else {
+      log_info("[%s] started: routing strategy = %s",
+               context_.get_name().c_str(),
+               get_routing_strategy_name(*routing_strategy_).c_str());
+    }
 
     auto res = run_acceptor(env);
     if (!res) {
@@ -797,7 +801,7 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
             [](const auto &ep) { return !ep->is_open(); });
 
         if (any_acceptor_open && new_connection_nodes.empty()) {
-          stop_socket_acceptors();
+          stop_socket_acceptors(/*shutting_down*/ false);
         } else if (any_acceptor_closed && !new_connection_nodes.empty()) {
           if (!start_accepting_connections()) {
             // We could not start at least one of the acceptors. (e.g. the port
@@ -850,7 +854,7 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
 
   stop_acceptors_guard.release();
   // routing is no longer running, lets close listening socket
-  stop_socket_acceptors();
+  stop_socket_acceptors(/*shutting_down*/ true);
 
   // disconnect all connections
   disconnect_all();
@@ -869,6 +873,13 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
 
 stdx::expected<void, std::string>
 MySQLRouting::restart_accepting_connections() {
+  // If next-available strategy is used we are not supposed to restart the
+  // listening sockets.
+  if (is_standalone() && get_routing_strategy().has_value() &&
+      *get_routing_strategy() == routing::RoutingStrategy::kNextAvailable) {
+    return {};
+  }
+
   const auto result = start_accepting_connections();
 
   // if we failed to restart the acceptor we keep retrying every 1 second if we
@@ -935,12 +946,13 @@ stdx::expected<void, std::string> MySQLRouting::start_accepting_connections() {
   return {};
 }
 
-void MySQLRouting::stop_socket_acceptors() {
-  // When using a static routing with first-available policy we are never
-  // supposed to shut down the accepting socket
-  if (is_running() && is_destination_standalone_ &&
-      routing_strategy_ == routing::RoutingStrategy::kFirstAvailable)
+void MySQLRouting::stop_socket_acceptors(const bool shutting_down) {
+  // When static routing is used with "first-available" routing strategy we are
+  // not allowed to close the listening socket
+  if (!shutting_down && is_standalone() && get_routing_strategy().has_value() &&
+      *get_routing_strategy() == routing::RoutingStrategy::kFirstAvailable) {
     return;
+  }
 
   for (const auto &accepting_endpoint : accepting_endpoints_) {
     if (accepting_endpoint->is_open()) {
@@ -1068,9 +1080,24 @@ void MySQLRouting::set_destinations_from_uri(const mysqlrouter::URI &uri) {
     //    if (uri.path.size() > 0 && !uri.path[0].empty())
     //      replicaset_name = uri.path[0];
 
-    destination_ = std::make_unique<DestMetadataCacheGroup>(
-        io_ctx_, uri.host, routing_strategy_, uri.query,
-        context_.get_protocol());
+    const auto role = get_server_role_from_uri(uri.query);
+
+    if (routing_strategy_) {
+      if ((role == DestMetadataCacheManager::ServerRole::Primary ||
+           role == DestMetadataCacheManager::ServerRole::PrimaryAndSecondary) &&
+          routing_strategy_ ==
+              routing::RoutingStrategy::kRoundRobinWithFallback) {
+        throw std::runtime_error(
+            "Strategy 'round-robin-with-fallback' is supported only for "
+            "SECONDARY routing");
+      }
+
+      if (routing_strategy_ == routing::RoutingStrategy::kNextAvailable) {
+        throw std::runtime_error(
+            "Routing strategy 'next-available' is only available for static "
+            "routing");
+      }
+    }
   } else {
     throw std::runtime_error(string_format(
         "Invalid URI scheme; expecting: 'metadata-cache' is: '%s'",
@@ -1078,33 +1105,23 @@ void MySQLRouting::set_destinations_from_uri(const mysqlrouter::URI &uri) {
   }
 }
 
-namespace {
-
-std::unique_ptr<RouteDestination> create_standalone_destination(
-    net::io_context &io_ctx, const routing::RoutingStrategy strategy,
-    const Protocol::Type protocol) {
-  switch (strategy) {
-    case RoutingStrategy::kFirstAvailable:
-      return std::make_unique<DestFirstAvailable>(io_ctx, protocol);
-    case RoutingStrategy::kNextAvailable:
-      return std::make_unique<DestNextAvailable>(io_ctx, protocol);
-    case RoutingStrategy::kRoundRobin:
-      return std::make_unique<DestRoundRobin>(io_ctx, protocol);
-    case RoutingStrategy::kUndefined:
-    case RoutingStrategy::kRoundRobinWithFallback:;  // unsupported, fall
-                                                     // through
-  }
-
-  throw std::runtime_error("Wrong routing strategy " +
-                           std::to_string(static_cast<int>(strategy)));
-}
-}  // namespace
-
 void MySQLRouting::set_destinations_from_dests(
     const std::vector<mysql_harness::Destination> &dests) {
   is_destination_standalone_ = true;
-  destination_ = create_standalone_destination(io_ctx_, routing_strategy_,
-                                               context_.get_protocol());
+
+  if (!routing_strategy_) {
+    throw std::runtime_error(
+        "Configuration error: option routing_strategy in [" +
+        context_.get_name() + "] is required'");
+  } else if (routing_strategy_ ==
+             routing::RoutingStrategy::kRoundRobinWithFallback) {
+    throw std::runtime_error(
+        "Strategy round-robin-with-fallback is not supported for static "
+        "routing");
+  }
+
+  auto destination = std::make_unique<StaticDestinationsManager>(
+      routing_strategy_.value(), io_ctx_, context_);
 
   for (const auto &dest : dests) {
     if (dest.is_local()) {
@@ -1157,12 +1174,9 @@ int MySQLRouting::set_max_connections(int maximum) {
   return max_connections_;
 }
 
-routing::RoutingStrategy MySQLRouting::get_routing_strategy() const {
-  return routing_strategy_;
-}
-
-std::vector<mysql_harness::Destination> MySQLRouting::get_destinations() const {
-  return destination_->get_destinations();
+std::vector<mysql_harness::Destination>
+MySQLRouting::get_destination_candidates() const {
+  return destination_manager_->get_new_connection_nodes();
 }
 
 std::vector<MySQLRoutingAPI::ConnData> MySQLRouting::get_connections() {

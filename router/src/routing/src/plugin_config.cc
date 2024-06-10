@@ -115,12 +115,11 @@ class RoutingStrategyOption {
   RoutingStrategyOption(bool is_metadata_cache)
       : is_metadata_cache_{is_metadata_cache} {}
 
-  routing::RoutingStrategy operator()(const std::optional<std::string> &value,
-                                      const std::string &option_desc) {
-    if (!value) {
-      throw std::invalid_argument(option_desc + " is required");
-      return routing::RoutingStrategy::kUndefined;
-    } else if (value->empty()) {
+  std::optional<routing::RoutingStrategy> operator()(
+      const std::optional<std::string> &value, const std::string &option_desc) {
+    if (!value) return std::nullopt;
+
+    if (value->empty()) {
       throw std::invalid_argument(option_desc + " needs a value");
     }
 
@@ -128,16 +127,23 @@ class RoutingStrategyOption {
     std::transform(lc_value.begin(), lc_value.end(), lc_value.begin(),
                    ::tolower);
 
-    auto result = routing::get_routing_strategy(lc_value);
-    if (result == routing::RoutingStrategy::kUndefined ||
-        ((result == routing::RoutingStrategy::kRoundRobinWithFallback) &&
-         !is_metadata_cache_)) {
-      const std::string valid =
+    auto strategy_res = routing::get_routing_strategy(lc_value);
+    if (!strategy_res) {
+      const auto &valid =
           routing::get_routing_strategy_names(is_metadata_cache_);
       throw std::invalid_argument(option_desc + " is invalid; valid are " +
                                   valid + " (was '" + value.value() + "')");
     }
-    return result;
+
+    if ((strategy_res.value() ==
+         routing::RoutingStrategy::kRoundRobinWithFallback) &&
+        !is_metadata_cache_) {
+      const auto &valid =
+          routing::get_routing_strategy_names(is_metadata_cache_);
+      throw std::invalid_argument(option_desc + " is invalid; valid are " +
+                                  valid + " (was '" + value.value() + "')");
+    }
+    return strategy_res.value();
   }
 
  private:
@@ -814,11 +820,14 @@ class RoutingConfigExposer : public mysql_harness::SectionConfigExposer {
                   plugin_config_.client_connect_timeout,
                   routing::kDefaultClientConnectTimeout.count(), true);
 
-    expose_option(options::kRoutingStrategy,
-                  get_routing_strategy_name(plugin_config_.routing_strategy),
-                  get_routing_strategy_name(
-                      routing::get_default_routing_strategy(section_type)),
-                  false);
+    auto strategy_maybe = plugin_config_.routing_strategy;
+    if (strategy_maybe) {
+      expose_option(options::kRoutingStrategy,
+                    get_routing_strategy_name(*strategy_maybe),
+                    get_routing_strategy_name(
+                        routing::get_default_routing_strategy(section_type)),
+                    false);
+    }
 
     expose_option(options::kMaxConnections, plugin_config_.max_connections,
                   routing::kDefaultMaxConnections, true);

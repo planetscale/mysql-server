@@ -105,17 +105,7 @@ DestMetadataCacheGroup::ServerRole get_server_role_from_uri(
   return role_it->second;
 }
 
-routing::RoutingStrategy get_default_routing_strategy(
-    const DestMetadataCacheGroup::ServerRole role) {
-  switch (role) {
-    case DestMetadataCacheGroup::ServerRole::Primary:
-    case DestMetadataCacheGroup::ServerRole::PrimaryAndSecondary:
-    case DestMetadataCacheGroup::ServerRole::Secondary:
-      return routing::RoutingStrategy::kRoundRobin;
-  }
-
-  return routing::RoutingStrategy::kUndefined;
-}
+namespace {
 
 // throws:
 // - runtime_error if invalid value for the option was discovered
@@ -292,38 +282,15 @@ void DestMetadataCacheGroup::init() {
     }
   }
 
-  // if the routing_strategy is not set we go with the default based on the role
-  if (routing_strategy_ == routing::RoutingStrategy::kUndefined) {
-    routing_strategy_ = get_default_routing_strategy(server_role_);
-  }
-
   auto query_part = uri_query_.find("allow_primary_reads");
   if (query_part != uri_query_.end()) {
     throw std::runtime_error(
         "allow_primary_reads is no longer supported, use "
         "role=PRIMARY_AND_SECONDARY instead");
   }
-
-  // validate routing strategy:
-  switch (routing_strategy_) {
-    case routing::RoutingStrategy::kRoundRobinWithFallback:
-      if (server_role_ != ServerRole::Secondary) {
-        throw std::runtime_error(
-            "Strategy 'round-robin-with-fallback' is supported only for "
-            "SECONDARY routing");
-      }
-      break;
-    case routing::RoutingStrategy::kFirstAvailable:
-    case routing::RoutingStrategy::kRoundRobin:
-      break;
-    default:
-      throw std::runtime_error(
-          "Unsupported routing strategy: " +
-          routing::get_routing_strategy_name(routing_strategy_));
-  }
 }
 
-void DestMetadataCacheGroup::subscribe_for_metadata_cache_changes() {
+void DestMetadataCacheManager::subscribe_for_metadata_cache_changes() {
   cache_api_->add_state_listener(this);
   subscribed_for_metadata_cache_changes_ = true;
 }
