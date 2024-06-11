@@ -65,7 +65,7 @@ TEST_F(RoutingTests, set_destinations_from_uri) {
   conf.bind_address = mysql_harness::TcpDestination{"0.0.0.0", 7001};
   conf.protocol = Protocol::Type::kXProtocol;
   conf.connect_timeout = 1;
-  MySQLRouting routing(conf, io_ctx_);
+  MySQLRouting routing(conf, io_ctx_, nullptr);
 
   // valid metadata-cache uri
   {
@@ -144,7 +144,7 @@ TEST_P(RoutingDestinationsTest, set_destinations) {
   conf.bind_address = mysql_harness::TcpDestination{"0.0.0.0", 7001};
   conf.protocol = Protocol::Type::kClassicProtocol;
   conf.connect_timeout = 1;
-  MySQLRouting routing(conf, io_ctx_);
+  MySQLRouting routing(conf, io_ctx_, nullptr);
 
   if (GetParam().expected_error_msg.empty()) {
     EXPECT_NO_THROW(routing.set_destinations(GetParam().destinations));
@@ -328,7 +328,7 @@ TEST_F(RoutingTests, set_destinations_from_cvs_classic_proto) {
   conf_classic.bind_address = mysql_harness::TcpDestination{address, 3306};
   conf_classic.protocol = Protocol::Type::kClassicProtocol;
   conf_classic.connect_timeout = 1;
-  MySQLRouting routing_classic(conf_classic, io_ctx_);
+  MySQLRouting routing_classic(conf_classic, io_ctx_, nullptr);
   EXPECT_THROW(routing_classic.set_destinations("127.0.0.1"),
                std::runtime_error);
   EXPECT_THROW(routing_classic.set_destinations("127.0.0.1:3306"),
@@ -343,7 +343,7 @@ TEST_F(RoutingTests, set_destinations_from_cvs_x_proto) {
   conf_x.bind_address = mysql_harness::TcpDestination{address, 33060};
   conf_x.protocol = Protocol::Type::kXProtocol;
   conf_x.connect_timeout = 1;
-  MySQLRouting routing_x(conf_x, io_ctx_);
+  MySQLRouting routing_x(conf_x, io_ctx_, nullptr);
 
   // default-port for xproto is 33060
   EXPECT_THROW(routing_x.set_destinations("127.0.0.1"), std::runtime_error);
@@ -367,7 +367,7 @@ TEST_F(RoutingTests, set_destinations_from_cvs_unix_socket) {
   conf.protocol = Protocol::Type::kClassicProtocol;
   conf.connect_timeout = 1;
 
-  MySQLRouting routing(conf, io_ctx_);
+  MySQLRouting routing(conf, io_ctx_, nullptr);
 #ifdef _WIN32
   EXPECT_THROW(routing.set_destinations("127.0.0.1:3306,local:///tmp/foo"),
                std::invalid_argument);

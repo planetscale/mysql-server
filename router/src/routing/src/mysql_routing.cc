@@ -43,10 +43,8 @@
 
 #include "classic_connection.h"
 #include "connection.h"
-#include "dest_first_available.h"
 #include "dest_metadata_cache.h"
-#include "dest_next_available.h"
-#include "dest_round_robin.h"
+#include "dest_static.h"
 #include "destination_ssl_context.h"
 #include "destinations_option_parser.h"
 #include "hostname_validator.h"
@@ -1121,7 +1119,7 @@ void MySQLRouting::set_destinations_from_dests(
         "routing");
   }
 
-  auto destination = std::make_unique<StaticDestinationsManager>(
+  auto destination_manager = std::make_unique<StaticDestinationsManager>(
       routing_strategy_.value(), io_ctx_, context_);
 
   for (const auto &dest : dests) {

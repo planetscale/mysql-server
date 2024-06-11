@@ -80,11 +80,11 @@ TEST(QuitSenderTest, sender) {
   conf.client_connect_timeout = 10;
   conf.bind_address = mysql_harness::TcpDestination{"", 3306};
 
-  MySQLRoutingContext ctx{conf, "name", {}, {}};
+  MySQLRoutingContext ctx{conf, "name", {}, {}, nullptr};
 
   auto conn = MysqlRoutingClassicConnectionBase::create(
       ctx,      // ctx
-      nullptr,  // RouteDestination
+      nullptr,  // DestinationManager
       std::make_unique<TcpConnection>(net::ip::tcp::socket(io_ctx),
                                       net::ip::tcp::endpoint{}),
       nullptr,  // client-routing-connection

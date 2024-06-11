@@ -118,7 +118,82 @@ class DestMetadataCacheManager final
   routing_guidelines::Routing_guidelines_engine::RouteChanges
   update_routing_guidelines(const std::string &routing_guidelines_document);
 
+  /**
+   * Clear internal state (indexes, last connection status etc). Used when
+   * guidelines are updated.
+   */
+  void clear_internal_state();
+
  private:
+  /**
+   * Resolve hostnames used in routing guidelines document.
+   *
+   * If hostname could be resolved to multiple addresses (with requested IP
+   * version) then only one of the addresses is used, with unspecified order.
+   *
+   * @param hostnames list of hostnames to be resolved, each host contain
+   * information about hostname and IP version which should be used.
+   *
+   * @return hostname address pairs
+   */
+  std::unordered_map<std::string, net::ip::address>
+  resolve_routing_guidelines_hostnames(
+      const std::vector<routing_guidelines::Resolve_host> &hostnames);
+
+  /** Fill each destination group with destination candidates, according to the
+   * routing guideline that is being used.
+   *
+   * For example given the group setting [[d1,d2], [d3]] and
+   * d1 containing 127.0.0.1
+   * d2 containing 127.0.1.1 127.0.1.2
+   * d3 containing 127.0.2.1
+   * It will create two destination groups
+   * 1) [127.0.0.1, 127.0.1.1, 127.0.1.2]
+   * 2) [127.0.2.1]
+   * Where group 2) is a backup destination group.
+   */
+  void prepare_destination_groups();
+
+  /**
+   * Change destination group that is currently being used.
+   *
+   * This happens if there was a connection error and current group could not
+   * provide a destination candidate.
+   *
+   * @retval true successful group change
+   * @retval false unsuccessful group change
+   */
+  bool change_group();
+
+  /**
+   * If the routing guideline enables the connection sharing then it validates
+   * if the sharing prerequisites are met and it could be used. If not then
+   * connection sharing is disabled.
+   *
+   * @param route_name name of the route that enables connection sharing
+   * @param dest destination candidate that is going to be used for connection.
+   */
+  void validate_current_sharing_settings(std::string_view route_name,
+                                         Destination *dest) const;
+
+  std::unique_ptr<Destination> get_next_destination_impl();
+
+  /** Set information if the last connection was successful. */
+  void set_last_connect_successful(const bool state);
+
+  /**
+   * Get addresses of nodes allowed by the auto-generated routing guideline.
+   *
+   * Should not be called when user-provided guideline is used as in such case
+   * it might be impossible to determine the list upfront (matching criteria
+   * might depend on source IP info for example).
+   */
+  std::vector<routing_guidelines::Server_info>
+  get_nodes_allowed_by_routing_guidelines() const;
+
+  /** Get addresses of all nodes in the topology*/
+  std::vector<routing_guidelines::Server_info> get_all_nodes() const;
+
   /** @brief The Metadata Cache to use
    *
    * cache_name_ is the the section key in the configuration of Metadata Cache.
@@ -152,14 +227,10 @@ class DestMetadataCacheManager final
    */
   void init();
 
-  /** @brief Gets available destinations from Metadata Cache
+  /** Get destination candidates details from the given topology
    *
-   * This method gets the destinations using Metadata Cache information. It uses
-   * the `metadata_cache::get_cluster_nodes()` function to get a list of current
-   * managed servers. Bool in the returned pair indicates if (in case of the
-   * round-robin-with-fallback routing strategy) the returned nodes are the
-   * primaries after the fallback (true), regular primaries (false) or
-   * secondaries (false).
+   * @param cluster_topology topology of the cluster
+   * @param drop_all_hidden shoud the hidden nodes be included in the result
    *
    * @return list of destination candidates
    */
@@ -207,9 +278,62 @@ class DestMetadataCacheManager final
 
   void on_md_refresh(const bool instances_changed) override;
 
+  /**
+   * Status of a last connection.
+   */
+  enum class ConnectionStatus {
+    InProgress,
+    Failed,
+    NotSet,
+  };
+
   /** Routing guideline engine. */
   std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
       routing_guidelines_{nullptr};
+
+  /** @brief Protocol for the destination */
+  Protocol::Type protocol_;
+
+  /** Routing strategy that is used within the currently used destination group.
+   */
+  routing::RoutingStrategy strategy_;
+
+  /** UUID of a last destination returned by get_next_destination(), used in
+   * wait for primary failover mechanism. */
+  std::string last_server_uuid_;
+
+  /** Guidelines route which is designated by the guidelines engine to handle
+   * connection. */
+  routing_guidelines::Routing_guidelines_engine::Route_classification
+      route_info_;
+
+  /** Destination candidates that are going to be used to create destination
+   * groups. */
+  std::vector<std::vector<Destination>> destination_candidates_;
+
+  /** Index of the currently used destination group. */
+  uint16_t current_destination_group_index_{0};
+
+  /** Index of the current position within a destination group. */
+  uint16_t current_group_position_{0};
+
+  // Position of last used destination for each destination groups, used to
+  // fairly balance the load in backup destination groups,
+  std::map<uint16_t, uint16_t> stored_destination_indexes_;
+
+  /** Information about previous connection status. */
+  std::atomic<ConnectionStatus> last_connection_status_{
+      ConnectionStatus::NotSet};
+
+  /** How many available destinations are in the currently used destination
+   * group. */
+  uint16_t available_dests_in_group_{0};
+
+  /** Destination manager contains read-write destination candidates. */
+  bool has_read_write_{false};
+
+  /** Destination manager contains read-only destination candidates. */
+  bool has_read_only_{false};
 
   /** Destination thats used for the connection. */
   Destination destination_;
