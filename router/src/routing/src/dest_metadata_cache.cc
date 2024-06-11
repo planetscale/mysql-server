@@ -718,6 +718,43 @@ void DestMetadataCacheManager::prepare_destination_groups() {
         destination_candidates_[current_destination_group_index_].size();
   }
 }
+
+void DestMetadataCacheManager::validate_current_sharing_settings(
+    std::string_view route_name, Destination *dest) const {
+  if (!dest) return;
+
+  const auto guidelines_sharing =
+      dest->guidelines_route_info().connection_sharing_allowed;
+  if (!guidelines_sharing || !guidelines_sharing.value()) return;
+
+  auto &ctx = get_routing_context();
+  bool sharing_enabled{true};
+  if (ctx.source_ssl_mode() == SslMode::kPassthrough) {
+    log_info(
+        "Route '%s' has connection sharing enabled but it had been ignored, as "
+        "client_ssl_mode=PASSTHROUGH.",
+        route_name.data());
+    sharing_enabled = false;
+  } else if (ctx.source_ssl_mode() == SslMode::kPreferred &&
+             ctx.dest_ssl_mode() == SslMode::kAsClient) {
+    log_info(
+        "Route '%s' has connection sharing enabled but it had been ignored, as "
+        "client_ssl_mode=PREFERRED and server_ssl_mode=AS_CLIENT.",
+        route_name.data());
+    sharing_enabled = false;
+  }
+
+  if (ctx.get_protocol() == Protocol::Type::kXProtocol) {
+    log_info(
+        "Route '%s' has connection sharing enabled but it had been ignored, as "
+        "protocol=x",
+        route_name.data());
+    sharing_enabled = false;
+  }
+
+  if (!sharing_enabled) dest->disable_connection_sharing();
+}
+
 std::unique_ptr<Destination> DestMetadataCacheManager::get_next_destination(
     const routing_guidelines::Session_info &session_info) {
   auto destination = get_next_destination_impl();
@@ -732,6 +769,8 @@ std::unique_ptr<Destination> DestMetadataCacheManager::get_next_destination(
                 session_info.id, destination->destination().str().c_str(),
                 strategy_str.c_str());
     }
+    validate_current_sharing_settings(destination->route_name(),
+                                      destination.get());
   }
 
   return destination;

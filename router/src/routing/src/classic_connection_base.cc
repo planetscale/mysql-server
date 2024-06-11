@@ -844,7 +844,7 @@ void MysqlRoutingClassicConnectionBase::loop() {
 bool MysqlRoutingClassicConnectionBase::connection_sharing_possible() const {
   const auto &sysvars = client_protocol().system_variables();
 
-  return context_.connection_sharing() &&             // config must allow it.
+  return context_.connection_sharing() &&  // allowed by config (or route)
          !client_protocol().credentials().empty() &&  // a password is required
          sysvars.get("session_track_gtids") == "OWN_GTID" &&
          sysvars.get("session_track_state_change") == "ON" &&

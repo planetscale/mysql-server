@@ -316,6 +316,11 @@ stdx::expected<Processor::Result, std::error_code>
 ConnectProcessor::init_connect() {
   // trace(Tracer::Event().stage("connect::init_connect"));
 
+  // Connection sharing may be set explicitly by the routing guidelines route
+  // setting
+  connection()->context().connection_sharing(
+      destination_->guidelines_route_info().connection_sharing_allowed);
+
   (void)connection()->server_conn().close();
 
   connection()->connect_error_code({});  // reset the connect-error-code.

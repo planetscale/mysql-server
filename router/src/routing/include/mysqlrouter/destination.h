@@ -112,61 +112,11 @@ class Destination {
   }
 
   /**
-   * emplace a Destination at the back of the container.
+   * Disable connection sharing if sharing prerequisites cannot be met.
    */
-  template <class... Args>
-  auto emplace_back(Args &&...args) {
-    return destinations_.emplace_back(std::forward<Args>(args)...);
+  void disable_connection_sharing() {
+    guidelines_route_info_.connection_sharing_allowed = false;
   }
-
-  void push_back(value_type &&v) { destinations_.push_back(std::move(v)); }
-
-  /**
-   * check if destination container is empty.
-   *
-   * @retval true if container is empty.
-   */
-  bool empty() const { return destinations_.empty(); }
-
-  /**
-   * clear all values.
-   */
-  void clear() { destinations_.clear(); }
-
-  /**
-   * number of destinations.
-   */
-  size_type size() const { return destinations_.size(); }
-
-  /**
-   * Check if we already used the primaries and don't want to fallback.
-   *
-   * @retval true primaries already used
-   * @retval false primaries are not yet used
-   */
-  bool primary_already_used() const { return primary_already_used_; }
-
-  /**
-   * Mark that the primary destinations are already used.
-   *
-   * @param p true if PRIMARY destinations are already used.
-   */
-  void primary_already_used(const bool p) { primary_already_used_ = p; }
-
-  /**
-   * Check if destinations are primary destinations.
-   *
-   * @retval true destinations are primary destinations.
-   * @retval false destinations are secondary destinations.
-   */
-  bool is_primary_destination() const { return is_primary_destination_; }
-
-  /**
-   * Mark that the destinations are primary destinations.
-   *
-   * @param p true if desitnations are PRIMARY destinations.
-   */
-  void set_is_primary_destination(const bool p) { is_primary_destination_ = p; }
 
  private:
   std::optional<mysql_harness::Destination> dest_;

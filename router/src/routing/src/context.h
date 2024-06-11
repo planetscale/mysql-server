@@ -65,6 +65,7 @@ class MySQLRoutingContext {
         routing_guidelines_{std::move(routing_guidelines)},
         blocked_endpoints_{routing_config.max_connect_errors} {
     router_info_.route_name = get_id();
+    connection_sharing_ = routing_config_.connection_sharing;
   }
 
   BlockedEndpoints &blocked_endpoints() { return blocked_endpoints_; }
@@ -82,7 +83,7 @@ class MySQLRoutingContext {
     return blocked_endpoints().max_connect_errors();
   }
 
-  BaseProtocol::Type get_protocol() { return routing_config_.protocol; }
+  BaseProtocol::Type get_protocol() const { return routing_config_.protocol; }
 
   const std::string &get_name() const { return name_; }
 
@@ -160,7 +161,13 @@ class MySQLRoutingContext {
     return shared_quarantine_handler_;
   }
 
-  bool connection_sharing() const { return routing_config_.connection_sharing; }
+  bool connection_sharing() const { return connection_sharing_; }
+
+  void connection_sharing(const std::optional<bool> &is_enabled) {
+    connection_sharing_ = is_enabled.has_value()
+                              ? *is_enabled
+                              : routing_config_.connection_sharing;
+  }
 
   std::chrono::milliseconds connection_sharing_delay() const {
     return routing_config_.connection_sharing_delay;
@@ -223,6 +230,10 @@ class MySQLRoutingContext {
 
   mutable std::mutex router_info_mtx_;
   routing_guidelines::Router_info router_info_;
+
+  // Connection sharing could be configured in routing plugin config, but it
+  // could be overwritten by routing guidelines
+  std::atomic<bool> connection_sharing_;
 
   /**
    * Callbacks for communicating with quarantined destination candidates
