@@ -1501,6 +1501,14 @@ GRClusterSetMetadataBackend::fetch_cluster_topology(
       result.clusters_data = {cluster};
     } else
       result.clusters_data.clear();
+  } else if (target_cluster.invalidated_cluster_routing_policy() ==
+             mysqlrouter::TargetCluster::InvalidatedClusterRoutingPolicy::
+                 DropAll) {
+    result.clusters_data.erase(
+        std::remove_if(
+            std::begin(result.clusters_data), std::end(result.clusters_data),
+            [](const auto &cluster) { return cluster.is_invalidated; }),
+        std::end(result.clusters_data));
   }
 
   this->view_id_ = view_id;
