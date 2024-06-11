@@ -130,7 +130,7 @@ class StaticDestinationsManager final : public DestinationManager {
 
  private:
   /** Get destination index based on routing strategy for static routes*/
-  std::unique_ptr<Strategy_handler> strategy_handler_;
+  std::unique_ptr<StrategyHandler> strategy_handler_;
 
   /** @brief List of destinations */
   DestVector destinations_;

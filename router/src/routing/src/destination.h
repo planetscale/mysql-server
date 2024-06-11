@@ -71,10 +71,6 @@ using StopSocketAcceptorCallback = std::function<void()>;
 // md refresh.
 using MetadataRefreshCallback =
     std::function<void(const bool, const AllowedNodes &)>;
-// Callback argument is a destination we want to check, value returned is
-// true if the destination is quarantined, false otherwise.
-using QueryQuarantinedDestinationsCallback =
-    std::function<bool(const mysql_harness::Destination &)>;
 
 /** @class DestinationNodesStateNotifier
  *
@@ -146,27 +142,11 @@ class DestinationNodesStateNotifier {
    */
   void unregister_md_refresh_callback();
 
-  /**
-   * Registers a callback that could be used for checking if the provided
-   * destination candidate is currently quarantined.
-   *
-   * @param clb Callback to query unreachable destinations.
-   */
-  void register_query_quarantined_destinations(
-      const QueryQuarantinedDestinationsCallback &clb);
-
-  /**
-   * Unregisters the callback registered with
-   * register_query_quarantined_destinations().
-   */
-  void unregister_query_quarantined_destinations();
-
  protected:
   AllowedNodesChangeCallbacksList allowed_nodes_change_callbacks_;
   MetadataRefreshCallback md_refresh_callback_;
   StartSocketAcceptorCallback start_router_socket_acceptor_callback_;
   StopSocketAcceptorCallback stop_router_socket_acceptor_callback_;
-  QueryQuarantinedDestinationsCallback query_quarantined_destinations_callback_;
   mutable std::mutex allowed_nodes_change_callbacks_mtx_;
   mutable std::mutex md_refresh_callback_mtx_;
   mutable std::mutex socket_acceptor_handle_callbacks_mtx;

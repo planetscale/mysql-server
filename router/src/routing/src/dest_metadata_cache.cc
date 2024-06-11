@@ -31,6 +31,7 @@
 #include <iterator>  // advance
 #include <memory>
 #include <mutex>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -39,6 +40,7 @@
 #include "mysql/harness/destination.h"
 #include "mysql/harness/logging/logging.h"
 #include "mysql/harness/plugin.h"
+#include "mysql/harness/string_utils.h"    // ieq
 #include "mysql/harness/utility/string.h"  // join
 #include "mysqlrouter/connection_pool.h"
 #include "mysqlrouter/connection_pool_component.h"
@@ -165,14 +167,58 @@ bool get_disconnect_on_metadata_unavailable(const mysqlrouter::URIQuery &uri) {
                            check_option_allowed);
 }
 
-mysql_harness::TcpDestinatio addr_from_instance(
+std::string format(const routing_guidelines::Session_info &session_info,
+                   bool extended_session_info) {
+  std::string text;
+  text.append("router_ip=" + session_info.target_ip);
+  text.append(" router_port=" + std::to_string(session_info.target_port));
+  text.append(" source_ip=" + session_info.source_ip);
+  if (extended_session_info) {
+    text.append(" user=" + session_info.user);
+    text.append(" schema=" + session_info.schema);
+    text.append(" attributes=");
+
+    bool first = true;
+    for (const auto &attr : session_info.connect_attrs) {
+      if (!first) {
+        text.append(",");
+      } else {
+        first = false;
+      }
+      text.append(attr.first + "=" + attr.second);
+    }
+  }
+  return text;
+}
+
+mysql_harness::TcpDestination addr_from_instance(
     const routing_guidelines::Server_info &instance,
     const Protocol::Type protocol) {
   const auto port = protocol == Protocol::Type::kClassicProtocol
                         ? instance.port
                         : instance.port_x;
-  return mysql_harness::Destination(instance.address, port);
+  return mysql_harness::TcpDestination(instance.address, port);
 }
+
+std::string print_destination_candidates(
+    const std::vector<std::vector<Destination>> &destination_candidates,
+    const Protocol::Type protocol) {
+  std::string result{"["};
+  for (const auto &group : destination_candidates) {
+    result.append("[");
+    for (const auto [i, group_pos] : stdx::ranges::views::enumerate(group)) {
+      result.append(
+          addr_from_instance(group_pos.get_server_info(), protocol).str());
+      if (i != group.size() - 1) result.append(", ");
+    }
+    result.append("]");
+  }
+  result.append("]");
+
+  return result;
+}
+
+}  // namespace
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 // doxygen confuses 'const mysqlrouter::URIQuery &query' with
@@ -574,6 +620,104 @@ void DestMetadataCacheManager::start(const mysql_harness::PluginFuncEnv *env) {
     subscribe_for_md_refresh_handler();
   }
 }
+
+std::unordered_map<std::string, net::ip::address>
+DestMetadataCacheManager::resolve_routing_guidelines_hostnames(
+    const std::vector<routing_guidelines::Resolve_host> &addresses) {
+  using IP_ver = routing_guidelines::Resolve_host::IP_version;
+  std::unordered_map<std::string, net::ip::address> res;
+  net::ip::tcp::resolver resolver{io_ctx_};
+
+  for (const auto &host : addresses) {
+    const auto resolve_res = resolver.resolve(host.address, "");
+    if (!resolve_res) {
+      log_warning("Routing guidelines could not resolve: %s",
+                  host.address.c_str());
+      continue;
+    }
+
+    for (const auto &resolved_addr : resolve_res.value()) {
+      const auto addr_val = resolved_addr.endpoint().address();
+      if ((host.ip_version == IP_ver::IPv4 && addr_val.is_v4()) ||
+          (host.ip_version == IP_ver::IPv6 && addr_val.is_v6())) {
+        // Check if there are mutiple addresses resolved for one IP version
+        auto pos = res.find(host.address);
+        if (pos != std::end(res)) {
+          if ((pos->second.is_v4() == addr_val.is_v4()) ||
+              (pos->second.is_v6() == addr_val.is_v6())) {
+            log_debug("Multiple addresses resolved for %s",
+                      host.address.c_str());
+            break;
+          }
+        }
+        res[host.address] = addr_val;
+      }
+    }
+  }
+  return res;
+}
+
+void DestMetadataCacheManager::prepare_destination_groups() {
+  destination_candidates_.clear();
+
+  const auto &all_nodes =
+      get_nodes_from_topology(cache_api_->get_cluster_topology(), true);
+
+  for (const auto &dest_group : route_info_.destination_groups) {
+    std::vector<Destination> group;
+
+    for (const auto &destination_class : dest_group.destination_classes) {
+      for (auto &destination_candidate : all_nodes) {
+        const auto &destination_classification = routing_guidelines_->classify(
+            destination_candidate, routing_ctx_.get_router_info());
+        if (!destination_classification.errors.empty()) {
+          log_error(
+              "Routing guidelines classification error when preparing "
+              "destinations:\n - %s",
+              mysql_harness::join(destination_classification.errors, "\n - ")
+                  .c_str());
+          return;
+        }
+        const auto &classes = destination_classification.class_names;
+
+        if (std::cend(classes) != std::find(std::cbegin(classes),
+                                            std::cend(classes),
+                                            destination_class)) {
+          if (mysql_harness::ieq(destination_candidate.member_role,
+                                 "PRIMARY")) {
+            has_read_write_ = true;
+          } else if (mysql_harness::ieq(destination_candidate.member_role,
+                                        "SECONDARY") ||
+                     mysql_harness::ieq(destination_candidate.member_role,
+                                        "READ_REPLICA")) {
+            has_read_only_ = true;
+          }
+
+          auto &ctx = get_routing_context();
+          const auto port = (ctx.get_protocol() == Protocol::Type::kXProtocol)
+                                ? destination_candidate.port_x
+                                : destination_candidate.port;
+          group.emplace_back(
+              mysql_harness::TcpDestination{destination_candidate.address,
+                                            port},
+              destination_candidate, route_info_.route_name,
+              route_info_.connection_sharing_allowed);
+        }
+      }
+    }
+
+    destination_candidates_.push_back(std::move(group));
+  }
+
+  if (destination_candidates_.empty() ||
+      current_destination_group_index_ >= destination_candidates_.size() ||
+      destination_candidates_[current_destination_group_index_].empty()) {
+    available_dests_in_group_ = 0;
+  } else {
+    available_dests_in_group_ =
+        destination_candidates_[current_destination_group_index_].size();
+  }
+}
 std::unique_ptr<Destination> DestMetadataCacheManager::get_next_destination(
     const routing_guidelines::Session_info &session_info) {
   auto destination = get_next_destination_impl();
@@ -583,12 +727,239 @@ std::unique_ptr<Destination> DestMetadataCacheManager::get_next_destination(
 
     const auto &strategy_str = routing::get_routing_strategy_name(strategy_);
 
-    log_debug("RGuidelines: %" PRIu64 ": Will try %s:%i from %s",
-              session_info.id, destination->hostname().c_str(), port,
-              strategy_str.c_str());
+    if (log_level_is_handled(mysql_harness::logging::LogLevel::kDebug)) {
+      log_debug("RGuidelines: %" PRIu64 ": Will try %s from %s",
+                session_info.id, destination->destination().str().c_str(),
+                strategy_str.c_str());
+    }
   }
 
   return destination;
+}
+
+bool DestMetadataCacheManager::change_group() {
+  current_destination_group_index_++;
+
+  // Skip empty groups
+  while (current_destination_group_index_ < destination_candidates_.size() &&
+         destination_candidates_[current_destination_group_index_].empty()) {
+    current_destination_group_index_++;
+  }
+
+  if (current_destination_group_index_ >= destination_candidates_.size() ||
+      destination_candidates_[current_destination_group_index_].empty()) {
+    log_debug("No more destination groups available");
+    current_destination_group_index_ = 0;
+    current_group_position_ = 0;
+    available_dests_in_group_ = 0;
+    return false;
+  }
+
+  available_dests_in_group_ =
+      destination_candidates_[current_destination_group_index_].size();
+
+  // Each group has its own routing strategy, lets use it
+  const auto &dest_group =
+      route_info_.destination_groups[current_destination_group_index_];
+  const auto strategy_res =
+      routing::get_routing_strategy(dest_group.routing_strategy);
+  strategy_ = strategy_res.value();
+
+  log_debug("Try switching to destination group %d",
+            current_destination_group_index_);
+
+  if (strategy_ == routing::RoutingStrategy::kRoundRobin) {
+    // To fairly balance the load in backup destination groups we
+    // remember the last used position
+    current_group_position_ =
+        stored_destination_indexes_[current_destination_group_index_];
+
+    // There are more than one destinations in the group, we can balance the
+    // load on other destinations
+    if (available_dests_in_group_ > 1) current_group_position_++;
+
+    if (current_group_position_ >=
+        destination_candidates_[current_destination_group_index_].size()) {
+      current_group_position_ = 0;
+    }
+
+    stored_destination_indexes_[current_destination_group_index_] =
+        current_group_position_;
+  } else {
+    current_group_position_ = 0;
+  }
+
+  return true;
+}
+
+std::unique_ptr<Destination>
+DestMetadataCacheManager::get_next_destination_impl() {
+  std::lock_guard<std::mutex> lock(state_mtx_);
+
+  // First group is empty, skip it
+  if (destination_candidates_[current_destination_group_index_].size() == 0) {
+    if (!change_group()) return nullptr;
+  }
+
+  if (last_connection_status_ == ConnectionStatus::Failed) {
+    current_group_position_++;
+    if (current_group_position_ >=
+        destination_candidates_[current_destination_group_index_].size()) {
+      if (strategy_ == routing::RoutingStrategy::kFirstAvailable) {
+        // We have exhausted all possibilities within this group, try to use the
+        // next one
+        if (!change_group()) return nullptr;
+      } else if (strategy_ == routing::RoutingStrategy::kRoundRobin) {
+        if (available_dests_in_group_ == 0) {
+          // No need to loop around, we tried every dest in this group
+          if (!change_group()) return nullptr;
+        } else {
+          // Loop to the beginning as there are still destinations available
+          current_group_position_ = 0;
+        }
+      }
+    }
+  } else if (last_connection_status_ == ConnectionStatus::InProgress) {
+    if (strategy_ == routing::RoutingStrategy::kFirstAvailable) {
+      // previous connection was successful, lets try from the beginning
+      current_destination_group_index_ = 0;
+      current_group_position_ = 0;
+
+      // First group is empty, go to the first group containing destinations
+      if (destination_candidates_[current_destination_group_index_].size() ==
+          0) {
+        if (!change_group()) return nullptr;
+      }
+    } else if (strategy_ == routing::RoutingStrategy::kRoundRobin) {
+      // Before going to a backup destination group we have to try all groups
+      // with higher precedence
+      if (current_destination_group_index_ != 0) {
+        // previous connection was successful, lets try from the beginning
+        current_destination_group_index_ = 0;
+        current_group_position_ = 0;
+        // If the first group is empty change_group will try to find a group
+        // with destinations in it, if there are none we should fail
+        if (destination_candidates_[current_destination_group_index_].empty())
+          if (!change_group()) return nullptr;
+      } else if (last_connection_status_ == ConnectionStatus::InProgress &&
+                 available_dests_in_group_ > 1) {
+        // Previous connection was ok, there are other destinations in this
+        // group so may move forward
+        current_group_position_++;
+        if (current_group_position_ >=
+            destination_candidates_[current_destination_group_index_].size()) {
+          current_group_position_ = 0;
+        }
+      }
+    }
+  } else if (last_connection_status_ == ConnectionStatus::NotSet) {
+    // if the connection status in not set yet then this is the first
+    // attempt, do not need to move destination position
+    last_connection_status_ = ConnectionStatus::InProgress;
+  }
+
+  if (current_destination_group_index_ >= destination_candidates_.size() ||
+      current_group_position_ >=
+          destination_candidates_[current_destination_group_index_].size()) {
+    return nullptr;
+  }
+
+  destination_ = destination_candidates_[current_destination_group_index_]
+                                        [current_group_position_];
+  return std::make_unique<Destination>(destination_);
+}
+
+stdx::expected<void, std::error_code>
+DestMetadataCacheManager::init_destinations(
+    const routing_guidelines::Session_info &session_info) {
+  if (!cache_api_->is_initialized()) {
+    return stdx::unexpected(
+        make_error_code(std::errc::no_such_file_or_directory));
+  }
+  bool is_debugged =
+      log_level_is_handled(mysql_harness::logging::LogLevel::kDebug);
+
+  if (is_debugged) {
+    log_debug(
+        "Session classification source IP: '%s', target IP: '%s', target port: "
+        "'%d'",
+        session_info.source_ip.c_str(), session_info.target_ip.c_str(),
+        session_info.target_port);
+
+    if (routing_guidelines_->extended_session_info_in_use()) {
+      std::stringstream ss;
+      for (const auto &attr : session_info.connect_attrs) {
+        ss << attr.first << '=' << attr.second << ';';
+      }
+      log_debug(
+          "Session user: '%s', schema: '%s', connection attributes: '%s' ",
+          session_info.user.c_str(), session_info.schema.c_str(),
+          ss.str().c_str());
+    }
+  }
+
+  // Get the first matching route from guidelines 'routes' section
+  const auto &route_info = routing_guidelines_->classify(
+      session_info, routing_ctx_.get_router_info());
+
+  if (!route_info.errors.empty()) {
+    log_error("Routing route classification error(s): %s",
+              mysql_harness::join(route_info.errors, ", ").c_str());
+    return stdx::unexpected(
+        make_error_code(std::errc::no_such_file_or_directory));
+  }
+
+  if (route_info.route_name.empty()) {
+    log_warning("Could not match any route");
+    return stdx::unexpected(
+        make_error_code(std::errc::no_such_file_or_directory));
+  }
+
+  if (is_debugged) {
+    log_debug("Incoming session %" PRIu64 ": %s matches route '%s'",
+              session_info.id,
+              format(session_info,
+                     routing_guidelines_->extended_session_info_in_use())
+                  .c_str(),
+              route_info.route_name.c_str());
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(state_mtx_);
+    route_info_ = std::move(route_info);
+
+    auto &dest_groups = route_info_.destination_groups;
+    std::stable_sort(dest_groups.begin(), dest_groups.end(),
+                     [](const auto &g1, const auto &g2) {
+                       return g1.priority < g2.priority;
+                     });
+    prepare_destination_groups();
+
+    const auto &dest_group =
+        route_info_.destination_groups[current_destination_group_index_];
+    const auto strategy_res =
+        routing::get_routing_strategy(dest_group.routing_strategy);
+    strategy_ = strategy_res.value();
+
+    if (stored_destination_indexes_.empty() ||
+        destination_candidates_.size() != stored_destination_indexes_.size()) {
+      stored_destination_indexes_.clear();
+
+      const auto dest_group_cnt = destination_candidates_.size();
+      for (std::size_t i = 0; i < dest_group_cnt; i++) {
+        // Sentinel value, meaning that round robin has not started yet
+        stored_destination_indexes_[i] = destination_candidates_[i].size();
+      }
+    }
+  }
+
+  if (is_debugged) {
+    log_debug("Destination candidates available: %s",
+              print_destination_candidates(destination_candidates_, protocol_)
+                  .c_str());
+  }
+
+  return {};
 }
 
 routing_guidelines::Routing_guidelines_engine::RouteChanges
@@ -632,7 +1003,14 @@ DestMetadataCacheManager::update_routing_guidelines(
 
 void DestMetadataCacheManager::clear_internal_state() {
   std::lock_guard<std::mutex> lock(state_mtx_);
+  current_group_position_ = 0;
+  current_destination_group_index_ = 0;
   last_connection_status_ = ConnectionStatus::NotSet;
+
+  available_dests_in_group_ =
+      destination_candidates_.empty()
+          ? 0
+          : destination_candidates_[current_destination_group_index_].size();
 }
 
 void DestMetadataCacheManager::connect_status(std::error_code ec) {
@@ -646,4 +1024,7 @@ void DestMetadataCacheManager::set_last_connect_successful(
     const bool successful) {
   last_connection_status_ =
       successful ? ConnectionStatus::InProgress : ConnectionStatus::Failed;
+  if (successful == false) {
+    if (available_dests_in_group_ > 0) available_dests_in_group_--;
+  }
 }

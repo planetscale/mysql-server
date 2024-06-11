@@ -23,6 +23,8 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+// enable using Rapidjson library with std::string
+
 #include "classic_query_forwarder.h"
 
 #include <charconv>
@@ -35,7 +37,9 @@
 #include <system_error>
 #include <variant>
 
+#ifdef RAPIDJSON_NO_SIZETYPEDEFINE
 #include "my_rapidjson_size_t.h"
+#endif
 
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
@@ -52,7 +56,7 @@
 #include "implicit_commit_parser.h"
 #include "my_sys.h"  // get_charset_by_name
 #include "mysql/harness/stdx/expected.h"
-#include "mysql/harness/string_utils.h"  //ieq
+#include "mysql/harness/string_utils.h"  // ieq
 #include "mysql/harness/tls_error.h"
 #include "mysql/harness/utility/string.h"
 #include "mysqld_error.h"  // mysql errors

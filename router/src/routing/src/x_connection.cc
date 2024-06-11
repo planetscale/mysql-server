@@ -743,7 +743,7 @@ void MysqlRoutingXConnection::connect() {
   Scope_guard connect_done_guard([&]() { completed(); });
   auto &connector = this->connector();
 
-  auto connect_res = connector.connect();
+  auto connect_res = connector.connect(get_session_info());
   if (!connect_res) {
     const auto ec = connect_res.error();
 
