@@ -1255,6 +1255,53 @@ INSTANTIATE_TEST_SUITE_P(
                 std::to_string(MYSQL_ROUTER_VERSION_PATCH + 1),
             false, ""}));
 
+struct LocalClusterTestParams {
+  std::string expected_local_cluster;
+  unsigned bootstrap_cluster_id;
+  unsigned bootstrap_node_id;
+};
+
+class LocalClusterTest
+    : public RouterClusterSetBootstrapTest,
+      public ::testing::WithParamInterface<LocalClusterTestParams> {};
+
+TEST_P(LocalClusterTest, LocalCluster) {
+  const auto target_cluster_id = 0;
+
+  ClusterSetOptions cs_options;
+  cs_options.target_cluster_id = target_cluster_id;
+  cs_options.tracefile = "bootstrap_clusterset.js";
+  cs_options.expected_local_cluster = GetParam().expected_local_cluster;
+  create_clusterset(cs_options);
+
+  const unsigned bootstrap_cluster_id = GetParam().bootstrap_cluster_id;
+  const unsigned bootstrap_node_id = GetParam().bootstrap_node_id;
+
+  std::vector<std::string> bootstrap_params = {
+      "--bootstrap=127.0.0.1:" +
+          std::to_string(cs_options.topology.clusters[bootstrap_cluster_id]
+                             .nodes[bootstrap_node_id]
+                             .classic_port),
+      "-d", bootstrap_directory.name()};
+
+  auto &router = launch_router_for_bootstrap(bootstrap_params, EXIT_SUCCESS);
+
+  check_exit_code(router, EXIT_SUCCESS);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    LocalCluster, LocalClusterTest,
+    ::testing::Values(LocalClusterTestParams{"cluster-name-1", /*cluster_id*/ 0,
+                                             /*node_id*/ 0},
+                      LocalClusterTestParams{"cluster-name-1", /*cluster_id*/ 0,
+                                             /*node_id*/ 1},
+                      LocalClusterTestParams{"cluster-name-2", /*cluster_id*/ 1,
+                                             /*node_id*/ 0},
+                      LocalClusterTestParams{"cluster-name-2", /*cluster_id*/ 1,
+                                             /*node_id*/ 2},
+                      LocalClusterTestParams{"cluster-name-3", /*cluster_id*/ 2,
+                                             /*node_id*/ 0}));
+
 int main(int argc, char *argv[]) {
   init_windows_sockets();
   ProcessManager::set_origin(Path(argv[0]).dirname());

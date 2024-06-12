@@ -92,14 +92,27 @@ TEST_F(MetadataCacheTTLTest, Quarantine) {
 
   const auto router_ro_port = port_pool_.get_next_available();
   const auto router_rw_port = port_pool_.get_next_available();
+  const auto static_router_port = port_pool_.get_next_available();
+
   const std::string metadata_cache_section =
       get_metadata_cache_section(ClusterType::GR_V2, "0.2");
   const std::string routing_rw = get_metadata_cache_routing_section(
       router_rw_port, "PRIMARY", "first-available", "rw");
   const std::string routing_ro = get_metadata_cache_routing_section(
       router_ro_port, "SECONDARY", "round-robin", "ro");
+  // Static routing is needed so that destination will not get removed from the
+  // quarantine when it is no longer reported in md
+  const std::string static_routing =
+      mysql_harness::ConfigBuilder::build_section(
+          "routing:static",
+          {
+              {"bind_port", std::to_string(static_router_port)},
+              {"destinations", "127.0.0.1:" + std::to_string(classic_ports[1])},
+              {"routing_strategy", "first-available"},
+          });
 
-  auto &router = launch_router(metadata_cache_section, routing_rw + routing_ro,
+  auto &router = launch_router(metadata_cache_section,
+                               routing_rw + routing_ro + static_routing,
                                classic_ports, EXIT_SUCCESS,
                                /*wait_for_notify_ready=*/30s);
   EXPECT_TRUE(wait_for_transaction_count_increase(http_ports[0], 2));
@@ -120,7 +133,7 @@ TEST_F(MetadataCacheTTLTest, Quarantine) {
   verify_new_connection_fails(router_ro_port);
   EXPECT_TRUE(wait_log_contains(
       router,
-      "add destination '127.0.0.1:" + std::to_string(classic_ports[1]) +
+      "Add destination '127.0.0.1:" + std::to_string(classic_ports[1]) +
           "' to quarantine",
       1s));
 

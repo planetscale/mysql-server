@@ -143,6 +143,7 @@ var nodes = function(host, port_and_state) {
       router_version: mysqld.global.router_version,
       router_rw_classic_port: mysqld.global.router_rw_classic_port,
       router_ro_classic_port: mysqld.global.router_ro_classic_port,
+      router_rw_split_classic_port: mysqld.global.router_rw_split_classic_port,
       router_rw_x_port: mysqld.global.router_rw_x_port,
       router_ro_x_port: mysqld.global.router_ro_x_port,
       router_metadata_user: mysqld.global.router_metadata_user,
@@ -167,6 +168,8 @@ var nodes = function(host, port_and_state) {
           "router_clusterset_present",
           "router_bootstrap_target_type",
           "router_router_select_cs_options",
+          "get_guidelines_router_info",
+          "get_routing_guidelines",
         ],
         options);
 

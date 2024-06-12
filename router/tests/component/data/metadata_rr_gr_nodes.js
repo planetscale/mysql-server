@@ -95,6 +95,7 @@ if (mysqld.global.innodb_cluster_name === undefined) {
       cluster_type: mysqld.global.cluster_type,
       innodb_cluster_name: mysqld.global.innodb_cluster_name,
       router_options: mysqld.global.router_options,
+      routing_guidelines: mysqld.global.routing_guidelines,
     };
 
     // prepare the responses for common statements
@@ -113,6 +114,9 @@ if (mysqld.global.innodb_cluster_name === undefined) {
           "router_update_last_check_in_v2",
           "router_clusterset_present",
           "router_select_router_options_view",
+          "get_routing_guidelines",
+          "get_routing_guidelines_version",
+          "get_guidelines_router_info",
         ],
         options);
 

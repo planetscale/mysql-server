@@ -40,7 +40,11 @@
 #include <gtest/gtest-param-test.h>
 #include <gtest/gtest.h>
 
+#define RAPIDJSON_HAS_STDSTRING 1
+
+#ifdef RAPIDJSON_NO_SIZETYPEDEFINE
 #include "my_rapidjson_size_t.h"
+#endif
 
 #include <rapidjson/pointer.h>
 

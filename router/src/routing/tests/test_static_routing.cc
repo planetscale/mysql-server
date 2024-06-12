@@ -57,7 +57,7 @@ class StaticRoutingTest : public ::testing::Test {
     dest_manager->add(mysql_harness::TcpDestination{"127.0.0.1", 42});
     dest_manager->add(mysql_harness::TcpDestination{"127.0.0.1", 43});
 
-    EXPECT_EQ(dest_manager->get_destinations().size(), 3);
+    EXPECT_EQ(dest_manager->get_destination_candidates().size(), 3);
   }
 
  protected:

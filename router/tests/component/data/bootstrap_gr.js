@@ -18,7 +18,11 @@ if (mysqld.global.gr_nodes === undefined) {
 }
 
 if (mysqld.global.cluster_name == undefined) {
-  mysqld.global.cluster_name = "mycluster";
+  mysqld.global.cluster_name = "my-cluster";
+}
+
+if (mysqld.global.router_expected_local_cluster == undefined) {
+  mysqld.global.router_expected_local_cluster = ".*";
 }
 
 if (mysqld.global.metadata_schema_version === undefined) {
@@ -87,6 +91,7 @@ var options = {
   last_insert_id: mysqld.global.last_insert_id,
   account_user_pattern:
       "mysql_router" + mysqld.global.last_insert_id + "_[0-9a-z]{7}",
+  router_expected_local_cluster: mysqld.global.router_expected_local_cluster,
 };
 
 var common_responses = common_stmts.prepare_statement_responses(
@@ -104,6 +109,9 @@ var common_responses = common_stmts.prepare_statement_responses(
       "router_select_cluster_instances_v2_gr",
       "router_start_transaction",
       "router_commit",
+      "get_routing_guidelines_version",
+      "get_guidelines_router_info",
+      "get_routing_guidelines",
 
       // account verification
       "router_select_metadata_v2_gr_account_verification",
@@ -128,6 +136,7 @@ var common_responses_regex = common_stmts.prepare_statement_responses_regex(
       "router_grant_on_v2_routers",
       "router_update_router_options_in_metadata",
       "router_select_config_defaults_stored_gr_cluster",
+      "router_update_local_cluster_in_metadata",
     ],
     options);
 

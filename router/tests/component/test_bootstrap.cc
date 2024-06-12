@@ -309,7 +309,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
   auto globals = mock_GR_metadata_as_json(
       "cluster-specific-id", classic_ports_to_gr_nodes({server_port}), 0,
       classic_ports_to_cluster_nodes({server_port}), 0, false, "127.0.0.1", "",
-      {2, 2, 0}, "mycluster");
+      {2, 2, 0}, "my-cluster");
   JsonAllocator allocator;
   // instrument the metadata in a way that the Router sees the configuration
   // defaults and configuration change schema as not present for its version, to
@@ -415,7 +415,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
                     Eq("cluster_type=rs"),               //
                     Eq("router_id=1"),                   //
                     StartsWith("user="),                 //
-                    Eq("metadata_cluster=mycluster"),    //
+                    Eq("metadata_cluster=my-cluster"),   //
                     Eq("ttl=0.5"),                       //
                     Eq("auth_cache_ttl=-1"),             //
                     Eq("auth_cache_refresh_interval=2")  //
@@ -426,7 +426,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
                     Eq("cluster_type=gr"),                //
                     Eq("router_id=1"),                    //
                     StartsWith("user="),                  //
-                    Eq("metadata_cluster=mycluster"),     //
+                    Eq("metadata_cluster=my-cluster"),    //
                     Eq("ttl=0.5"),                        //
                     Eq("auth_cache_ttl=-1"),              //
                     Eq("auth_cache_refresh_interval=2"),  //
@@ -438,7 +438,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
               ElementsAre(                     //
                   Eq("bind_address=0.0.0.0"),  //
                   Eq("bind_port=6446"),        //
-                  Eq("destinations=metadata-cache://mycluster/"
+                  Eq("destinations=metadata-cache://my-cluster/"
                      "?role=PRIMARY"),                     //
                   Eq("routing_strategy=first-available"),  //
                   Eq("protocol=classic")                   //
@@ -448,7 +448,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
               ElementsAre(                     //
                   Eq("bind_address=0.0.0.0"),  //
                   Eq("bind_port=6447"),        //
-                  Eq("destinations=metadata-cache://mycluster/"
+                  Eq("destinations=metadata-cache://my-cluster/"
                      "?role=SECONDARY"),                             //
                   Eq("routing_strategy=round-robin-with-fallback"),  //
                   Eq("protocol=classic")                             //
@@ -458,7 +458,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
               ElementsAre(                     //
                   Eq("bind_address=0.0.0.0"),  //
                   Eq("bind_port=6450"),        //
-                  Eq("destinations=metadata-cache://mycluster/"
+                  Eq("destinations=metadata-cache://my-cluster/"
                      "?role=PRIMARY_AND_SECONDARY"),   //
                   Eq("routing_strategy=round-robin"),  //
                   Eq("protocol=classic"),              //
@@ -470,30 +470,30 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
 
   EXPECT_THAT(
       sections["routing:bootstrap_x_rw"],
-      ElementsAre(                                                      //
-          Eq("bind_address=0.0.0.0"),                                   //
-          Eq("bind_port=6448"),                                         //
-          Eq("destinations=metadata-cache://mycluster/?role=PRIMARY"),  //
-          Eq("routing_strategy=first-available"),                       //
-          Eq("protocol=x"),                                             //
-          Eq("router_require_enforce=0"),                               //
-          Eq("client_ssl_ca="),                                         //
-          Eq("server_ssl_key="),                                        //
-          Eq("server_ssl_cert=")                                        //
+      ElementsAre(                                                       //
+          Eq("bind_address=0.0.0.0"),                                    //
+          Eq("bind_port=6448"),                                          //
+          Eq("destinations=metadata-cache://my-cluster/?role=PRIMARY"),  //
+          Eq("routing_strategy=first-available"),                        //
+          Eq("protocol=x"),                                              //
+          Eq("router_require_enforce=0"),                                //
+          Eq("client_ssl_ca="),                                          //
+          Eq("server_ssl_key="),                                         //
+          Eq("server_ssl_cert=")                                         //
           ));
 
   EXPECT_THAT(
       sections["routing:bootstrap_x_ro"],
-      ElementsAre(                                                        //
-          Eq("bind_address=0.0.0.0"),                                     //
-          Eq("bind_port=6449"),                                           //
-          Eq("destinations=metadata-cache://mycluster/?role=SECONDARY"),  //
-          Eq("routing_strategy=round-robin-with-fallback"),               //
-          Eq("protocol=x"),                                               //
-          Eq("router_require_enforce=0"),                                 //
-          Eq("client_ssl_ca="),                                           //
-          Eq("server_ssl_key="),                                          //
-          Eq("server_ssl_cert=")                                          //
+      ElementsAre(                                                         //
+          Eq("bind_address=0.0.0.0"),                                      //
+          Eq("bind_port=6449"),                                            //
+          Eq("destinations=metadata-cache://my-cluster/?role=SECONDARY"),  //
+          Eq("routing_strategy=round-robin-with-fallback"),                //
+          Eq("protocol=x"),                                                //
+          Eq("router_require_enforce=0"),                                  //
+          Eq("client_ssl_ca="),                                            //
+          Eq("server_ssl_key="),                                           //
+          Eq("server_ssl_cert=")                                           //
           ));
 
   RecordProperty("Worklog", "15649");
@@ -596,7 +596,7 @@ TEST_P(RouterBootstrapExposeDefaults, BootstrapExposeDefaults) {
   auto globals = mock_GR_metadata_as_json(
       "cluster-specific-id", classic_ports_to_gr_nodes({server_port}), 0,
       classic_ports_to_cluster_nodes({server_port}), 0, false, "127.0.0.1", "",
-      {2, 2, 0}, "mycluster");
+      {2, 2, 0}, "my-cluster");
   JsonAllocator allocator;
   // instrument the metadata in a way that the Router sees the configuration
   // defaults and configuration change schema as not present for its version, to
@@ -696,7 +696,7 @@ void check_bind_port(const std::string &conf_file_content,
       "[routing:"s + route_name + "]\n"
       "bind_address=0.0.0.0\n" +
       "bind_port=" + std::to_string(expected_bind_port) + "\n" +
-      "destinations=metadata-cache://mycluster/?role=" +  server_role + "\n" +
+      "destinations=metadata-cache://my-cluster/?role=" +  server_role + "\n" +
       "routing_strategy=" + routing_strategy + "\n" +
       "protocol=" + protocol_name + "\n";
   // clang-format on
@@ -894,7 +894,7 @@ TEST_P(RouterReBootstrapOkBasePortTest, RouterReBootstrapOkBasePort) {
 
   set_mock_metadata(http_port, "00000000-0000-0000-0000-0000000000g1",
                     classic_ports_to_gr_nodes({server_port}), 0, {server_port},
-                    0, false, "127.0.0.1", "", {2, 2, 0}, "mycluster");
+                    0, false, "127.0.0.1", "", {2, 2, 0}, "my-cluster");
 
   // do the first bootstrap
   std::vector<std::string> cmdline_first_bs = {
@@ -1844,7 +1844,7 @@ INSTANTIATE_TEST_SUITE_P(
 /**
  * @test
  * This test proves that bootstrap will not print out the success message
- * ("MySQL Router configured for the InnoDB cluster 'mycluster'" and many lines
+ * ("MySQL Router configured for the InnoDB cluster 'my-cluster'" and many lines
  *  that follow it) until entire bootstrap succeeds.
  *
  * At the time of writing, the last operation that bootstrap performs is
@@ -1905,7 +1905,7 @@ TEST_F(RouterBootstrapTest,
   // displayed
   EXPECT_THAT(router.get_full_output(), ::testing::Not(::testing::HasSubstr(
                                             "MySQL Router configured for the "
-                                            "InnoDB cluster 'mycluster'")));
+                                            "InnoDB cluster 'my-cluster'")));
 
   server_mock.kill();
 }
@@ -3691,6 +3691,76 @@ INSTANTIATE_TEST_SUITE_P(
             "Error: Unsupported MySQL Server version '.*'. Maximal supported "
             "version is '" +
                 std::to_string(max_supported_version) + "'."}));
+
+TEST_F(RouterComponentBootstrapTest, LocalClusterFromClusterName) {
+  // launch our Cluster mock
+  const auto mock_server_port = port_pool_.get_next_available();
+  const auto mock_http_port = port_pool_.get_next_available();
+
+  mock_server_spawner().spawn(mock_server_cmdline("bootstrap_gr.js")
+                                  .port(mock_server_port)
+                                  .http_port(mock_http_port)
+                                  .args());
+
+  // Cluster name reported by LocalCluster should be the same as name of the
+  // cluster that was used for bootstrap
+  const std::string cluster_name = "test_local";
+  auto json_doc = mock_GR_metadata_as_json(
+      "gr-uuid", classic_ports_to_gr_nodes({mock_server_port}), 0,
+      {mock_server_port});
+  JsonAllocator allocator;
+  json_doc.AddMember(
+      JsonValue("router_expected_local_cluster", allocator),
+      JsonValue(cluster_name.data(), cluster_name.size(), allocator),
+      allocator);
+  json_doc.AddMember(
+      JsonValue("cluster_name", allocator),
+      JsonValue(cluster_name.data(), cluster_name.size(), allocator),
+      allocator);
+  const auto json_str = json_to_string(json_doc);
+  ASSERT_NO_THROW(MockServerRestClient(mock_http_port).set_globals(json_str));
+
+  std::vector<std::string> bootstrap_params = {
+      "--bootstrap=127.0.0.1:" + std::to_string(mock_server_port), "-d",
+      bootstrap_dir.name()};
+
+  auto &router = launch_router_for_bootstrap(bootstrap_params, EXIT_SUCCESS);
+  check_exit_code(router, EXIT_SUCCESS);
+}
+
+TEST_F(RouterComponentBootstrapTest, LocalClusterFromConf) {
+  // launch our Cluster mock
+  const auto mock_server_port = port_pool_.get_next_available();
+  const auto mock_http_port = port_pool_.get_next_available();
+
+  mock_server_spawner().spawn(mock_server_cmdline("bootstrap_gr.js")
+                                  .port(mock_server_port)
+                                  .http_port(mock_http_port)
+                                  .args());
+
+  // Cluster name reported by LocalCluster should be the same as specified by
+  // --conf-local-cluster setting
+  const std::string conf_cluster_name = "test_local";
+  auto json_doc = mock_GR_metadata_as_json(
+      "gr-uuid", classic_ports_to_gr_nodes({mock_server_port}), 0,
+      {mock_server_port});
+  JsonAllocator allocator;
+  json_doc.AddMember(
+      JsonValue("router_expected_local_cluster", allocator),
+      JsonValue(conf_cluster_name.data(), conf_cluster_name.size(), allocator),
+      allocator);
+  json_doc.AddMember(JsonValue("cluster_name", allocator),
+                     JsonValue("foobar", allocator), allocator);
+  const auto json_str = json_to_string(json_doc);
+  ASSERT_NO_THROW(MockServerRestClient(mock_http_port).set_globals(json_str));
+
+  std::vector<std::string> bootstrap_params = {
+      "--bootstrap=127.0.0.1:" + std::to_string(mock_server_port), "-d",
+      bootstrap_dir.name(), "--conf-local-cluster", conf_cluster_name};
+
+  auto &router = launch_router_for_bootstrap(bootstrap_params, EXIT_SUCCESS);
+  check_exit_code(router, EXIT_SUCCESS);
+}
 
 int main(int argc, char *argv[]) {
   init_windows_sockets();

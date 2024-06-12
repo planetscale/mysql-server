@@ -27,6 +27,10 @@ if (mysqld.global.metadata_schema_version === undefined) {
   mysqld.global.metadata_schema_version = [2, 2, 0];
 }
 
+if (mysqld.global.routing_guidelines === undefined) {
+  mysqld.global.routing_guidelines = "";
+}
+
 ({
   handshake: {
     greeting: {
@@ -52,6 +56,7 @@ if (mysqld.global.metadata_schema_version === undefined) {
       router_options: mysqld.global.router_options,
       clusterset_simulate_cluster_not_found:
           mysqld.global.simulate_cluster_not_found,
+      routing_guidelines: mysqld.global.routing_guidelines,
     };
 
     // TODO: clean those not needed here
@@ -70,6 +75,9 @@ if (mysqld.global.metadata_schema_version === undefined) {
           "router_select_router_options_view",
           "router_commit",
           "router_rollback",
+          "get_guidelines_router_info",
+          "get_routing_guidelines",
+          "get_routing_guidelines_version",
 
           "select_port",
 

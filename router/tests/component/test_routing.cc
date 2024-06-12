@@ -1370,17 +1370,6 @@ const RoutingConfigParam routing_config_param[] = {
                    ::testing::Contains(::testing::HasSubstr(
                        "option routing_strategy in [routing] needs a value")));
      }},
-    {"missing_routing_strategy",
-     {
-         {"destinations", "127.0.0.1:3306"},
-         {"bind_address", "127.0.0.1"},
-         {"bind_port", "6000"},
-     },
-     [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines,
-                   ::testing::Contains(::testing::HasSubstr(
-                       "option routing_strategy in [routing] is required")));
-     }},
     {"thread_stack_size_negative",
      {
          {"destinations", "127.0.0.1:3306"},

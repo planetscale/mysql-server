@@ -48,6 +48,8 @@ var round = 0;
           "router_clusterset_present",
           "router_select_router_options_view",
           "router_commit",
+          "get_guidelines_router_info",
+          "get_routing_guidelines",
         ],
         options);
 

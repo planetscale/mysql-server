@@ -164,7 +164,7 @@ JsonValue mock_GR_metadata_as_json(
     const std::string &gr_node_host = "127.0.0.1",
     const std::string &router_options = "",
     const mysqlrouter::MetadataSchemaVersion &metadata_version =
-        mysqlrouter::MetadataSchemaVersion{2, 2, 0},
+        mysqlrouter::MetadataSchemaVersion{2, 3, 0},
     const std::string &cluster_name = "test");
 
 /**

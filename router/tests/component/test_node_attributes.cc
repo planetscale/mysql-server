@@ -1203,32 +1203,17 @@ TEST_P(InvalidAttributesTagsTest, InvalidAttributesTags) {
 
   SCOPED_TRACE("// Check the expected warnings were logged once");
   check_log_contains(
-      *router,
-      "Error parsing _hidden from attributes JSON string: not a valid JSON "
-      "object",
-      1);
-  check_log_contains(
-      *router,
-      "Error parsing _disconnect_existing_sessions_when_hidden from "
-      "attributes "
-      "JSON string: not a valid JSON object",
+      *router, "Error parsing attributes JSON string: not a valid JSON object",
       1);
 
   SCOPED_TRACE("// Set the node's attributes.tags to invalid JSON");
   set_nodes_attributes({R"({"tags" : false})"});
 
   SCOPED_TRACE("// Check the expected warnings were logged once");
-  check_log_contains(
-      *router,
-      "Error parsing _hidden from attributes JSON string: tags - not a valid "
-      "JSON object",
-      1);
-  check_log_contains(
-      *router,
-      "Error parsing _disconnect_existing_sessions_when_hidden from "
-      "attributes "
-      "JSON string: tags - not a valid JSON object",
-      1);
+  check_log_contains(*router,
+                     "Error parsing attributes JSON string: tags field is not "
+                     "a valid JSON object",
+                     1);
 
   SCOPED_TRACE("// Set the attributes.tags to be invalid types");
   set_nodes_attributes(

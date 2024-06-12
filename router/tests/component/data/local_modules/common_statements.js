@@ -1,7 +1,7 @@
 var defaults = {
   version_comment: "community",
   account_user: "root",
-  metadata_schema_version: [2, 2, 0],
+  metadata_schema_version: [2, 3, 0],
   exec_time: 0.0,
   // array-of-array
   // - server-uuid
@@ -54,13 +54,15 @@ var defaults = {
             "host": "127.0.0.1",
             "classic_port": 11010,
             "http_port": 11011,
-            "attributes": "{}"
+            "attributes": "{}",
+            "version": "9.0.0"
           },
           {
             "host": "127.0.0.1",
             "classic_port": 11012,
             "http_port": 11013,
-            "attributes": "{}"
+            "attributes": "{}",
+            "version": "9.0.0"
           }
         ],
         "primary_node_id": 0
@@ -76,13 +78,15 @@ var defaults = {
             "host": "127.0.0.1",
             "classic_port": 11014,
             "http_port": 11015,
-            "attributes": "{}"
+            "attributes": "{}",
+            "version": "9.0.0"
           },
           {
             "host": "127.0.0.1",
             "classic_port": 11016,
             "http_port": 11017,
-            "attributes": "{}"
+            "attributes": "{}",
+            "version": "9.0.0"
           }
         ],
         "primary_node_id": 0
@@ -108,7 +112,11 @@ var defaults = {
   rest_user_credentials: [],
   version: "8.3.0",  // SELECT @@version;
   router_expected_target_cluster: ".*",
+  router_expected_local_cluster: ".*",
   router_options: "",
+  client_ssl_mode: "PREFERRED",
+  server_ssl_mode: "AS_CLIENT",
+
   gr_member_state: "ONLINE",
   gr_members_all: 3,
   gr_members_recovering: 0,
@@ -116,6 +124,11 @@ var defaults = {
   current_instance_attributes: null,
   config_defaults_stored_is_null: 0,
   last_insert_id: 1,
+
+  routing_guidelines: "",  // Use default routing configuration
+
+  router_hostname: "router-host",
+  router_options: "",
 };
 
 function ensure_type(options, field, expected_type) {
@@ -229,7 +242,7 @@ function get_response(stmt_key, options) {
     case "router_select_group_membership":
       return {
         stmt:
-            "SELECT member_id, member_host, member_port, member_state, member_role, @@group_replication_single_primary_mode FROM performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
+            "SELECT member_id, member_host, member_port, member_state, member_role, member_version, @@group_replication_single_primary_mode FROM performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
         exec_time: options["exec_time"],
         result: {
           columns: [
@@ -238,6 +251,7 @@ function get_response(stmt_key, options) {
             {"name": "member_port", "type": "LONG"},
             {"name": "member_state", "type": "STRING"},
             {"name": "member_role", "type": "STRING"},
+            {"name": "member_version", "type": "STRING"},
             {
               "name": "@@group_replication_single_primary_mode",
               "type": "STRING"
@@ -251,6 +265,7 @@ function get_response(stmt_key, options) {
                   currentValue[2],
                   currentValue[3],
                   currentValue[4],
+                  options.version,
                   "ON",
                 ];
               }),
@@ -259,7 +274,7 @@ function get_response(stmt_key, options) {
     case "router_select_group_membership_pre_8_0_2":
       return {
         stmt:
-            "SELECT member_id, member_host, member_port, member_state, IF(g.primary_uuid = '' OR member_id = g.primary_uuid, 'PRIMARY', 'SECONDARY') as member_role, @@group_replication_single_primary_mode FROM (SELECT IFNULL(variable_value, '') AS primary_uuid FROM performance_schema.global_status WHERE variable_name = 'group_replication_primary_member') g, performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
+            "SELECT member_id, member_host, member_port, member_state, IF(g.primary_uuid = '' OR member_id = g.primary_uuid, 'PRIMARY', 'SECONDARY') as member_role, '', @@group_replication_single_primary_mode FROM (SELECT IFNULL(variable_value, '') AS primary_uuid FROM performance_schema.global_status WHERE variable_name = 'group_replication_primary_member') g, performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
         result: {
           columns: [
             {"name": "member_id", "type": "STRING"},
@@ -267,6 +282,7 @@ function get_response(stmt_key, options) {
             {"name": "member_port", "type": "LONG"},
             {"name": "member_state", "type": "STRING"},
             {"name": "member_role", "type": "STRING"},
+            {"": "", "type": "STRING"},
             {
               "name": "@@group_replication_single_primary_mode",
               "type": "STRING"
@@ -280,6 +296,7 @@ function get_response(stmt_key, options) {
                   currentValue[2],
                   currentValue[3],
                   currentValue[4],
+                  "",
                   "ON",
                 ];
               }),
@@ -526,9 +543,9 @@ function get_response(stmt_key, options) {
       return {
         "stmt_regex":
             "^UPDATE mysql_innodb_cluster_metadata\\.v2_routers SET attributes = " +
-            "JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(IF\\(attributes IS NULL, '\\{\\}', attributes\\),    " +
+            "JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(IF\\(attributes IS NULL, '\\{\\}', attributes\\),    " +
             "'\\$\\.RWEndpoint', '.*'\\),    '\\$\\.ROEndpoint', '.*'\\),    '\\$\\.RWSplitEndpoint', '.*'\\),    '\\$\\.RWXEndpoint', '.*'\\),    " +
-            "'\\$\\.ROXEndpoint', '.*'\\),    '\\$\\.MetadataUser', '.*'\\),    '\\$\\.bootstrapTargetType', '.*'\\),    '\\$\\.Configuration', CAST\\('(.*)' as JSON\\)\\), " +
+            "'\\$\\.ROXEndpoint', '.*'\\),    '\\$\\.MetadataUser', '.*'\\),    '\\$\\.SupportedRoutingGuidelinesVersion', '.*'\\),    '\\$\\.bootstrapTargetType', '.*'\\),    '\\$\\.Configuration', CAST\\('(.*)' as JSON\\)\\), " +
             "version = '.*', cluster_id = '.*' " +
             "WHERE router_id = .*",
         "ok": {}
@@ -537,9 +554,9 @@ function get_response(stmt_key, options) {
       return {
         "stmt_regex":
             "^UPDATE mysql_innodb_cluster_metadata\\.v2_routers SET attributes = " +
-            "JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(IF\\(attributes IS NULL, '\\{\\}', attributes\\),    " +
+            "JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(JSON_SET\\(IF\\(attributes IS NULL, '\\{\\}', attributes\\),    " +
             "'\\$\\.RWEndpoint', '.*'\\),    '\\$\\.ROEndpoint', '.*'\\),    '\\$\\.RWSplitEndpoint', '.*'\\),    '\\$\\.RWXEndpoint', '.*'\\),    " +
-            "'\\$\\.ROXEndpoint', '.*'\\),    '\\$\\.MetadataUser', '.*'\\),    '\\$\\.bootstrapTargetType', '.*'\\),    '\\$\\.Configuration', CAST\\('(.*)' as JSON\\)\\), " +
+            "'\\$\\.ROXEndpoint', '.*'\\),    '\\$\\.MetadataUser', '.*'\\),    '\\$\\.SupportedRoutingGuidelinesVersion', '.*'\\),    '\\$\\.bootstrapTargetType', '.*'\\),    '\\$\\.Configuration', CAST\\('(.*)' as JSON\\)\\), " +
             "version = '.*', clusterset_id = '.*' " +
             "WHERE router_id = .*",
         "ok": {}
@@ -1204,7 +1221,7 @@ function get_response(stmt_key, options) {
     case "router_clusterset_select_gr_members_status":
       return {
         stmt:
-            "SELECT member_id, member_host, member_port, member_state, member_role, @@group_replication_single_primary_mode FROM performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
+            "SELECT member_id, member_host, member_port, member_state, member_role, member_version, @@group_replication_single_primary_mode FROM performance_schema.replication_group_members WHERE channel_name = 'group_replication_applier'",
         result: {
           columns: [
             {"name": "member_id", "type": "STRING"},
@@ -1212,6 +1229,7 @@ function get_response(stmt_key, options) {
             {"name": "member_port", "type": "LONG"},
             {"name": "member_state", "type": "STRING"},
             {"name": "member_role", "type": "STRING"},
+            {"name": "member_version", "type": "STRING"},
             {
               "name": "@@group_replication_single_primary_mode",
               "type": "STRING"
@@ -1222,7 +1240,7 @@ function get_response(stmt_key, options) {
                     .gr_nodes.map(function(node) {
                       return [
                         node.uuid, "127.0.0.1", node.classic_port, node.status,
-                        node.role, "ON"
+                        node.role, node.version, "ON"
                       ];
                     }),
         }
@@ -1313,6 +1331,92 @@ function get_response(stmt_key, options) {
             "JSON_MERGE_PATCH\\(IF\\(router_options IS NULL, '\\{\\}', router_options\\), " +
             "CAST\\('(.*)' as JSON\\)\\) WHERE clusterset_id = '.*'",
         ok: {}
+      };
+    case "router_update_local_cluster_in_metadata":
+      return {
+        "stmt_regex":
+            "^UPDATE mysql_innodb_cluster_metadata\\.v2_routers SET " +
+            "attributes = JSON_SET\\(IF\\(attributes IS NULL, '\\{\\}', attributes\\), '\\$\\.LocalCluster', '" +
+            options.router_expected_local_cluster + "'\\) " +
+            "WHERE router_id = .*",
+        "ok": {}
+      };
+    case "get_local_cluster_name":
+      return {
+        stmt:
+            "select cluster_name from mysql_innodb_cluster_metadata.v2_this_instance",
+        result: {
+          columns: [{"name": "cluster_name", "type": "VAR_STRING"}],
+          rows:
+              [[(options.bootstrap_target_type == "cluster") ?
+                    options.innodb_cluster_name :
+                    options.clusterset_data
+                        .clusters[options.clusterset_data.this_cluster_id]
+                        .name]]
+        }
+      };
+    case "get_routing_guidelines_version":
+      return {
+        stmt: "SELECT guideline->>'$.version' FROM\n" +
+            "mysql_innodb_cluster_metadata.routing_guidelines WHERE guideline_id = (\n" +
+            "  SELECT COALESCE(RO.router_options->>'$.guideline',\n" +
+            "                  CS.router_options->>'$.guideline',\n" +
+            "                  CL.router_options->>'$.guideline')\n" +
+            "  FROM\n" +
+            "    mysql_innodb_cluster_metadata.v2_router_options AS RO\n" +
+            "  LEFT JOIN\n" +
+            "    mysql_innodb_cluster_metadata.clustersets AS CS ON RO.clusterset_id = CS.clusterset_id\n" +
+            "  LEFT JOIN\n" +
+            "    mysql_innodb_cluster_metadata.clusters AS CL ON RO.cluster_id = CL.cluster_id\n" +
+            "  WHERE RO.router_id = " + options.router_id + ")",
+        result: {
+          columns: [{"name": "version", "type": "VAR_STRING"}],
+          rows: [["1.0"]]
+        }
+      };
+    case "get_guidelines_router_info":
+      return {
+        stmt:
+            "SELECT address, attributes->>'$.ROEndpoint', attributes->>'$.RWEndpoint', attributes->>'$.RWSplitEndpoint', attributes->>'$.ROXEndpoint', attributes->>'$.RWXEndpoint', attributes->>'$.LocalCluster', options FROM mysql_innodb_cluster_metadata.v2_routers WHERE router_id=" +
+            options.router_id,
+        result: {
+          columns: [
+            {"name": "address", "type": "STRING"},
+            {"name": "ro_endpoint", "type": "STRING"},
+            {"name": "rw_endpoint", "type": "STRING"},
+            {"name": "rw_split_endpoint", "type": "STRING"},
+            {"name": "ro_x_endpoint", "type": "STRING"},
+            {"name": "rw_x_endpoint", "type": "STRING"},
+            {"name": "target_cluster", "type": "STRING"},
+            {"name": "options", "type": "STRING"}
+          ],
+          rows: [[
+            options.router_hostname, options.router_ro_classic_port,
+            options.router_rw_classic_port,
+            options.router_rw_split_classic_port, options.router_ro_x_port,
+            options.router_rw_x_port, options.innodb_cluster_name,
+            options.router_options
+          ]]
+        }
+      };
+    case "get_routing_guidelines":
+      return {
+        stmt: "SELECT guideline FROM\n" +
+            "mysql_innodb_cluster_metadata.routing_guidelines WHERE guideline_id = (\n" +
+            "  SELECT COALESCE(RO.router_options->>'$.guideline',\n" +
+            "                  CS.router_options->>'$.guideline',\n" +
+            "                  CL.router_options->>'$.guideline')\n" +
+            "  FROM\n" +
+            "    mysql_innodb_cluster_metadata.v2_router_options AS RO\n" +
+            "  LEFT JOIN\n" +
+            "    mysql_innodb_cluster_metadata.clustersets AS CS ON RO.clusterset_id = CS.clusterset_id\n" +
+            "  LEFT JOIN\n" +
+            "    mysql_innodb_cluster_metadata.clusters AS CL ON RO.cluster_id = CL.cluster_id\n" +
+            "  WHERE RO.router_id = " + options.router_id + ")",
+        result: {
+          columns: [{"name": "guidelines", "type": "VAR_STRING"}],
+          rows: [[options.routing_guidelines]]
+        }
       };
   };
 };

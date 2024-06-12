@@ -1842,9 +1842,9 @@ TEST_P(NodeUnavailableTest, NodeUnavailable) {
 
     EXPECT_THAT(connected_ports,
                 ElementsAre(node_2,  // try [1], fallover to [2]
-                            node_2,  // use [2]
                             node_3,  // use [3]
-                            node_2   // use [2]
+                            node_2,  // use [2]
+                            node_3   // use [3]
                             ));
   }
 }

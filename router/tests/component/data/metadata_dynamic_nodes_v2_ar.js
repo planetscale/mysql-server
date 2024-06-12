@@ -123,6 +123,8 @@ var common_responses = common_stmts.prepare_statement_responses(
       "router_select_schema_version",
       "router_select_view_id_v2_ar",
       "router_select_router_options_view",
+      "get_guidelines_router_info",
+      "get_routing_guidelines",
     ],
     options);
 

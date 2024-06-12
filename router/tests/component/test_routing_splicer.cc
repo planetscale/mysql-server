@@ -147,7 +147,7 @@ TEST_F(SplicerTest, invalid_metadata) {
               {
                   {"bind_port", std::to_string(router_port)},
                   {"destinations",
-                   "metadata-cache://somecluster/default?role=PRIMARY"},
+                   "metadata-cache://test/default?role=PRIMARY"},
                   {"routing_strategy", "round-robin"},
                   {"client_ssl_mode", "required"},
                   {"client_ssl_key", valid_ssl_key_},

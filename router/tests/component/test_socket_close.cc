@@ -2082,7 +2082,7 @@ TEST_P(SharedQuarantineSocketClose, cross_plugin_socket_shutdown) {
   EXPECT_TRUE(wait_for_port_unused(bind_port_r1, 120s));
   SCOPED_TRACE(
       "// second routing plugin has closed socket even though there were no "
-      "incoming connections (unless it is using first-available policy)");
+      "incoming connections (unless it is using first-available strategy)");
   EXPECT_EQ(GetParam().is_socket_closed,
             wait_for_port_unused(bind_port_r2, 1s));
 }
