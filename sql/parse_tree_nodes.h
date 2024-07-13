@@ -1822,6 +1822,7 @@ class PT_set_operation : public PT_query_expression_body {
  protected:
   bool contextualize_setop(Parse_context *pc, Query_term_type setop_type,
                            Surrounding_context context);
+  void merge_children(Query_term_set_op *setop, Query_term_set_op *lower);
   PT_query_expression_body *m_lhs;
   bool m_is_distinct;
   PT_query_expression_body *m_rhs;
