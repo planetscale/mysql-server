@@ -15597,6 +15597,7 @@ bool mysql_prepare_alter_table(THD *thd, const dd::Table *src_table,
     /* when removing the secondary_engine, remove also part_info from
      * HA_CREATE_INFO */
     create_info->part_info = nullptr;
+    create_info->secondary_load = false;
   }
 
   if (!(used_fields & HA_CREATE_USED_AUTO) && table->found_next_number_field) {

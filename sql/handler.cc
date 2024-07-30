@@ -2715,7 +2715,44 @@ void HA_CREATE_INFO::init_create_options_from_share(const TABLE_SHARE *share,
   /* Copy the partitioning information that exists in the table share */
   if (share->m_part_info != nullptr) {
     part_info = share->m_part_info->get_clone(current_thd);
+    part_info->part_type = share->m_part_info->part_type;
+    /* copy the attribute names on which partitioning takes place */
+    part_info->list_of_part_fields = share->m_part_info->list_of_part_fields;
+    if (share->m_part_info->list_of_part_fields) {
+      part_info->part_func_string = nullptr;
+      part_info->part_field_list.clear();
+      for (auto &part_name : share->m_part_info->part_field_list) {
+        char *attr =
+            strmake_root(current_thd->mem_root, &part_name, strlen(&part_name));
+        part_info->part_field_list.push_back(attr);
+      }
+    } else {
+      // the arithmetic on part_func_string is to remove the surrounding ``
+      part_info->part_func_string = strmake_root(
+          current_thd->mem_root, share->m_part_info->part_func_string + 1,
+          share->m_part_info->part_func_len - 2);
+      part_info->part_func_len = share->m_part_info->part_func_len;
+    }
+    /* Subpartitioning-related info */
     part_info->subpart_type = share->m_part_info->subpart_type;
+    part_info->num_subparts = share->m_part_info->num_subparts;
+    /* copy the attribute names on which subpartitioning takes place */
+    part_info->list_of_subpart_fields =
+        share->m_part_info->list_of_subpart_fields;
+    if (share->m_part_info->list_of_subpart_fields) {
+      part_info->subpart_func_string = nullptr;
+      part_info->subpart_field_list.clear();
+      for (auto &subpart_name : share->m_part_info->subpart_field_list) {
+        char *attr = strmake_root(current_thd->mem_root, &subpart_name,
+                                  strlen(&subpart_name));
+        part_info->subpart_field_list.push_back(attr);
+      }
+    } else if (share->m_part_info->subpart_func_string != nullptr) {
+      // the arithmetic on part_func_string is to remove the surrounding ``
+      part_info->subpart_func_string = strmake_root(
+          current_thd->mem_root, share->m_part_info->subpart_func_string + 1,
+          share->m_part_info->subpart_func_len - 2);
+    }
   }
 
   if (!(used_fields & HA_CREATE_USED_AUTOEXTEND_SIZE)) {
