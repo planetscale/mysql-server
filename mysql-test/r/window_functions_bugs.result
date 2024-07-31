@@ -2345,3 +2345,62 @@ SELECT c0 FROM t WHERE 5 > 1 GROUP BY c0 ORDER BY c0 DESC LIMIT 1;
 c0
 3
 DROP TABLE t, tt;
+# Bug#36846564 Window function applied to BIT column produces non-BIT type
+#              Same issue with materialized derived table
+CREATE TABLE t0 (c0 BIT(8));
+# insert ASCII codes of 'A', 'B'
+INSERT INTO t0 VALUES (65), (66);
+SELECT HEX(c0) FROM t0;
+HEX(c0)
+41
+42
+SELECT c0 FROM t0;
+c0
+A
+B
+# Window functions used to return INT instead of BIT
+SELECT c0, ':', LEAD(c0) OVER() FROM t0;
+c0	:	LEAD(c0) OVER()
+A	:	B
+B	:	NULL
+SELECT c0, ':', FIRST_VALUE(c0) OVER() FROM t0;
+c0	:	FIRST_VALUE(c0) OVER()
+A	:	A
+B	:	A
+# MAX as window function ditto
+SELECT c0, ':', MAX(c0) OVER() FROM t0;
+c0	:	MAX(c0) OVER()
+A	:	B
+B	:	B
+# MAX as non-window aggregate function was ok, returned BIT
+SELECT MAX(c0) FROM t0;
+MAX(c0)
+B
+#
+# Same issue for a (materialized) derived table:
+#
+# materialized: used to return INT instead of BIT
+SET optimizer_switch="derived_merge=off";
+SELECT c0 FROM (SELECT NULLIF(c0,1) FROM t0) t0 (c0) ORDER BY c0;
+c0
+A
+B
+# not materialized: was ok, returned BIT
+SET optimizer_switch="derived_merge=on";
+SELECT c0 FROM (SELECT NULLIF(c0,1) FROM t0) t0 (c0) ORDER BY c0;
+c0
+A
+B
+# CREATE SELECT: used to return INT instead of BIT
+CREATE TABLE t1 SELECT LEAD(c0) OVER(), MAX(c0) OVER() FROM t0;
+SET optimizer_switch="derived_merge=off";
+CREATE TABLE t2 SELECT c0 FROM (SELECT NULLIF(c0,1) FROM t0) t0 (c0) ORDER BY c0;
+SET optimizer_switch="derived_merge=default";
+DESC t1;
+Field	Type	Null	Key	Default	Extra
+LEAD(c0) OVER()	bit(8)	YES		NULL	
+MAX(c0) OVER()	bit(8)	YES		NULL	
+DESC t2;
+Field	Type	Null	Key	Default	Extra
+c0	bit(8)	YES		NULL	
+DROP TABLE t0,t1,t2;

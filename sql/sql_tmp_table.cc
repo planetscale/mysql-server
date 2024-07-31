@@ -247,13 +247,18 @@ static Field *create_tmp_field_from_item(Item *item, TABLE *table) {
       }
       break;
     case INT_RESULT:
+      if (item->data_type() == MYSQL_TYPE_BIT) {
+        // We want to preserve the BIT type so treat so treat it
+        // separately from other INT_RESULT items
+        new_field = item->tmp_table_field_from_field_type(table, true);
+      }
       /*
-        Select an integer type with the minimal fit precision.
-        MY_INT32_NUM_DECIMAL_DIGITS is sign inclusive, don't consider the sign.
-        Values with MY_INT32_NUM_DECIMAL_DIGITS digits may or may not fit into
-        Field_long : make them Field_longlong.
-      */
-      if (item->max_length >= (MY_INT32_NUM_DECIMAL_DIGITS - 1))
+       Select an integer type with the minimal fit precision.
+       MY_INT32_NUM_DECIMAL_DIGITS is sign inclusive, don't consider the sign.
+       Values with MY_INT32_NUM_DECIMAL_DIGITS digits may or may not fit into
+       Field_long : make them Field_longlong.
+       */
+      else if (item->max_length >= (MY_INT32_NUM_DECIMAL_DIGITS - 1))
         new_field = new (*THR_MALLOC)
             Field_longlong(item->max_length, maybe_null, item->item_name.ptr(),
                            item->unsigned_flag);

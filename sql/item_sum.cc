@@ -1116,17 +1116,23 @@ bool Aggregator_distinct::setup(THD *thd) {
     tmp_table_param->force_copy_fields = item_sum->has_force_copy_fields();
     assert(table == nullptr);
     /*
-      Make create_tmp_table() convert BIT columns to BIGINT.
-      This is needed because BIT fields store parts of their data in table's
-      null bits, and we don't have methods to compare two table records, which
-      is needed by Unique which is used when HEAP table is used.
+      BIT fields store parts of their data in table's null bits, and we don't
+      have methods to compare two table records, which is needed by Unique
+      which is used when HEAP table is used. We no longer convert BIT fields to
+      integers in tmp tables because we want to retain the type definition of
+      visible bit columns.  So instead, we use a key of the hash of the input
+      record in the tmp table as the deduplication method since otherwise
+      Unique will break. As for hash as key, cf. also the limitation of MEMORY
+      tables not being able to index BIT columns.
     */
     for (Item *item : list) {
       if (item->type() == Item::FIELD_ITEM &&
-          ((Item_field *)item)->field->type() == FIELD_TYPE_BIT)
-        item->marker = Item::MARKER_BIT;
+          ((Item_field *)item)->field->type() == FIELD_TYPE_BIT) {
+        tmp_table_param->force_hash_field_for_unique = true;
+      }
       assert(!item->hidden);
     }
+
     if (!(table = create_tmp_table(thd, tmp_table_param, list, nullptr, true,
                                    false, query_block->active_options(),
                                    HA_POS_ERROR, "")))
@@ -1137,7 +1143,8 @@ bool Aggregator_distinct::setup(THD *thd) {
 
     if ((table->s->db_type() == temptable_hton ||
          table->s->db_type() == heap_hton) &&
-        (table->s->blob_fields == 0)) {
+        (table->s->blob_fields == 0 &&
+         !tmp_table_param->force_hash_field_for_unique)) {
       /*
         No blobs:
         set up a compare function and its arguments to use with Unique.
