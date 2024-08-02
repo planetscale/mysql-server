@@ -10781,7 +10781,7 @@ Create_field *generate_create_field(THD *thd, Item *source_item,
     Field *default_field;
     tmp_table_field = create_tmp_field(
         thd, tmp_table, source_item, source_item->type(), nullptr, &from_field,
-        &default_field, false, false, false, false);
+        &default_field, false, false, false);
   }
   if (!tmp_table_field) return nullptr; /* purecov: inspected */
 

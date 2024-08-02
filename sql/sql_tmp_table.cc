@@ -352,8 +352,6 @@ static Field *create_tmp_field_for_schema(const Item *item, TABLE *table) {
                        the record in the original table.
                        If modify_item is 0 then fill_record() will update
                        the temporary table
-  @param table_cant_handle_bit_fields if table can't handle bit-fields and
-  bit-fields shall be converted to long
   @param make_copy_field if true, a pointer of the result field should be stored
   in from_field,  otherwise the item should be wrapped in Func_ptr and stored in
   copy_func
@@ -366,7 +364,6 @@ static Field *create_tmp_field_for_schema(const Item *item, TABLE *table) {
 Field *create_tmp_field(THD *thd, TABLE *table, Item *item, Item::Type type,
                         Func_ptr_array *copy_func, Field **from_field,
                         Field **default_field, bool group, bool modify_item,
-                        bool table_cant_handle_bit_fields,
                         bool make_copy_field) {
   DBUG_TRACE;
   Field *result = nullptr;
@@ -404,8 +401,7 @@ Field *create_tmp_field(THD *thd, TABLE *table, Item *item, Item::Type type,
           !(item_field->field->is_nullable() ||
             item_field->field->table->is_nullable())) {
         result = create_tmp_field_from_item(item_field, table);
-      } else if (table_cant_handle_bit_fields &&
-                 item_field->field->type() == MYSQL_TYPE_BIT) {
+      } else if (item_field->field->type() == MYSQL_TYPE_BIT) {
         result = create_tmp_field_from_item(item_field, table);
         /*
           If the item is a function, a pointer to the item is stored in
@@ -1104,7 +1100,7 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
           Field *new_field = create_tmp_field(
               thd, table, arg, arg->type(), param->items_to_copy,
               &from_field[fieldnr], &default_field[fieldnr], /*group=*/false,
-              modify_items, false, false);
+              modify_items, false);
           from_item[fieldnr] = arg;
           if (new_field == nullptr) return nullptr;  // Should be OOM
           new_field->set_field_index(fieldnr);
@@ -1144,7 +1140,7 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
         new_field = create_tmp_field_for_schema(item, table);
       } else {
         /*
-          Parameters of create_tmp_field():
+          Parameter of create_tmp_field():
 
           (1) is a bit tricky:
           We need to set it to 0 in union, to get fill_record() to modify the
@@ -1153,18 +1149,12 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
           write rows to the temporary table.
           We here distinguish between UNION and multi-table-updates by the fact
           that in the later case group is set to the row pointer.
-          (2) If item->marker == MARKER_BIT then we force create_tmp_field
-          to create a 64-bit longs for BIT fields because HEAP
-          tables can't index BIT fields directly. We do the same
-          for distinct, as we want the distinct index to be
-          usable in this case too.
         */
         new_field = create_tmp_field(
             thd, table, item, type, param->items_to_copy, &from_field[fieldnr],
             &default_field[fieldnr],
             group != nullptr,  // (1)
             !param->force_copy_fields && (modify_items || group != nullptr),
-            item->marker == Item::MARKER_BIT,  //(2)
             param->force_copy_fields);
         from_item[fieldnr] = item;
       }
@@ -2999,9 +2989,17 @@ Item *Func_ptr::result_item() const {
   if (m_result_item == nullptr) {
     m_result_item = new Item_field(m_result_field);
     if (func()->type() == Item::FIELD_ITEM) {
-      // Improves explain precision
+      // Improves explain and metadata precision
       down_cast<Item_field *>(m_result_item)->table_name =
           down_cast<Item_field *>(func())->table_name;
+      down_cast<Item_field *>(m_result_item)->db_name =
+          down_cast<Item_field *>(func())->db_name;
+      down_cast<Item_field *>(m_result_item)
+          ->set_original_table_name(
+              down_cast<Item_field *>(func())->original_table_name());
+      down_cast<Item_field *>(m_result_item)
+          ->set_orignal_db_name(
+              down_cast<Item_field *>(func())->original_db_name());
     }
   }
   return m_result_item;
