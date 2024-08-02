@@ -3411,7 +3411,7 @@ bool subselect_hash_sj_engine::setup(
           thd, tmp_columns,
           true,  // Eliminate duplicates
           thd->variables.option_bits | TMP_TABLE_ALL_COLUMNS,
-          "<materialized_subquery>", true, true))
+          "<materialized_subquery>", true))
     return true;
 
   tmp_table = tmp_result_sink->table;

@@ -933,7 +933,7 @@ bool Table_ref::setup_materialized_derived_tmp_table(THD *thd)
 
     const bool rc = derived_result->create_result_table(
         thd, *derived->get_unit_column_types(), is_distinct, create_options,
-        alias, false, false);
+        alias, false);
 
     if (m_derived_column_names)  // Restore names
       swap_column_names_of_unit_and_tmp_table(*derived->get_unit_column_types(),

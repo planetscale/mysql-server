@@ -353,8 +353,7 @@ static Field *create_tmp_field_for_schema(const Item *item, TABLE *table) {
                        If modify_item is 0 then fill_record() will update
                        the temporary table
   @param table_cant_handle_bit_fields if table can't handle bit-fields and
-  bit-fields shall be converted to long @see
-  Temp_table_param::bit_fields_as_long
+  bit-fields shall be converted to long
   @param make_copy_field if true, a pointer of the result field should be stored
   in from_field,  otherwise the item should be wrapped in Func_ptr and stored in
   copy_func
@@ -1165,8 +1164,7 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
             &default_field[fieldnr],
             group != nullptr,  // (1)
             !param->force_copy_fields && (modify_items || group != nullptr),
-            item->marker == Item::MARKER_BIT ||
-                param->bit_fields_as_long,  //(2)
+            item->marker == Item::MARKER_BIT,  //(2)
             param->force_copy_fields);
         from_item[fieldnr] = item;
       }

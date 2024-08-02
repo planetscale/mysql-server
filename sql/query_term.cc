@@ -208,7 +208,6 @@ bool Query_term::create_tmp_table(THD *thd, ulonglong create_options) {
 
   if (setop_query_result_union()->create_result_table(
           thd, *m_parent->types_array(), distinct, create_options, buffer,
-          false,
           /*instantiate_tmp_table*/ m_parent->is_materialized(), m_parent))
     return true;
   setop_query_result_union()->table->pos_in_table_list = m_result_table;

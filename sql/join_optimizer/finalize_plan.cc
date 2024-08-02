@@ -229,10 +229,8 @@ TABLE *CreateTemporaryTableFromSelectList(
   // This is for setting group_parts.
   if (group != nullptr) calc_group_buffer(join, group, temp_table_param);
 
-  // temp_table_param.bit_fields_as_long is used to work around the limitation
-  // of MEMORY tables not being able to index BIT columns. But we also want
-  // to retain the type definition of visible bit columns. So instead, force
-  // hash as the deduplication method.
+  // For BIT fields we use hashing as the deduplication method since indexing
+  // on bit fields doesn't always work
   if (HasVisibleBitItems(is_distinct, items_to_materialize, is_group_by, group))
     temp_table_param->force_hash_field_for_unique = true;
 
