@@ -1355,7 +1355,8 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
       for (unsigned i = param->hidden_field_count; i < share->fields;
            i++, key_part_info++) {
         key_part_info->init_from_field(table->field[i]);
-        if (key_part_info->store_length > max_key_part_length) {
+        if (key_part_info->store_length > max_key_part_length ||
+            table->field[i]->type() == MYSQL_TYPE_BIT) {
           unique_constraint_via_hash_field = true;
           break;
         }

@@ -6123,6 +6123,7 @@ static void semijoin_types_allow_materialization(Table_ref *sj_nest) {
   sj_nest->nested_join->sjm.lookup_allowed = true;
 
   bool blobs_involved = false;
+  bool bit_fields_involved = false;
   uint total_lookup_index_length = 0;
   uint max_key_length, max_key_part_length, max_key_parts;
   /*
@@ -6144,6 +6145,7 @@ static void semijoin_types_allow_materialization(Table_ref *sj_nest) {
       return;
     }
     blobs_involved |= inner->is_blob_field();
+    bit_fields_involved |= inner->data_type() == MYSQL_TYPE_BIT;
 
     // Calculate the index length of materialized table
     const uint lookup_index_length = get_key_length_tmp_table(inner);
@@ -6154,7 +6156,8 @@ static void semijoin_types_allow_materialization(Table_ref *sj_nest) {
   if (total_lookup_index_length > max_key_length)
     sj_nest->nested_join->sjm.lookup_allowed = false;
 
-  if (blobs_involved) sj_nest->nested_join->sjm.lookup_allowed = false;
+  if (blobs_involved || bit_fields_involved)
+    sj_nest->nested_join->sjm.lookup_allowed = false;
 
   DBUG_PRINT("info", ("semijoin_types_allow_materialization: ok, allowed"));
 }
