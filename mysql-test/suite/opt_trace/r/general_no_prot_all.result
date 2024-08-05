@@ -7113,7 +7113,7 @@ trace
                       "table": "<temporary>",
                       "in_plan_at_position": 2,
                       "columns": 2,
-                      "row_length": 30,
+                      "row_length": 29,
                       "key_length": 5,
                       "unique_constraint": false,
                       "makes_grouped_rows": true,

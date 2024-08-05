@@ -4630,20 +4630,6 @@ bool Item_func_group_concat::setup(THD *thd) {
 
   count_field_types(aggr_query_block, tmp_table_param, fields, false, true);
   tmp_table_param->force_copy_fields = force_copy_fields;
-  if (order_or_distinct) {
-    /*
-      Force the create_tmp_table() to convert BIT columns to INT
-      as we cannot compare two table records containing BIT fields
-      stored in the the tree used for distinct/order by.
-      Moreover we don't even save in the tree record null bits
-      where BIT fields store parts of their data.
-    */
-    for (Item *item : fields) {
-      if (item->type() == Item::FIELD_ITEM &&
-          down_cast<Item_field *>(item)->field->type() == FIELD_TYPE_BIT)
-        item->marker = Item::MARKER_BIT;
-    }
-  }
 
   /*
     Create a temporary table to get descriptions of fields (types, sizes, etc).

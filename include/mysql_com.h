@@ -169,7 +169,6 @@
 #define ON_UPDATE_NOW_FLAG 8192    /**< Field is set to NOW on UPDATE */
 #define NUM_FLAG 32768             /**< Field is num (for clients) */
 #define PART_KEY_FLAG 16384        /**< Intern; Part of some key */
-#define GROUP_FLAG 32768           /**< Intern: Group field */
 #define UNIQUE_FLAG 65536          /**< Intern: Used by sql_yacc */
 #define BINCMP_FLAG 131072         /**< Intern: Used by sql_yacc */
 #define GET_FIXED_FIELDS_FLAG                                                  \
