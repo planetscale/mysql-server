@@ -1766,13 +1766,16 @@ bool PT_set_operation::contextualize_setop(Parse_context *pc,
   pc->m_stack.push_back(QueryLevel(pc->mem_root, context));
   if (super::do_contextualize(pc)) return true;
 
-  if (m_lhs->contextualize(pc)) return true;
+  if (m_list[0]->contextualize(pc)) return true;
 
-  pc->select = pc->thd->lex->new_set_operation_query(pc->select);
-
-  if (pc->select == nullptr || m_rhs->contextualize(pc)) return true;
-
-  pc->thd->lex->pop_context();
+  List_iterator<PT_query_expression_body> it(m_list);
+  PT_query_expression_body *elt;
+  it++;  // skip first
+  while ((elt = it++)) {
+    pc->select = pc->thd->lex->new_set_operation_query(pc->select);
+    if (pc->select == nullptr || elt->contextualize(pc)) return true;
+    pc->thd->lex->pop_context();
+  }
 
   QueryLevel ql = pc->m_stack.back();
   pc->m_stack.pop_back();
