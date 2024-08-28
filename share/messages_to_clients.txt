@@ -10533,6 +10533,15 @@ ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER
 ER_CMD_NEED_SUPER_OR_CREATE_SPATIAL_REFERENCE_SYSTEM
   eng "You need the SUPER or CREATE_SPATIAL_REFERENCE_SYSTEM privilege for command '%-.192s'"
 
+ER_CLAUSE_IGNORED
+  eng "%s is ignored in %s."
+
+ER_INVALID_CLAUSE_IN_CONTEXT
+  eng "Clause %s is not valid with %s."
+
+ER_INVALID_CLAUSE_COMBINATION
+  eng "Clauses %s and %s cannot be combined."
+
 #
 #  End of 9.x error messages (server-to-client).
 #
