@@ -1516,7 +1516,7 @@ SJ_TMP_TABLE *create_sj_tmp_table(THD *thd, JOIN *join,
     Applicability conditions are as follows:
 
     @par DuplicateWeedout strategy
-
+    Join order:
     @code
       (ot|nt)*  [ it ((it|ot|nt)* (it|ot))]  (nt)*
       +------+  +=========================+  +---+
@@ -1533,7 +1533,7 @@ SJ_TMP_TABLE *create_sj_tmp_table(THD *thd, JOIN *join,
     -# The suffix of outer non-correlated tables.
 
     @par FirstMatch strategy
-
+    Join order:
     @code
       (ot|nt)*  [ it (it)* ]  (nt)*
       +------+  +==========+  +---+
@@ -1547,7 +1547,7 @@ SJ_TMP_TABLE *create_sj_tmp_table(THD *thd, JOIN *join,
     -# The suffix of outer non-correlated tables.
 
     @par LooseScan strategy
-
+    Join order:
     @code
      (ot|ct|nt) [ loosescan_tbl (ot|nt|it)* it ]  (ot|nt)*
      +--------+   +===========+ +=============+   +------+
@@ -1572,7 +1572,7 @@ SJ_TMP_TABLE *create_sj_tmp_table(THD *thd, JOIN *join,
     -# The suffix of outer correlated and non-correlated tables.
 
     @par MaterializeLookup strategy
-
+    Join order:
     @code
      (ot|nt)*  [ it (it)* ]  (nt)*
      +------+  +==========+  +---+
@@ -1588,7 +1588,7 @@ SJ_TMP_TABLE *create_sj_tmp_table(THD *thd, JOIN *join,
     -# The suffix of outer non-correlated tables.
 
     @par MaterializeScan strategy
-
+    Join order:
     @code
      (ot|nt)*  [ it (it)* ]  (ot|nt)*
      +------+  +==========+  +-----+

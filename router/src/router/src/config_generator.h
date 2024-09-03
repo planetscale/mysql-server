@@ -77,7 +77,7 @@ class ConfigGenerator {
    * @param server_url server to bootstrap from
    * @param bootstrap_options bootstrap options
    *
-   * @throws std::runtime_error
+   * @throws std::runtime_error On error.
    */
   void init(const std::string &server_url,
             const std::map<std::string, std::string> &bootstrap_options);
@@ -90,7 +90,7 @@ class ConfigGenerator {
    * @returns false if SSL mode is set to PREFERRED and SSL is not being used,
    *          true otherwise
    *
-   * @throws std::runtime_error
+   * @throws std::runtime_error On error.
    */
   bool warn_on_no_ssl(const std::map<std::string, std::string> &options);
 
@@ -218,8 +218,8 @@ class ConfigGenerator {
    * argumenent)
    * @param bootstrap_options bootstrap command-line options
    *
-   * @throws std::runtime_error
-   * @throws std::logic_error
+   * @throws std::runtime_error On error.
+   * @throws std::logic_error On error.
    */
   void connect_to_metadata_server(
       const URI &u, const std::string &bootstrap_socket,
@@ -232,7 +232,7 @@ class ConfigGenerator {
    * @param bootstrap_socket bootstrap (unix) socket (--bootstrap-socket
    * argumenent)
    *
-   * @throws TODO
+   * @throws exception TODO
    */
   void init_gr_data(const URI &u, const std::string &bootstrap_socket);
 
