@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, 2024, Oracle and/or its affiliates.
+/* Copyright (c) 2024, Oracle and/or its affiliates.
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License, version 2.0,
@@ -21,31 +21,10 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-#ifndef MYSQL_CURRENT_THREAD_READER_H
-#define MYSQL_CURRENT_THREAD_READER_H
+#ifndef COMPONENTS_SERVICES_BITS_MY_SYSLOG_BITS_H
+#define COMPONENTS_SERVICES_BITS_MY_SYSLOG_BITS_H
 
-#include <mysql/components/service.h>
-#include <mysql/components/services/bits/thd.h>
+/* Platform-independent SysLog support */
+enum my_syslog_options { MY_SYSLOG_PIDS = 1 };
 
-/**
-  @ingroup group_components_services_inventory
-
-  A service to fetch the current thread id
-
-  Use in conjunction with all the related services that operate on thread ids
-  @sa mysql_component_mysql_current_thread_reader_imp
-*/
-BEGIN_SERVICE_DEFINITION(mysql_current_thread_reader)
-/**
-  get the current THD.
-
-  @param[out] thread id
-  @return Status of performed operation
-  @retval false success (valid password)
-  @retval true failure (invalid password)
-*/
-DECLARE_BOOL_METHOD(get, (MYSQL_THD * thd));
-
-END_SERVICE_DEFINITION(mysql_current_thread_reader)
-
-#endif /* MYSQL_CURRENT_THREAD_READER_H */
+#endif /* COMPONENTS_SERVICES_BITS_MY_SYSLOG_BITS_H */

@@ -66,6 +66,7 @@
 
 #include "my_sharedlib.h"
 #include "mysql/components/services/bits/my_io_bits.h"
+#include "mysql/components/services/bits/my_syslog_bits.h"
 #include "mysql/components/services/bits/mysql_cond_bits.h"
 #include "mysql/components/services/bits/mysql_mutex_bits.h"
 #include "mysql/components/services/bits/psi_bits.h"
@@ -612,9 +613,6 @@ extern my_off_t my_ftell(FILE *stream);
 
 // Maximum size of message  that will be logged.
 #define MAX_SYSLOG_MESSAGE_SIZE 1024
-
-/* Platform-independent SysLog support */
-enum my_syslog_options { MY_SYSLOG_PIDS = 1 };
 
 extern int my_openlog(const char *eventSourceName, int option, int facility);
 extern int my_closelog();
