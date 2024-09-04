@@ -1388,7 +1388,7 @@ void Ndb::check_send_timeout() {
                             t2);
         // abort();
 #endif
-        a_con->theReleaseOnClose = true;
+        a_con->theForceReleaseOnClose = true;
         a_con->theError.code = 4012;
         a_con->setOperationErrorCodeAbort(4012);
         a_con->theCommitStatus = NdbTransaction::NeedAbort;
