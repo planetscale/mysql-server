@@ -13698,6 +13698,14 @@ void Dbtc::execSCAN_FRAGCONF(Signal *signal) {
   const Uint32 activeMask =
       (sig_len >= ScanFragConf::SignalLength_ext) ? conf->activeMask : 0;
 
+  if (ERROR_INSERTED(8124)) {
+    jam();
+    g_eventLogger->info("TC %u : execSCAN_FRAGCONF delaying 0.5s", instance());
+    sendSignalWithDelay(reference(), GSN_SCAN_FRAGCONF, signal, 500,
+                        signal->getLength());
+    return;
+  }
+
   scanFragptr.i = conf->senderData;
   if (unlikely(!c_scan_frag_pool.getValidPtr(scanFragptr))) {
     jam();
@@ -16331,9 +16339,11 @@ void Dbtc::execDBINFO_SCANREQ(Signal *signal) {
 
       break;
     }
-    case Ndbinfo::TRANSACTIONS_TABLEID: {
+    case Ndbinfo::TRANSACTIONS_TABLEID:
+    case Ndbinfo::TRANSACTIONS_FULL_TABLEID: {
       Uint32 loop_count = 0;
       Uint32 api_ptr = cursor->data[0];
+      const bool full = (req.tableId == Ndbinfo::TRANSACTIONS_FULL_TABLEID);
       const Uint32 maxloop = 256;
       bool do_break = false;
       while (!do_break && api_ptr != RNIL && loop_count < maxloop) {
@@ -16348,7 +16358,7 @@ void Dbtc::execDBINFO_SCANREQ(Signal *signal) {
           }
           ApiConnectRecordPtr const &ptr = ptrs[i];
           Ndbinfo::Row row(signal, req);
-          if (ndbinfo_write_trans(row, ptr)) {
+          if (ndbinfo_write_trans(row, ptr, full)) {
             jam();
             ndbinfo_send_row(signal, req, row, rl);
           }
@@ -16375,8 +16385,8 @@ done:
   ndbinfo_send_scan_conf(signal, req, rl);
 }
 
-bool Dbtc::ndbinfo_write_trans(Ndbinfo::Row &row,
-                               ApiConnectRecordPtr transPtr) {
+bool Dbtc::ndbinfo_write_trans(Ndbinfo::Row &row, ApiConnectRecordPtr transPtr,
+                               const bool full) {
   Uint32 conState = transPtr.p->apiConnectstate;
 
   if (conState == CS_ABORTING && transPtr.p->abortState == AS_IDLE) {
@@ -16386,8 +16396,9 @@ bool Dbtc::ndbinfo_write_trans(Ndbinfo::Row &row,
     conState = CS_CONNECTED;
   }
 
-  if (conState == CS_CONNECTED || conState == CS_DISCONNECTED ||
-      conState == CS_RESTART) {
+  if ((conState == CS_CONNECTED || conState == CS_DISCONNECTED ||
+       conState == CS_RESTART) &
+      !full) {
     return false;
   }
 

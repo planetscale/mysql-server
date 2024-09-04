@@ -1724,10 +1724,13 @@ int NdbScanOperation::nextResultNdbRecord(const char *&out_row,
       g_eventLogger->info(
           "NdbScanOperation::nextResultNdbRecord() 1:4008 on connection %d",
           theNdbCon->ptr2int());
+      /* Mark scan as failed, needing close at kernel */
+      execCLOSE_SCAN_REP(4008, true);
       setErrorCode(4008);  // Timeout
       break;
     case -2:
       setErrorCode(4028);  // Node fail
+      assert(seq != theImpl->getNodeSequence(nodeId));
       break;
     case -3:  // send_next_scan -> return fail (set error-code self)
       if (theError.code == 0) setErrorCode(4028);  // seq changed = Node fail
@@ -1735,7 +1738,6 @@ int NdbScanOperation::nextResultNdbRecord(const char *&out_row,
   }
 
   theNdbCon->theTransactionIsStarted = false;
-  theNdbCon->theReleaseOnClose = true;
   return -1;
 }
 
@@ -3393,6 +3395,8 @@ int NdbIndexScanOperation::ordered_send_scan_wait_for_all(bool forceSend) {
             "NdbIndexScanOperation::ordered_send_scan_wait_for_all() "
             "2:4008 on connection %d",
             theNdbCon->ptr2int());
+        /* Mark scan as failed, needing close at kernel */
+        execCLOSE_SCAN_REP(4008, true);
         setErrorCode(4008);
       } else {
         setErrorCode(4028);
@@ -3471,6 +3475,7 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
   Uint32 timeout = impl->get_waitfor_timeout();
   Uint32 seq = theNdbCon->theNodeSequence;
   Uint32 nodeId = theNdbCon->theDBnode;
+  bool scanTimeoutCase = (theError.code == 4008);
 
   /* Rather nasty way to clean up IndexScan resources if
    * any
@@ -3489,6 +3494,7 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
   freeInterpretedCodeOldApi();
 
   if (seq != impl->getNodeSequence(nodeId)) {
+    /* Data node has failed, scan has no kernel side resources anymore */
     theNdbCon->theReleaseOnClose = true;
     return -1;
   }
@@ -3509,12 +3515,17 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
       case 0:
         break;
       case -1:
+        /* Timeout */
         g_eventLogger->info(
             "NdbScanOperation::close_impl() 3:4008 on connection %d",
             theNdbCon->ptr2int());
+        /* Mark scan as failed, needing close at kernel */
+        execCLOSE_SCAN_REP(4008, true);
         setErrorCode(4008);
-        [[fallthrough]];
+        scanTimeoutCase = true;
+        break;
       case -2:
+        /* Node failure */
         m_api_receivers_count = 0;
         m_conf_receivers_count = 0;
         m_sent_receivers_count = 0;
@@ -3586,12 +3597,20 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
       case 0:
         break;
       case -1:
+        /* Timeout */
         g_eventLogger->info(
-            "NdbScanOperation::close_impl() 4:4008 on connection %d",
+            "NdbScanOperation::close_impl() 4:4008 on connection %d.   "
+            "Failed to close scan after timeout.",
             theNdbCon->ptr2int());
         setErrorCode(4008);
+        /**
+         * Fallthrough will set theReleaseOnClose so that we
+         * do not reuse kernel side ApiConnectRecord which is
+         * in unknown state
+         */
         [[fallthrough]];
       case -2:
+        /* Node failure */
         m_api_receivers_count = 0;
         m_conf_receivers_count = 0;
         m_sent_receivers_count = 0;
@@ -3599,6 +3618,12 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
         return -1;
     }
   }
+
+  if (unlikely(scanTimeoutCase))
+    g_eventLogger->info(
+        "NdbScanOperation::close_impl() Successfully closed Scan on "
+        "connection %d after scan timeout",
+        theNdbCon->ptr2int());
 
   return 0;
 }
