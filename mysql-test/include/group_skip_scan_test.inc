@@ -1043,22 +1043,18 @@ INSERT INTO t1 (a, b) VALUES (1,1), (1,2), (1,3), (1,4), (1,5),
 EXPLAIN FORMAT=TREE SELECT max(b), a FROM t1 GROUP BY a;
 FLUSH STATUS;
 SELECT max(b), a FROM t1 GROUP BY a;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT max(b), a FROM t1 GROUP BY a;
 FLUSH STATUS;
 CREATE TABLE t2 SELECT max(b), a FROM t1 GROUP BY a;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 FLUSH STATUS;
 SELECT * FROM (SELECT max(b), a FROM t1 GROUP BY a) b;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 FLUSH STATUS;
 (SELECT max(b), a FROM t1 GROUP BY a) UNION
  (SELECT max(b), a FROM t1 GROUP BY a);
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE (SELECT max(b), a FROM t1 GROUP BY a) UNION
@@ -1096,23 +1092,19 @@ SELECT * FROM t3;
 --enable_result_log
 FLUSH STATUS;
 INSERT INTO t3 SELECT a,MAX(b) FROM t1 GROUP BY a;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 DELETE FROM t3;
 FLUSH STATUS;
 INSERT INTO t3 SELECT 1, (SELECT MAX(b) FROM t1 GROUP BY a HAVING a < 2)
   FROM t1 LIMIT 1;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 FLUSH STATUS;
 DELETE FROM t3 WHERE (SELECT MAX(b) FROM t1 GROUP BY a HAVING a < 2) > 10000;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 FLUSH STATUS;
 --error ER_SUBQUERY_NO_1_ROW
 DELETE FROM t3 WHERE (SELECT (SELECT MAX(b) FROM t1 GROUP BY a HAVING a < 2) x
                       FROM t1) > 10000;
---skip_if_hypergraph  # Depends on the query plan.
 SHOW STATUS LIKE 'handler_read__e%';
 
 DROP TABLE t1,t2,t3;
@@ -1586,35 +1578,30 @@ ANALYZE TABLE t;
 SELECT a, SUM(DISTINCT a), MIN(b) FROM t GROUP BY a;
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT a, SUM(DISTINCT a), MIN(b) FROM t GROUP BY a;
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'have_both_agg_distinct_and_min_max' AS OK
   FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 SELECT a, SUM(DISTINCT a), MAX(b) FROM t GROUP BY a;
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT a, SUM(DISTINCT a), MAX(b) FROM t GROUP BY a;
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'have_both_agg_distinct_and_min_max' AS OK
   FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 SELECT a, MAX(b) FROM t GROUP BY a HAVING SUM(DISTINCT a);
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT a, MAX(b) FROM t GROUP BY a HAVING SUM(DISTINCT a);
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'have_both_agg_distinct_and_min_max' AS OK
   FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 SELECT SUM(DISTINCT a), MIN(b), MAX(b) FROM t;
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT SUM(DISTINCT a), MIN(b), MAX(b) FROM t;
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'have_both_agg_distinct_and_min_max' AS OK
   FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
 SELECT a, SUM(DISTINCT a), MIN(b), MAX(b) FROM t GROUP BY a;
 --replace_regex $elide_costs
 EXPLAIN FORMAT=TREE SELECT a, SUM(DISTINCT a), MIN(b), MAX(b) FROM t GROUP BY a;
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'have_both_agg_distinct_and_min_max' AS OK
   FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1665,7 +1652,6 @@ INSERT INTO t1(c1,c2) VALUES
 EXPLAIN FORMAT=TREE SELECT MAX(c2), c1 FROM t1 WHERE c1 = 4 GROUP BY c1;
 FLUSH STATUS;
 SELECT MAX(c2), c1 FROM t1 WHERE c1 = 4 GROUP BY c1;
---skip_if_hypergraph  # Depends on the query plan (loose index scan is not supported).
 SHOW SESSION STATUS LIKE 'Handler_read%';
 
 DROP TABLE t1;
@@ -1907,7 +1893,6 @@ WHERE (group_by_col IN (70, 9)) OR (aggr_col > 2) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col) FROM a
 WHERE (group_by_col IN (70 ,9)) OR (aggr_col > 2) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'disjuntive_predicate_present' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1918,7 +1903,6 @@ WHERE (group_by_col IN (70, 9)) OR (aggr_col < 9) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MAX(aggr_col) FROM a
 WHERE (group_by_col IN (70 , 9)) OR (aggr_col < 9) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'disjuntive_predicate_present' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1932,7 +1916,6 @@ WHERE (group_by_col IN (70 ,9)) OR (aggr_col > 2) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col) FROM a
 WHERE (group_by_col IN (70, 9)) OR (aggr_col > 2) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1943,7 +1926,6 @@ WHERE (group_by_col IN (70, 9)) OR (aggr_col < 9) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MAX(aggr_col) FROM a
 WHERE (group_by_col IN (70, 9)) OR (aggr_col < 9) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1955,7 +1937,6 @@ WHERE (group_by_col IN (3, 9)) OR (aggr_col = 9) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE (group_by_col IN (3, 9)) OR (aggr_col = 9) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1967,7 +1948,6 @@ WHERE (group_by_col = 3) OR (aggr_col > 8) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE (group_by_col = 3) OR (aggr_col > 8) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1984,7 +1964,6 @@ WHERE (group_by_col = 9) OR aggr_col GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE group_by_col = 9 OR aggr_col GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -1997,7 +1976,6 @@ WHERE group_by_col OR (aggr_col < 9) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE group_by_col OR (aggr_col < 9) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2012,7 +1990,6 @@ WHERE aggr_col = group_by_col GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE aggr_col = group_by_col GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2024,7 +2001,6 @@ WHERE aggr_col < group_by_col GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE aggr_col < group_by_col GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2038,7 +2014,6 @@ WHERE aggr_col OR group_by_col GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE aggr_col OR group_by_col GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2050,7 +2025,6 @@ WHERE aggr_col AND group_by_col GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE aggr_col AND group_by_col GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2062,7 +2036,6 @@ WHERE aggr_col<>0 AND group_by_col<>0 GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE aggr_col<>0 AND group_by_col<>0 GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 
@@ -2074,7 +2047,6 @@ WHERE group_by_col OR (group_by_col < (aggr_col = 1)) GROUP BY group_by_col;
 EXPLAIN FORMAT=TREE SELECT group_by_col, MIN(aggr_col), MAX(aggr_col) FROM a
 WHERE group_by_col OR (group_by_col < (aggr_col = 1)) GROUP BY group_by_col;
 
---skip_if_hypergraph  # Does not output the same optimizer trace.
 SELECT TRACE RLIKE 'minmax_keypart_in_disjunctive_query' AS OK
                                 FROM INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 

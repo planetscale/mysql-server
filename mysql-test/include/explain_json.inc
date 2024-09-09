@@ -228,11 +228,9 @@ INSERT INTO t3 VALUES (1);
 
 let $query=UPDATE t1 SET i=(SELECT i FROM t2);
 --eval EXPLAIN $query
---skip_if_hypergraph
 --eval EXPLAIN FORMAT=JSON $query
 let $query=UPDATE t1, t2 SET t1.i=(SELECT i FROM t3);
 --eval EXPLAIN $query
---skip_if_hypergraph
 --eval EXPLAIN FORMAT=JSON $query
 
 --echo # INSERT ... ON DUPLICATE KEY UPDATE x=(SELECT ...) value list
@@ -348,7 +346,6 @@ let $query=SELECT DISTINCT SUM(b) s FROM t1 GROUP BY a ORDER BY s;
 FLUSH STATUS;
 --eval $query
 --disable_warnings
---skip_if_hypergraph  # Depends on the query plan.
 SHOW SESSION STATUS WHERE (Variable_name LIKE 'Sort_%' OR Variable_name LIKE 'Created_%_tables') AND Value > 0;
 --enable_warnings
 
@@ -395,7 +392,6 @@ let $query =
 
 eval EXPLAIN FORMAT=json $query;
 --echo # For comparison
---skip_if_hypergraph  # Depends on the query plan.
 --replace_regex $elide_costs
 eval EXPLAIN FORMAT=tree $query;
 

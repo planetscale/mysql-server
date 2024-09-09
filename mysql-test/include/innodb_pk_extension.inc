@@ -1,3 +1,4 @@
+--source include/elide_costs.inc
 
 CREATE TABLE t1
 (
@@ -59,14 +60,12 @@ ANALYZE TABLE t1;
 EXPLAIN SELECT count(*) FROM t1 WHERE pk_1 = 3 and f1 = '2000-01-03';
 FLUSH STATUS;
 SELECT count(*) FROM t1 WHERE pk_1 = 3 and f1 = '2000-01-03';
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --replace_column 10 #
 EXPLAIN SELECT pk_2 FROM t1 WHERE pk_1 = 3 and f1 = '2000-01-03';
 FLUSH STATUS;
 SELECT pk_2 FROM t1 WHERE pk_1 = 3 and f1 = '2000-01-03';
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --echo #
@@ -77,14 +76,12 @@ SHOW STATUS LIKE 'handler_read%';
 EXPLAIN SELECT count(*) FROM t1 WHERE pk_1 BETWEEN 3 AND 5 AND f1 = '2000-01-03';
 FLUSH STATUS;
 SELECT count(*) FROM t1 WHERE pk_1 BETWEEN 3 AND 5 AND f1 = '2000-01-03';
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --replace_column 10 #
 EXPLAIN SELECT pk_1, pk_2 FROM t1 WHERE pk_1 BETWEEN 3 AND 5 AND f1 = '2000-01-03';
 FLUSH STATUS;
 SELECT pk_1, pk_2 FROM t1 WHERE pk_1 BETWEEN 3 AND 5 AND f1 = '2000-01-03';
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --echo #
@@ -127,14 +124,12 @@ SHOW STATUS LIKE 'handler_read%';
 EXPLAIN SELECT MIN(pk_1) FROM t1 WHERE f2 BETWEEN 13 AND 14 GROUP BY f2;
 FLUSH STATUS;
 SELECT MIN(pk_1) FROM t1 WHERE f2 BETWEEN 13 AND 14 GROUP BY f2;
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --replace_column 10 #
 EXPLAIN SELECT MIN(pk_1) FROM t1 WHERE f2 IN (1, 2) GROUP BY f2;
 FLUSH STATUS;
 SELECT MIN(pk_1) FROM t1 WHERE f2 IN (1, 2) GROUP BY f2;
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --echo #
@@ -158,13 +153,12 @@ SHOW STATUS LIKE 'handler_read%';
 --replace_column 10 #
 EXPLAIN SELECT f1, pk_1, pk_2 FROM t1 WHERE pk_1 = 3 AND f1 = '2000-01-03'
 ORDER BY pk_2 DESC LIMIT 5;
---skip_if_hypergraph  # No support for these access methods yet.
+--replace_regex $elide_metrics
 EXPLAIN FORMAT=tree SELECT f1, pk_1, pk_2 FROM t1 WHERE pk_1 = 3 AND f1 = '2000-01-03'
 ORDER BY pk_2 DESC LIMIT 5;
 FLUSH STATUS;
 SELECT f1, pk_1, pk_2 FROM t1 WHERE pk_1 = 3 AND f1 = '2000-01-03'
 ORDER BY pk_2 DESC LIMIT 5;
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 --replace_column 10 #
@@ -173,7 +167,6 @@ ORDER BY pk_2 DESC LIMIT 5;
 FLUSH STATUS;
 SELECT f1, pk_1, pk_2 FROM t1 WHERE pk_1 BETWEEN 3 AND 5 AND f1 = '2000-01-03'
 ORDER BY pk_2 DESC LIMIT 5;
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'handler_read%';
 
 DROP TABLE t1;
@@ -264,7 +257,6 @@ INSERT INTO t2 VALUES (1,1), (2,2);
 EXPLAIN SELECT t2.f1 FROM t2 JOIN t1 IGNORE INDEX(primary) ON t2.f1 = t1.pk and t2.f2 = t1.f1;
 FLUSH STATUS;
 SELECT t2.f1 FROM t2 JOIN t1 IGNORE INDEX(primary) ON t2.f1 = t1.pk and t2.f2 = t1.f1;
---skip_if_hypergraph  # No support for these access methods yet.
 SHOW STATUS LIKE 'Handler_read%';
 
 DROP TABLE t1, t2;
