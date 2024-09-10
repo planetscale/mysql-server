@@ -4824,15 +4824,19 @@ bool WalkAndReplace(
             return true;
         }
         for (auto &win : qb->m_windows) {
-          for (ORDER *o = win.effective_order_by()->value.first; o != nullptr;
-               o = o->next) {
-            if (WalkAndReplaceInner(thd, item, 0, get_new_item, o->item))
-              return true;
+          if (win.effective_order_by() != nullptr) {
+            for (ORDER *o = win.effective_order_by()->value.first; o != nullptr;
+                 o = o->next) {
+              if (WalkAndReplaceInner(thd, item, 0, get_new_item, o->item))
+                return true;
+            }
           }
-          for (ORDER *o = win.effective_partition_by()->value.first;
-               o != nullptr; o = o->next) {
-            if (WalkAndReplaceInner(thd, item, 0, get_new_item, o->item))
-              return true;
+          if (win.effective_partition_by() != nullptr) {
+            for (ORDER *o = win.effective_partition_by()->value.first;
+                 o != nullptr; o = o->next) {
+              if (WalkAndReplaceInner(thd, item, 0, get_new_item, o->item))
+                return true;
+            }
           }
         }
       }
