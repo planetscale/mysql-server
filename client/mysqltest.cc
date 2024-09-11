@@ -1274,6 +1274,44 @@ static int match_expected_error(struct st_command *command,
   return -1;
 }
 
+/// Generate the message when an error occurred, or no error occurred when one
+/// was expected, and "die" with that message.
+///
+/// @param subject The reason why we die: either that there was an error, or
+/// that there was no error when one was expected.
+/// @param interpolated_query The query that was sent to the server, possibly
+/// after interpolating $variables, if indeed there was any interpolation and
+/// the query is known.
+/// @param uninterpolated_query The query before interpolation.
+/// @param expected_errors String representation of the list of errors that
+/// are expected.
+/// @param actual_errno The numeric error code returned from the server.
+/// @param actual_message The textual message returned from the server.
+/// @param actual_sqlstate The "sqlstate" textual code related to actual_errno.
+void handle_error_and_die(const char *subject, const char *interpolated_query,
+                          const char *uninterpolated_query,
+                          const char *expected_errors,
+                          uint32_t actual_errno = 0,
+                          const char *actual_message = nullptr,
+                          const char *actual_sqlstate = nullptr) {
+  std::stringstream message;
+  message << subject;
+  if (interpolated_query != nullptr) {
+    message << "\nQuery sent to server: '" << interpolated_query << "'"
+            << "\nQuery generated from: '" << uninterpolated_query << "'";
+  } else {
+    message << "\nQuery: '" << uninterpolated_query << "'";
+  }
+  if (expected_errors != nullptr && *expected_errors != '\0') {
+    message << "\nExpected error(s): " << expected_errors;
+  }
+  if (actual_errno != 0) {
+    message << "\nReturned error: " << actual_errno << " (" << actual_sqlstate
+            << "): " << actual_message;
+  }
+  die("%s", message.str().c_str());
+}
+
 /// Handle errors which occurred during execution of a query.
 ///
 /// @param command      Pointer to the st_command structure which holds the
@@ -1282,13 +1320,17 @@ static int match_expected_error(struct st_command *command,
 /// @param err_error    Error message
 /// @param err_sqlstate SQLSTATE that was thrown
 /// @param ds           Dynamic string to store the result.
+/// @param interpolated_query The interpolated query, if it was at all
+///                     interpolated. This will be printed at the end of the
+///                     error message.
 ///
 /// @note
 /// If there is an unexpected error, this function will abort mysqltest
 /// immediately.
 void handle_error(struct st_command *command, std::uint32_t err_errno,
                   const char *err_error, const char *err_sqlstate,
-                  DYNAMIC_STRING *ds) {
+                  DYNAMIC_STRING *ds,
+                  const char *interpolated_query = nullptr) {
   DBUG_TRACE;
 
   if (opt_hypergraph && err_errno == ER_HYPERGRAPH_NOT_SUPPORTED_YET) {
@@ -1301,8 +1343,9 @@ void handle_error(struct st_command *command, std::uint32_t err_errno,
   }
 
   if (command->abort_on_error)
-    die("Query '%s' failed.\nERROR %d (%s): %s", command->query, err_errno,
-        err_sqlstate, err_error);
+    handle_error_and_die("Query failed.", interpolated_query, command->query,
+                         expected_errors->error_list().c_str(), err_errno,
+                         err_error, err_sqlstate);
 
   DBUG_PRINT("info", ("Expected errors count: %zu", expected_errors->count()));
 
@@ -1341,17 +1384,11 @@ void handle_error(struct st_command *command, std::uint32_t err_errno,
   }
 
   if (expected_errors->count()) {
-    if (expected_errors->count() == 1) {
-      die("Query '%s' failed with wrong error %d: '%s', should have failed "
-          "with error '%s'.",
-          command->query, err_errno, err_error,
-          expected_errors->error_list().c_str());
-    } else {
-      die("Query '%s' failed with wrong error %d: '%s', should have failed "
-          "with any of '%s' errors.",
-          command->query, err_errno, err_error,
-          expected_errors->error_list().c_str());
-    }
+    handle_error_and_die(
+        "Query failed with an error different from the expected error(s).",
+        interpolated_query, command->query,
+        expected_errors->error_list().c_str(), err_errno, err_error,
+        err_sqlstate);
   }
 
   revert_properties();
@@ -1364,19 +1401,19 @@ void handle_error(struct st_command *command, std::uint32_t err_errno,
 ///
 /// @param command Pointer to the st_command structure which holds the
 ///                arguments and information for the command.
-void handle_no_error(struct st_command *command) {
+/// @param interpolated_query The interpolated query, if the query was
+///                interpolated. This will be printed at the end of the
+///                error message.
+void handle_no_error(struct st_command *command,
+                     const char *interpolated_query = nullptr) {
   DBUG_TRACE;
 
   if (expected_errors->count()) {
     const int index = match_expected_error(command, 0, "00000");
     if (index == -1) {
-      if (expected_errors->count() == 1) {
-        die("Query '%s' succeeded, should have failed with error '%s'",
-            command->query, expected_errors->error_list().c_str());
-      } else {
-        die("Query '%s' succeeded, should have failed with any of '%s' errors.",
-            command->query, expected_errors->error_list().c_str());
-      }
+      handle_error_and_die("Query was expected to fail, but succeeded.",
+                           interpolated_query, command->query,
+                           expected_errors->error_list().c_str());
     }
   }
 }
@@ -2652,7 +2689,7 @@ static void var_query_set(VAR *var, const char *query, const char **query_end) {
   if (mysql_real_query_wrapper(mysql, ds_query.str,
                                static_cast<ulong>(ds_query.length))) {
     handle_error(curr_command, mysql_errno(mysql), mysql_error(mysql),
-                 mysql_sqlstate(mysql), &ds_res);
+                 mysql_sqlstate(mysql), &ds_res, ds_query.str);
     /* If error was acceptable, return empty string */
     dynstr_free(&ds_query);
     eval_expr(var, "", nullptr);
@@ -3019,7 +3056,7 @@ static void var_set_query_get_value(struct st_command *command, VAR *var) {
   if (mysql_real_query_wrapper(mysql, ds_query.str,
                                static_cast<ulong>(ds_query.length))) {
     handle_error(curr_command, mysql_errno(mysql), mysql_error(mysql),
-                 mysql_sqlstate(mysql), &ds_res);
+                 mysql_sqlstate(mysql), &ds_res, ds_query.str);
     /* If error was acceptable, return empty string */
     dynstr_free(&ds_query);
     dynstr_free(&ds_col);
@@ -8700,12 +8737,21 @@ static void run_query_normal(struct st_connection *cn,
   MYSQL *mysql = &cn->mysql;
   MYSQL_RES *res = nullptr;
 
+  const char *interpolated_query = nullptr;
+  if (command->type == Q_EVAL || command->type == Q_SEND_EVAL) {
+    // If the statement is either `eval` or `send_eval`, the query is being
+    // interpolated, i.e., $variables are replaced by their values. Then pass
+    // the interpolated query to the handle_error function so that it can print
+    // it.
+    interpolated_query = query;
+  }
+
   if (flags & QUERY_SEND_FLAG) {
     /* Send the query */
     if (mysql_send_query_wrapper(&cn->mysql, query,
                                  static_cast<ulong>(query_len))) {
       handle_error(command, mysql_errno(mysql), mysql_error(mysql),
-                   mysql_sqlstate(mysql), ds);
+                   mysql_sqlstate(mysql), ds, query);
       goto end;
     }
   }
@@ -8724,7 +8770,7 @@ static void run_query_normal(struct st_connection *cn,
       /* we've failed to collect the result set */
       cn->pending = mysql_more_results(&cn->mysql);
       handle_error(command, mysql_errno(mysql), mysql_error(mysql),
-                   mysql_sqlstate(mysql), ds);
+                   mysql_sqlstate(mysql), ds, interpolated_query);
       goto end;
     }
 
@@ -8788,7 +8834,7 @@ static void run_query_normal(struct st_connection *cn,
   assert(error == -1);
 
   // If we come here the query is both executed and read successfully.
-  handle_no_error(command);
+  handle_no_error(command, interpolated_query);
   revert_properties();
 
 end:
@@ -8834,10 +8880,19 @@ static void run_query_stmt(MYSQL *mysql, struct st_command *command,
   MYSQL_RES *res = nullptr;
   int err = 0;
 
+  const char *interpolated_query = nullptr;
+  if (command->type == Q_EVAL || command->type == Q_SEND_EVAL) {
+    // If the statement is either `eval` or `send_eval`, the query is being
+    // interpolated, i.e., $variables are replaced by their values. Then pass
+    // the interpolated query to the handle_error function so that it can print
+    // it.
+    interpolated_query = query;
+  }
+
   // Prepare the query
   if (mysql_stmt_prepare(stmt, query, static_cast<ulong>(query_len))) {
     handle_error(command, mysql_stmt_errno(stmt), mysql_stmt_error(stmt),
-                 mysql_stmt_sqlstate(stmt), ds);
+                 mysql_stmt_sqlstate(stmt), ds, interpolated_query);
     goto end;
   }
 
@@ -8864,7 +8919,7 @@ static void run_query_stmt(MYSQL *mysql, struct st_command *command,
   // Execute the query
   if (mysql_stmt_execute(stmt)) {
     handle_error(command, mysql_stmt_errno(stmt), mysql_stmt_error(stmt),
-                 mysql_stmt_sqlstate(stmt), ds);
+                 mysql_stmt_sqlstate(stmt), ds, interpolated_query);
     goto end;
   }
 
@@ -8891,7 +8946,7 @@ static void run_query_stmt(MYSQL *mysql, struct st_command *command,
     // Store the result of the query if if will return any fields
     if (mysql_stmt_field_count(stmt) && mysql_stmt_store_result(stmt)) {
       handle_error(command, mysql_stmt_errno(stmt), mysql_stmt_error(stmt),
-                   mysql_stmt_sqlstate(stmt), ds);
+                   mysql_stmt_sqlstate(stmt), ds, interpolated_query);
       goto end;
     }
 
@@ -8959,12 +9014,12 @@ static void run_query_stmt(MYSQL *mysql, struct st_command *command,
   if (err > 0) {
     // We got an error from mysql_stmt_next_result, maybe expected.
     handle_error(command, mysql_stmt_errno(stmt), mysql_stmt_error(stmt),
-                 mysql_stmt_sqlstate(stmt), ds);
+                 mysql_stmt_sqlstate(stmt), ds, interpolated_query);
     goto end;
   }
 
   // If we got here the statement was both executed and read successfully.
-  handle_no_error(command);
+  handle_no_error(command, interpolated_query);
 
 end:
   if (!disable_warnings || disabled_warnings->count() ||
