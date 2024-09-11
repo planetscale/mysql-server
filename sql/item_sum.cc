@@ -822,6 +822,16 @@ void Item_sum::fix_after_pullout(Query_block *parent_query_block,
   }
   // Complete used_tables information by looking at aggregate function
   add_used_tables_for_aggr_func();
+
+  if (!m_is_window_function) {
+    for (Query_block *child = base_query_block; child != aggr_query_block;
+         child = child->outer_query_block()) {
+      // The subquery on this level is outer-correlated due to the outer
+      // aggregation. Cf. similar code in Item_ident::fix_after_pullout.
+      child->master_query_expression()->accumulate_used_tables(
+          OUTER_REF_TABLE_BIT);
+    }
+  }
 }
 
 /**
