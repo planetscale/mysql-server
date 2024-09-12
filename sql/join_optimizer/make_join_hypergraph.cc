@@ -3468,6 +3468,21 @@ table_map GetTablesInnerToOuterJoinOrAntiJoin(
 }
 
 /**
+  Returns a NodeMap of all tables that are on the inner side of some semijoin or
+  antijoin.
+ */
+NodeMap GetNodesInnerToSemijoinOrAntijoin(RelationalExpression *root) {
+  NodeMap nodes = 0;
+  ForEachJoinOperator(root, [&nodes](const RelationalExpression *expr) {
+    if (expr->type == RelationalExpression::SEMIJOIN ||
+        expr->type == RelationalExpression::ANTIJOIN) {
+      nodes |= expr->right->nodes_in_subtree;
+    }
+  });
+  return nodes;
+}
+
+/**
   Fully expand a multiple equality for a single table as simple equalities and
   append each equality to the array of conditions. Only expected to be called on
   multiple equalities that do not have an already known value, as such
@@ -3776,6 +3791,8 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
 
   graph->tables_inner_to_outer_or_anti =
       GetTablesInnerToOuterJoinOrAntiJoin(root);
+
+  graph->nodes_inner_to_semi_or_anti = GetNodesInnerToSemijoinOrAntijoin(root);
 
   // Add cycles.
   size_t old_graph_edges = graph->graph.edges.size();

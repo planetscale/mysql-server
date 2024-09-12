@@ -3535,6 +3535,7 @@ SELECT t1.x, dt.* FROM t1, LATERAL (
 --eval EXPLAIN FORMAT=TREE $query
 
 # Verify that the results are correct.
+--skip_if_hypergraph  # Bug#37057380.
 --sorted_result
 --eval $query
 

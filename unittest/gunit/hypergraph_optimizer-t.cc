@@ -27,6 +27,7 @@
 #include <math.h>
 #include <string.h>
 
+#include <bit>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
@@ -98,8 +99,10 @@ using std::vector;
 using testing::_;
 using testing::AnyOf;
 using testing::ElementsAre;
+using testing::IsEmpty;
 using testing::Pair;
 using testing::Return;
+using testing::SizeIs;
 using testing::StartsWith;
 using testing::UnorderedElementsAre;
 using namespace std::literals;  // For operator""sv.
@@ -3816,7 +3819,7 @@ TEST_F(HypergraphOptimizerTest, MultiPredicateHashJoin) {
     Query_block *query_block = ParseAndResolve(query.data(),
                                                /*nullable=*/true);
 
-    // Sizes that make (t1 HJ t2) HJ t3 the preferred join order.
+    // Sizes that make hash joins preferable.
     m_fake_tables["t1"]->file->stats.records = 90000;
     m_fake_tables["t1"]->file->stats.data_file_length = 9e7;
     m_fake_tables["t2"]->file->stats.records = 100;
@@ -3831,39 +3834,25 @@ TEST_F(HypergraphOptimizerTest, MultiPredicateHashJoin) {
     SCOPED_TRACE(PrintQueryPlan(0, root, query_block->join,
                                 /*is_root_of_join=*/true));
 
+    // We don't care about exactly which join order is chosen.
     // The top-level path should be a HASH_JOIN with two equi-join predicates.
     // In earlier versions, the hash join had only one of the predicates, and
     // the other predicate was in a FILTER on top of it.
     ASSERT_EQ(AccessPath::HASH_JOIN, root->type);
-    EXPECT_EQ(0,
-              root->hash_join().join_predicate->expr->join_conditions.size());
-    {
-      vector<string> equijoin_conditions;
-      for (Item_eq_base *item :
-           root->hash_join().join_predicate->expr->equijoin_conditions) {
-        equijoin_conditions.push_back(ItemToString(item));
-      }
-      EXPECT_THAT(equijoin_conditions,
-                  UnorderedElementsAre(StringPrintf("(t2.y %s t3.y)", eq_op),
-                                       StringPrintf("(t1.z %s t3.z)", eq_op)));
-    }
+    const RelationalExpression &top_expr =
+        *root->hash_join().join_predicate->expr;
+    EXPECT_THAT(top_expr.equijoin_conditions, SizeIs(2));
+    EXPECT_THAT(top_expr.join_conditions, IsEmpty());
 
-    ASSERT_EQ(AccessPath::HASH_JOIN, root->hash_join().outer->type);
-    ASSERT_EQ(AccessPath::TABLE_SCAN, root->hash_join().inner->type);
-    EXPECT_STREQ("t3", root->hash_join().inner->table_scan().table->alias);
-
-    EXPECT_EQ(0, root->hash_join()
-                     .outer->hash_join()
-                     .join_predicate->expr->join_conditions.size());
-    {
-      const Mem_root_array<Item_eq_base *> &equijoin_conditions =
-          root->hash_join()
-              .outer->hash_join()
-              .join_predicate->expr->equijoin_conditions;
-      ASSERT_EQ(1, equijoin_conditions.size());
-      EXPECT_EQ(StringPrintf("(t1.x %s t2.x)", eq_op),
-                ItemToString(equijoin_conditions[0]));
+    // Each equi-join predicate should cover a pair of tables, and together they
+    // should cover all three tables in the query.
+    table_map all_tables = 0;
+    for (const Item_eq_base *predicate : top_expr.equijoin_conditions) {
+      const table_map used_tables = predicate->used_tables();
+      EXPECT_EQ(2, std::popcount(used_tables));
+      all_tables |= used_tables;
     }
+    EXPECT_EQ(3, std::popcount(all_tables));
 
     ClearFakeTables();
   }

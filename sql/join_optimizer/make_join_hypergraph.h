@@ -226,6 +226,9 @@ struct JoinHypergraph {
   /// we can assume that the result of the top-level join will also be empty.
   table_map tables_inner_to_outer_or_anti = 0;
 
+  /// The set of nodes that are on the inner side of some semijoin or antijoin.
+  hypergraph::NodeMap nodes_inner_to_semi_or_anti = 0;
+
   int FindSargableJoinPredicate(const Item *predicate) const {
     const auto iter = m_sargable_join_predicates.find(predicate);
     return iter == m_sargable_join_predicates.cend() ? -1 : iter->second;

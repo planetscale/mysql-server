@@ -291,31 +291,33 @@ class CostingReceiver {
       NodeMap fulltext_tables, uint64_t sargable_fulltext_predicates,
       table_map update_delete_target_tables,
       table_map immediate_update_delete_candidates, bool need_rowid,
-      SecondaryEngineFlags engine_flags, int subgraph_pair_limit,
+      NodeMap nodes_under_limit, SecondaryEngineFlags engine_flags,
+      int subgraph_pair_limit,
       secondary_engine_modify_access_path_cost_t secondary_engine_cost_hook,
       secondary_engine_check_optimizer_request_t
           secondary_engine_planning_complexity_check_hook)
-      : m_thd(thd),
-        m_query_block(query_block),
-        m_access_paths(thd->mem_root),
-        m_graph(&graph),
-        m_orderings(orderings),
-        m_sort_ahead_orderings(sort_ahead_orderings),
-        m_active_indexes(active_indexes),
-        m_spatial_indexes(spatial_indexes),
-        m_fulltext_searches(fulltext_searches),
-        m_fulltext_tables(fulltext_tables),
-        m_sargable_fulltext_predicates(sargable_fulltext_predicates),
-        m_update_delete_target_nodes(GetNodeMapFromTableMap(
-            update_delete_target_tables, graph.table_num_to_node_num)),
-        m_immediate_update_delete_candidates(GetNodeMapFromTableMap(
-            immediate_update_delete_candidates, graph.table_num_to_node_num)),
-        m_need_rowid(need_rowid),
-        m_engine_flags(engine_flags),
-        m_subgraph_pair_limit(subgraph_pair_limit),
-        m_secondary_engine_cost_hook(secondary_engine_cost_hook),
-        m_secondary_engine_planning_complexity_check(
-            secondary_engine_planning_complexity_check_hook) {
+      : m_thd{thd},
+        m_query_block{query_block},
+        m_access_paths{thd->mem_root},
+        m_graph{&graph},
+        m_orderings{orderings},
+        m_sort_ahead_orderings{sort_ahead_orderings},
+        m_active_indexes{active_indexes},
+        m_spatial_indexes{spatial_indexes},
+        m_fulltext_searches{fulltext_searches},
+        m_fulltext_tables{fulltext_tables},
+        m_sargable_fulltext_predicates{sargable_fulltext_predicates},
+        m_update_delete_target_nodes{GetNodeMapFromTableMap(
+            update_delete_target_tables, graph.table_num_to_node_num)},
+        m_immediate_update_delete_candidates{GetNodeMapFromTableMap(
+            immediate_update_delete_candidates, graph.table_num_to_node_num)},
+        m_need_rowid{need_rowid},
+        m_nodes_under_limit{nodes_under_limit},
+        m_engine_flags{engine_flags},
+        m_subgraph_pair_limit{subgraph_pair_limit},
+        m_secondary_engine_cost_hook{secondary_engine_cost_hook},
+        m_secondary_engine_planning_complexity_check{
+            secondary_engine_planning_complexity_check_hook} {
     // At least one join type must be supported.
     assert(Overlaps(engine_flags,
                     MakeSecondaryEngineFlags(
@@ -342,8 +344,7 @@ class CostingReceiver {
   bool FoundSubgraphPair(NodeMap left, NodeMap right, int edge_idx);
 
   const AccessPathArray root_candidates() {
-    const auto it =
-        m_access_paths.find(TablesBetween(0, m_graph->nodes.size()));
+    const auto it = m_access_paths.find(all_nodes());
     if (it == m_access_paths.end()) {
       return {};
     }
@@ -351,8 +352,7 @@ class CostingReceiver {
   }
 
   FunctionalDependencySet active_fds_at_root() const {
-    const auto it =
-        m_access_paths.find(TablesBetween(0, m_graph->nodes.size()));
+    const auto it = m_access_paths.find(all_nodes());
     if (it == m_access_paths.end()) {
       return {};
     }
@@ -374,12 +374,11 @@ class CostingReceiver {
   /// True if the result of the join is found to be always empty, typically
   /// because of an impossible WHERE clause.
   bool always_empty() const {
-    const auto it =
-        m_access_paths.find(TablesBetween(0, m_graph->nodes.size()));
+    const auto it = m_access_paths.find(all_nodes());
     return it != m_access_paths.end() && it->second.always_empty;
   }
 
-  AccessPath *ProposeAccessPath(AccessPath *path,
+  AccessPath *ProposeAccessPath(AccessPath *path, NodeMap nodes,
                                 AccessPathArray *existing_paths,
                                 OrderingSet obsolete_orderings,
                                 const char *description_for_trace) const;
@@ -387,6 +386,8 @@ class CostingReceiver {
   bool HasSecondaryEngineCostHook() const {
     return m_secondary_engine_cost_hook != nullptr;
   }
+
+  NodeMap all_nodes() const { return TablesBetween(0, m_graph->nodes.size()); }
 
  private:
   THD *m_thd;
@@ -529,6 +530,18 @@ class CostingReceiver {
   /// when we need row IDs for weedout, which doesn't preclude streaming.
   /// The hypergraph optimizer does not use weedout.)
   bool m_need_rowid;
+
+  /// The set of nodes that are under a LIMIT. It includes both the nodes that
+  /// are under an explicit LIMIT and those that are under an implicit limit,
+  /// such as tables on the inner size of a semijoin or an antijoin.
+  ///
+  /// When evaluating the cost of subplans that access a subset of these nodes,
+  /// CompareAccessPaths() pays attention to the first row cost of the subplans,
+  /// since they might not have to be read until EOF during execution. Subplans
+  /// for a set of nodes that is not a subset of these nodes, on the other hand,
+  /// are assumed to be read to EOF, so that the first row cost can be ignored
+  /// by CompareAccessPaths().
+  NodeMap m_nodes_under_limit;
 
   /// The flags declared by the secondary engine. In particular, it describes
   /// what kind of access path types should not be created.
@@ -2495,11 +2508,11 @@ void CostingReceiver::ProposeRangeScans(
         string description_for_trace = string(key->name) + " ordered range";
         auto access_path_it = m_access_paths.find(TableBitmap(node_idx));
         assert(access_path_it != m_access_paths.end());
-        ProposeAccessPath(&new_path, &access_path_it->second.paths,
-                          /*obsolete_orderings=*/0,
-                          materialize_subqueries
-                              ? "mat. subq"
-                              : description_for_trace.c_str());
+        ProposeAccessPath(
+            &new_path, TableBitmap(node_idx), &access_path_it->second.paths,
+            /*obsolete_orderings=*/0,
+            materialize_subqueries ? "mat. subq"
+                                   : description_for_trace.c_str());
 
         if (!contains_subqueries) {
           // Nothing to try to materialize.
@@ -3560,12 +3573,6 @@ AccessPath *CostingReceiver::MakeMaterializePath(const AccessPath &path,
       materialize_path->parameter_tables |=
           materialize_path->materialize().table_path->parameter_tables;
     }
-
-    // If we don't need row IDs, we also don't care about row ID safety.
-    // This keeps us from retaining many extra unneeded paths.
-    if (!m_need_rowid) {
-      materialize_path->safe_for_rowid = AccessPath::SAFE;
-    }
   }
 
   materialize_path->filter_predicates = path.filter_predicates;
@@ -4526,6 +4533,12 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
   const JoinPredicate *edge = &m_graph->edges[edge_idx];
   if (!PassesConflictRules(left | right, edge->expr)) {
     return false;
+  }
+
+  if (edge->expr->type == RelationalExpression::SEMIJOIN ||
+      edge->expr->type == RelationalExpression::ANTIJOIN) {
+    assert(IsSubset(right, m_nodes_under_limit));
+    assert(IsSubset(right, m_graph->nodes_inner_to_semi_or_anti));
   }
 
   bool is_commutative = OperatorIsCommutative(*edge->expr);
@@ -5810,14 +5823,9 @@ bool HasFlag(uint32_t flags, FuzzyComparisonResult flag) {
 // See if one access path is better than the other across all cost dimensions
 // (if so, we say it dominates the other one). If not, we return
 // DIFFERENT_STRENGTHS so that both must be kept.
-//
-// TODO(sgunders): Support turning off certain cost dimensions; e.g.,
-// first_row_cost only matters if we have a LIMIT or nested loop semijoin
-// somewhere in the query, and it might not matter for secondary engine.
-PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
-                                        const AccessPath &a,
-                                        const AccessPath &b,
-                                        OrderingSet obsolete_orderings) {
+PathComparisonResult CompareAccessPaths(
+    const LogicalOrderings &orderings, const AccessPath &a, const AccessPath &b,
+    OrderingSet obsolete_orderings, bool need_rowid, bool use_first_row_cost) {
 #ifndef NDEBUG
   // Manual preference overrides everything else.
   // If they're both preferred, tie-break by ordering.
@@ -5859,11 +5867,14 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
   // If one path is safe for row IDs and another one is not,
   // that is also something we need to take into account.
   // Safer values have lower numerical values, so we can compare them
-  // as integers.
-  if (a.safe_for_rowid < b.safe_for_rowid) {
-    flags = AddFlag(flags, FuzzyComparisonResult::FIRST_BETTER);
-  } else if (b.safe_for_rowid < a.safe_for_rowid) {
-    flags = AddFlag(flags, FuzzyComparisonResult::SECOND_BETTER);
+  // as integers. If we don't need row IDs in this query, we can ignore
+  // this dimension altogether.
+  if (need_rowid) {
+    if (a.safe_for_rowid < b.safe_for_rowid) {
+      flags = AddFlag(flags, FuzzyComparisonResult::FIRST_BETTER);
+    } else if (b.safe_for_rowid < a.safe_for_rowid) {
+      flags = AddFlag(flags, FuzzyComparisonResult::SECOND_BETTER);
+    }
   }
 
   // A path that allows immediate update or delete of a table is better than
@@ -5901,8 +5912,10 @@ PathComparisonResult CompareAccessPaths(const LogicalOrderings &orderings,
                                          b.num_output_rows(), fuzz_factor));
 
   flags = AddFlag(flags, FuzzyComparison(a.cost(), b.cost(), fuzz_factor));
-  flags = AddFlag(flags, FuzzyComparison(a.first_row_cost(), b.first_row_cost(),
-                                         fuzz_factor));
+  if (use_first_row_cost) {
+    flags = AddFlag(flags, FuzzyComparison(a.first_row_cost(),
+                                           b.first_row_cost(), fuzz_factor));
+  }
   flags = AddFlag(
       flags, FuzzyComparison(a.rescan_cost(), b.rescan_cost(), fuzz_factor));
 
@@ -6251,18 +6264,28 @@ void CostingReceiver::CommitBitsetsToHeap(AccessPath *path) const {
    - The path replaces all existing alternatives, and becomes the sole entry
      in the list.
 
-  “description_for_trace” is a short description of the inserted path
+  @param path The access path being proposed as a candidate subplan.
+  @param nodes The set of nodes (tables) that are part of this subplan.
+  @param[in,out] existing_paths The best candidates seen so far. If "path" is
+  found to be better in some respect, it is added to the array, possibly
+  replacing other paths that it dominates.
+  @param obsolete_orderings Orderings that are no longer useful at this stage of
+  planning (typically because the operation that could make use of it is already
+  part of the subplan), and that can be ignored when comparing the strengths of
+  the paths in the tournament.
+  @param description_for_trace A short description of the inserted path
   to distinguish it in optimizer trace, if active. For instance, one might
   write “hash join” when proposing a hash join access path. It may be
   the empty string.
 
+  @return
   If the access path is discarded, returns nullptr. Otherwise returns
   a pointer to where it was inserted. (This is useful if you need to
   call CommitBitsetsToHeap() on any of its children, or otherwise do
   work only for access paths that were kept.)
  */
 AccessPath *CostingReceiver::ProposeAccessPath(
-    AccessPath *path, AccessPathArray *existing_paths,
+    AccessPath *path, NodeMap nodes, AccessPathArray *existing_paths,
     OrderingSet obsolete_orderings, const char *description_for_trace) const {
   if (m_secondary_engine_cost_hook != nullptr) {
     // If an error was raised by a previous invocation of the hook, reject all
@@ -6357,7 +6380,8 @@ AccessPath *CostingReceiver::ProposeAccessPath(
   int num_dominated = 0;
   for (size_t i = 0; i < existing_paths->size(); ++i) {
     PathComparisonResult result = CompareAccessPaths(
-        *m_orderings, *path, *((*existing_paths)[i]), obsolete_orderings);
+        *m_orderings, *path, *((*existing_paths)[i]), obsolete_orderings,
+        m_need_rowid, IsSubset(nodes, m_nodes_under_limit));
     if (result == PathComparisonResult::DIFFERENT_STRENGTHS) {
       continue;
     }
@@ -6490,13 +6514,13 @@ void CostingReceiver::ProposeAccessPathWithOrderings(
     path_set->always_empty = true;
   }
 
-  ProposeAccessPath(path, &path_set->paths, obsolete_orderings,
+  ProposeAccessPath(path, nodes, &path_set->paths, obsolete_orderings,
                     description_for_trace);
 
   // Don't bother trying sort-ahead if we are done joining;
   // there's no longer anything to be ahead of, so the regular
   // sort operations will take care of it.
-  if (nodes == TablesBetween(0, m_graph->nodes.size())) {
+  if (nodes == all_nodes()) {
     return;
   }
 
@@ -6556,7 +6580,7 @@ void CostingReceiver::ProposeAccessPathWithOrderings(
       }
     }
     AccessPath *insert_position = ProposeAccessPath(
-        &sort_path, &path_set->paths, obsolete_orderings, buf);
+        &sort_path, nodes, &path_set->paths, obsolete_orderings, buf);
     if (insert_position != nullptr && !path_is_on_heap) {
       path = new (m_thd->mem_root) AccessPath(*path);
       CommitBitsetsToHeap(path);
@@ -6979,6 +7003,39 @@ uint64_t FindSargableFullTextPredicates(const JoinHypergraph &graph) {
   return fulltext_predicates;
 }
 
+// Returns the set of tables that could potentially be under an explicit or
+// implicit LIMIT operation. If there is a LIMIT on the query, it returns the
+// set of all tables in the query. Otherwise, it returns the set of tables that
+// are on the inner side of some semijoin or antijoin.
+//
+// Common to all these tables is that they may not have to be fully read during
+// execution, since one can stop reading once the LIMIT has been reached, or
+// once one matching row is found in the inner table, in the case of semijoin
+// and antijoin.
+NodeMap GetNodesUnderLimit(const JoinHypergraph &graph,
+                           const LogicalOrderings &orderings,
+                           int distinct_ordering_idx) {
+  // Check for an explicit LIMIT.
+  if (graph.query_block()->master_query_expression()->select_limit_cnt !=
+      HA_POS_ERROR) {
+    return TablesBetween(0, graph.nodes.size());
+  }
+
+  // Check for a special case in which SELECT DISTINCT ... can be rewritten to
+  // SELECT ... LIMIT 1. This can be done if all elements of the SELECT list are
+  // constant after all the functional dependencies of the join conditions have
+  // been applied. See ProposeDistinctPaths().
+  if (distinct_ordering_idx != -1 &&
+      orderings.DoesFollowOrder(
+          orderings.ApplyFDs(orderings.SetOrder(0),
+                             BitsBetween(0, kMaxSupportedFDs)),
+          distinct_ordering_idx)) {
+    return TablesBetween(0, graph.nodes.size());
+  }
+
+  return graph.nodes_inner_to_semi_or_anti;
+}
+
 // Inject casts into comparisons of expressions with incompatible types.
 // For example, int_col = string_col is rewritten to
 // CAST(int_col AS DOUBLE) = CAST(string_col AS DOUBLE)
@@ -7208,9 +7265,9 @@ void ApplyFinalPredicatesAndExpandFilters(THD *thd,
         path.set_init_once_cost(path.init_once_cost() + init_once_cost);
       }
 
-      receiver.ProposeAccessPath(&path, &new_root_candidates,
-                                 /*obsolete_orderings=*/0,
-                                 materialize_subqueries ? "mat. subq" : "");
+      receiver.ProposeAccessPath(
+          &path, receiver.all_nodes(), &new_root_candidates,
+          /*obsolete_orderings=*/0, materialize_subqueries ? "mat. subq" : "");
 
       if (!contains_subqueries) {
         // Nothing to try to materialize.
@@ -7318,7 +7375,8 @@ void ApplyHavingOrQualifyCondition(THD *thd, Item *having_cond,
     // HAVING conditions.
     filter_path.ordering_state = root_path->ordering_state;
     filter_path.has_group_skip_scan = root_path->has_group_skip_scan;
-    receiver->ProposeAccessPath(&filter_path, &new_root_candidates,
+    receiver->ProposeAccessPath(&filter_path, receiver->all_nodes(),
+                                &new_root_candidates,
                                 /*obsolete_orderings=*/0, "");
   }
   *root_candidates = std::move(new_root_candidates);
@@ -7561,9 +7619,9 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
     // rows as any other path. So we set the same number to get a fair
     // comparison.
     SetGroupSkipScanCardinality(root_path, output_rows);
-    receiver->ProposeAccessPath(root_path, new_root_candidates,
-                                /*obsolete_orderings=*/0,
-                                "deduplication elided");
+    receiver->ProposeAccessPath(
+        root_path, receiver->all_nodes(), new_root_candidates,
+        /*obsolete_orderings=*/0, "deduplication elided");
     return;
   }
 
@@ -7574,7 +7632,8 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
                                  /*calc_found_rows=*/false,
                                  /*reject_multiple_rows=*/false,
                                  /*send_records_override=*/nullptr);
-    receiver->ProposeAccessPath(limit_path, new_root_candidates,
+    receiver->ProposeAccessPath(limit_path, receiver->all_nodes(),
+                                new_root_candidates,
                                 /*obsolete_orderings=*/0, "");
     return;
   }
@@ -7608,7 +7667,8 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
 
     dedup_path->set_cost(dedup_path->cost() +
                          kAggregateOneRowCost * root_path->num_output_rows());
-    receiver->ProposeAccessPath(dedup_path, new_root_candidates,
+    receiver->ProposeAccessPath(dedup_path, receiver->all_nodes(),
+                                new_root_candidates,
                                 /*obsolete_orderings=*/0, "sort elided");
     return;
   }
@@ -7621,7 +7681,7 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
             /*temp_table_param=*/nullptr,
             /*copy_items=*/true, &output_rows,
             MaterializePathParameters::DEDUP_FOR_DISTINCT),
-        new_root_candidates, /*obsolete_orderings=*/0,
+        receiver->all_nodes(), new_root_candidates, /*obsolete_orderings=*/0,
         "materialize with deduplication");
 
     if (force_materialize_plan) return;
@@ -7643,7 +7703,8 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
           MakeSortPathForDistinct(root_path, sort_ahead_ordering.ordering_idx,
                                   ordering_state.value(), output_rows)};
 
-      receiver->ProposeAccessPath(&sort_path, new_root_candidates,
+      receiver->ProposeAccessPath(&sort_path, receiver->all_nodes(),
+                                  new_root_candidates,
                                   /*obsolete_orderings=*/0, "");
     }
   }
@@ -7808,9 +7869,9 @@ AccessPathArray ApplyOrderBy(THD *thd, const CostingReceiver &receiver,
                                            /*send_records_override=*/nullptr);
     }
 
-    receiver.ProposeAccessPath(root_path, &new_root_candidates,
-                               /*obsolete_orderings=*/0,
-                               sort_needed ? "" : "sort elided");
+    receiver.ProposeAccessPath(
+        root_path, receiver.all_nodes(), &new_root_candidates,
+        /*obsolete_orderings=*/0, sort_needed ? "" : "sort elided");
   }
   return new_root_candidates;
 }
@@ -8243,7 +8304,8 @@ static AccessPathArray ApplyWindowFunctions(
     }
 
     assert(num_windows_left == 0);
-    receiver.ProposeAccessPath(root_path, &new_root_candidates,
+    receiver.ProposeAccessPath(root_path, receiver.all_nodes(),
+                               &new_root_candidates,
                                /*obsolete_orderings=*/0, "");
   }
   if (TraceStarted(thd)) {
@@ -8583,7 +8645,8 @@ bool ApplyAggregation(
       AccessPath aggregate_path = CreateStreamingAggregationPath(
           thd, root_path, join, query_block->olap, aggregate_rows);
       aggregate_rows = aggregate_path.num_output_rows();
-      receiver.ProposeAccessPath(&aggregate_path, &new_root_candidates,
+      receiver.ProposeAccessPath(&aggregate_path, receiver.all_nodes(),
+                                 &new_root_candidates,
                                  /*obsolete_orderings=*/0, "sort elided");
 
       // With no sorting required, streaming aggregation will always be cheaper,
@@ -8598,7 +8661,7 @@ bool ApplyAggregation(
       receiver.ProposeAccessPath(
           CreateTemptableAggregationPath(thd, query_block, root_path,
                                          &aggregate_rows),
-          &new_root_candidates, /*obsolete_orderings=*/0,
+          receiver.all_nodes(), &new_root_candidates, /*obsolete_orderings=*/0,
           "temp table aggregate");
 
       // Skip sort plans if we want to force temp table plan.
@@ -8610,7 +8673,7 @@ bool ApplyAggregation(
               /*temp_table_param=*/nullptr,
               /*copy_items=*/true, &aggregate_rows,
               MaterializePathParameters::DEDUP_FOR_GROUP_BY),
-          &new_root_candidates, /*obsolete_orderings=*/0,
+          receiver.all_nodes(), &new_root_candidates, /*obsolete_orderings=*/0,
           "materialize with deduplication");
 
       // Skip sort plans if we want to force temp table plan.
@@ -8657,7 +8720,8 @@ bool ApplyAggregation(
       AccessPath aggregate_path = CreateStreamingAggregationPath(
           thd, sort_path, join, query_block->olap, aggregate_rows);
       aggregate_rows = aggregate_path.num_output_rows();
-      receiver.ProposeAccessPath(&aggregate_path, &new_root_candidates,
+      receiver.ProposeAccessPath(&aggregate_path, receiver.all_nodes(),
+                                 &new_root_candidates,
                                  /*obsolete_orderings=*/0, description);
     }
   }
@@ -8667,7 +8731,8 @@ bool ApplyAggregation(
   for (AccessPath *root_path : root_candidates) {
     if (!IsAlreadyAggregated(root_path)) continue;
     SetGroupSkipScanCardinality(root_path, aggregate_rows);
-    receiver.ProposeAccessPath(root_path, &new_root_candidates,
+    receiver.ProposeAccessPath(root_path, receiver.all_nodes(),
+                               &new_root_candidates,
                                /*obsolete_orderings=*/0, "aggregation elided");
   }
   root_candidates = std::move(new_root_candidates);
@@ -8836,6 +8901,9 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
                          &group_by_ordering_idx, &distinct_ordering_idx,
                          &active_indexes, &spatial_indexes, &fulltext_searches);
 
+  const NodeMap nodes_under_limit =
+      GetNodesUnderLimit(graph, orderings, distinct_ordering_idx);
+
   if (InjectCastNodes(&graph)) return nullptr;
 
   // Run the actual join optimizer algorithm. This creates an access path
@@ -8856,8 +8924,8 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
       thd, query_block, graph, &orderings, &sort_ahead_orderings,
       &active_indexes, &spatial_indexes, &fulltext_searches, fulltext_tables,
       sargable_fulltext_predicates, update_delete_target_tables,
-      immediate_update_delete_candidates, need_rowid, EngineFlags(thd),
-      *subgraph_pair_limit, secondary_engine_cost_hook,
+      immediate_update_delete_candidates, need_rowid, nodes_under_limit,
+      EngineFlags(thd), *subgraph_pair_limit, secondary_engine_cost_hook,
       secondary_engine_optimizer_request_state_hook);
   if (graph.nodes.size() == 1) {
     // Fast path for single-table queries. No need to run the join enumeration
@@ -8900,7 +8968,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
           &active_indexes, &spatial_indexes, &fulltext_searches,
           fulltext_tables, sargable_fulltext_predicates,
           update_delete_target_tables, immediate_update_delete_candidates,
-          need_rowid, EngineFlags(thd),
+          need_rowid, nodes_under_limit, EngineFlags(thd),
           /*subgraph_pair_limit=*/*subgraph_pair_limit,
           secondary_engine_cost_hook,
           secondary_engine_optimizer_request_state_hook);
@@ -8918,6 +8986,8 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
     return CreateZeroRowsForEmptyJoin(join, join->zero_result_cause);
   }
 
+  const NodeMap all_nodes = receiver.all_nodes();
+
   // Get the root candidates. If there is a secondary engine cost hook, there
   // may be no candidates, as the hook may have rejected so many access paths
   // that we could not build a complete plan, or the hook may have rejected
@@ -8930,7 +9000,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
     path->set_cost(0.0);
     path->set_init_cost(0.0);
     path->set_cost_before_filter(0.0);
-    receiver.ProposeAccessPath(path, &root_candidates,
+    receiver.ProposeAccessPath(path, all_nodes, &root_candidates,
                                /*obsolete_orderings=*/0,
                                /*description_for_trace=*/"");
   }
@@ -8991,7 +9061,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
   // turn, and then finally pick out the one with the lowest total cost,
   // because at the end, other metrics don't really matter any more.
   //
-  // We could have stopped caring about e.g. init_cost after LIMIT
+  // We could have stopped caring about e.g. first_row_cost after LIMIT
   // has been applied (after which it no longer matters), so that we'd get
   // fewer candidates in each step, but this part is so cheap that it's
   // unlikely to be worth it. We go through ProposeAccessPath() mainly
@@ -9048,7 +9118,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
       root_path =
           CreateMaterializationOrStreamingPath(thd, join, root_path, need_rowid,
                                                /*copy_items=*/true);
-      receiver.ProposeAccessPath(root_path, &new_root_candidates,
+      receiver.ProposeAccessPath(root_path, all_nodes, &new_root_candidates,
                                  /*obsolete_orderings=*/0, "");
     }
     root_candidates = std::move(new_root_candidates);
@@ -9159,7 +9229,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
           query_expression->offset_limit_cnt, join->calc_found_rows,
           /*reject_multiple_rows=*/false,
           /*send_records_override=*/nullptr);
-      receiver.ProposeAccessPath(limit_path, &new_root_candidates,
+      receiver.ProposeAccessPath(limit_path, all_nodes, &new_root_candidates,
                                  /*obsolete_orderings=*/0, "");
     }
     root_candidates = std::move(new_root_candidates);
@@ -9179,7 +9249,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
       AccessPath *delete_path = NewDeleteRowsAccessPath(
           thd, root_path, update_delete_target_tables, immediate_tables);
       EstimateDeleteRowsCost(delete_path);
-      receiver.ProposeAccessPath(delete_path, &new_root_candidates,
+      receiver.ProposeAccessPath(delete_path, all_nodes, &new_root_candidates,
                                  /*obsolete_orderings=*/0, "");
     }
     root_candidates = std::move(new_root_candidates);
@@ -9195,7 +9265,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
       AccessPath *update_path = NewUpdateRowsAccessPath(
           thd, root_path, update_delete_target_tables, immediate_tables);
       EstimateUpdateRowsCost(update_path);
-      receiver.ProposeAccessPath(update_path, &new_root_candidates,
+      receiver.ProposeAccessPath(update_path, all_nodes, &new_root_candidates,
                                  /*obsolete_orderings=*/0, "");
     }
     root_candidates = std::move(new_root_candidates);
