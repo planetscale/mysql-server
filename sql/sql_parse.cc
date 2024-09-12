@@ -6653,6 +6653,8 @@ Comp_creator *comp_ne_creator(bool invert) {
 /**
   Construct ALL/ANY/SOME subquery Item.
 
+  @param thd         thread handler
+  @param pos         string from parsed item
   @param left_expr   pointer to left expression
   @param cmp         compare function creator
   @param all         true if we create ALL subquery
@@ -6661,24 +6663,39 @@ Comp_creator *comp_ne_creator(bool invert) {
   @return
     constructed Item (or 0 if out of memory)
 */
-Item *all_any_subquery_creator(Item *left_expr,
+Item *all_any_subquery_creator(THD *thd, const POS &pos, Item *left_expr,
                                chooser_compare_func_creator cmp, bool all,
                                Query_block *query_block) {
-  if ((cmp == &comp_eq_creator) && !all)  //  = ANY <=> IN
-    return new Item_in_subselect(left_expr, query_block);
-  if ((cmp == &comp_ne_creator) && all)  // <> ALL <=> NOT IN
-  {
-    Item *i = new Item_in_subselect(left_expr, query_block);
-    if (i == nullptr) return nullptr;
-    Item *neg_i = i->truth_transformer(nullptr, Item::BOOL_NEGATED);
-    if (neg_i != nullptr) return neg_i;
-    return new Item_func_not(i);
-  }
-  Item_allany_subselect *it =
-      new Item_allany_subselect(left_expr, cmp, query_block, all);
-  if (all) return it->m_upper_item = new Item_func_not_all(it); /* ALL */
+  Item *item = nullptr;
 
-  return it->m_upper_item = new Item_func_nop_all(it); /* ANY/SOME */
+  if (cmp == &comp_eq_creator && !all) {  //  = ANY <=> IN
+    item = new (thd->mem_root) Item_in_subselect(pos, left_expr, query_block);
+    if (item == nullptr) return nullptr;
+
+    thd->add_item(item);
+  } else if (cmp == &comp_ne_creator && all) {  // <> ALL <=> NOT IN
+    item = new Item_in_subselect(pos, left_expr, query_block);
+    if (item == nullptr) return nullptr;
+
+    thd->add_item(item);
+
+    Item *negated = item->truth_transformer(nullptr, Item::BOOL_NEGATED);
+    if (negated != nullptr) return negated;
+    item = new (thd->mem_root) Item_func_not(item);
+  } else {
+    Item_allany_subselect *it = new (thd->mem_root)
+        Item_allany_subselect(pos, left_expr, cmp, query_block, all);
+    if (it == nullptr) return nullptr;
+
+    thd->add_item(it);
+
+    if (all) {  // ALL
+      item = it->m_upper_item = new (thd->mem_root) Item_func_not_all(it);
+    } else {  // ANY/SOME
+      item = it->m_upper_item = new (thd->mem_root) Item_func_nop_all(it);
+    }
+  }
+  return item;
 }
 
 /**

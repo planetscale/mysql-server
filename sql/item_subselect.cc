@@ -891,6 +891,14 @@ bool Query_result_scalar_subquery::send_data(
   return false;
 }
 
+Item_singlerow_subselect::Item_singlerow_subselect(const POS &pos,
+                                                   Query_block *query_block)
+    : Item_subselect(pos) {
+  bind(query_block->master_query_expression());
+
+  m_max_columns = UINT_MAX;
+}
+
 Item_singlerow_subselect::Item_singlerow_subselect(Query_block *query_block)
     : Item_subselect() {
   bind(query_block->master_query_expression());
@@ -1306,8 +1314,9 @@ bool Query_result_exists_subquery::send_data(THD *,
   return false;
 }
 
-Item_exists_subselect::Item_exists_subselect(Query_block *query_block)
-    : Item_subselect() {
+Item_exists_subselect::Item_exists_subselect(const POS &pos,
+                                             Query_block *query_block)
+    : Item_subselect(pos) {
   DBUG_TRACE;
   bind(query_block->master_query_expression());
 
@@ -1413,8 +1422,9 @@ bool Item_in_subselect::test_limit() {
   return false;
 }
 
-Item_in_subselect::Item_in_subselect(Item *left_exp, Query_block *query_block)
-    : Item_exists_subselect(query_block), pt_subselect(nullptr) {
+Item_in_subselect::Item_in_subselect(const POS &pos, Item *left_exp,
+                                     Query_block *query_block)
+    : Item_exists_subselect(pos, query_block), pt_subselect(nullptr) {
   DBUG_TRACE;
   left_expr = left_exp;
   m_max_columns = UINT_MAX;
@@ -1448,11 +1458,11 @@ bool Item_in_subselect::do_itemize(Parse_context *pc, Item **res) {
   return false;
 }
 
-Item_allany_subselect::Item_allany_subselect(Item *left_exp,
+Item_allany_subselect::Item_allany_subselect(const POS &pos, Item *left_exp,
                                              chooser_compare_func_creator fc,
                                              Query_block *query_block,
                                              bool all_arg)
-    : Item_in_subselect(), m_func_creator(fc), m_all(all_arg) {
+    : Item_in_subselect(pos), m_func_creator(fc), m_all(all_arg) {
   DBUG_TRACE;
   left_expr = left_exp;
   m_func = m_func_creator(all_arg);
@@ -1857,13 +1867,16 @@ bool Item_in_subselect::single_value_transformer(THD *thd, Comp_creator *func,
     1. has a greater than/less than comparison operator, and
     2. is not correlated with the outer query, and
     3. UNKNOWN results are treated as FALSE, by this item or the outer item,
-    or can never be generated.
+       or can never be generated, and
+    4. is for a target engine that supports subqueries.
   */
   if (!func->eqne_op() &&                                              // 1
       !query_expr()->uncacheable &&                                    // 2
       (abort_on_null ||                                                // 3
        (m_upper_item != nullptr && m_upper_item->ignore_unknown()) ||  // 3
-       (!left_expr->is_nullable() && !subquery_maybe_null))) {
+       (!left_expr->is_nullable() && !subquery_maybe_null)) &&         // 3
+      thd->secondary_engine_optimization() !=                          // 4
+          Secondary_engine_optimization::SECONDARY) {                  // 4
     Query_block *select = query_expr()->first_query_block();
 
     Item_singlerow_subselect *subquery;

@@ -137,8 +137,6 @@ static Item *handle_sql2003_note184_exception(Parse_context *pc, Item *left,
 
     if (expr2->subquery_type() == Item_subselect::SCALAR_SUBQUERY) {
       Item_singlerow_subselect *expr3 = (Item_singlerow_subselect *)expr2;
-      Query_block *subselect;
-
       /*
         Implement the mandated change, by altering the semantic tree:
           left IN Item_singlerow_subselect(subselect)
@@ -147,8 +145,8 @@ static Item *handle_sql2003_note184_exception(Parse_context *pc, Item *left,
         which is represented as
           Item_in_subselect(left, subselect)
       */
-      subselect = expr3->invalidate_and_restore_query_block();
-      result = new (pc->mem_root) Item_in_subselect(left, subselect);
+      Query_block *const qb = expr3->invalidate_and_restore_query_block();
+      result = new (pc->mem_root) Item_in_subselect(expr->m_pos, left, qb);
 
       if (is_negation)
         result =
@@ -180,7 +178,8 @@ bool PTI_comp_op_all::do_itemize(Parse_context *pc, Item **res) {
       subselect->contextualize(pc))
     return true;
 
-  *res = all_any_subquery_creator(left, comp_op, is_all, subselect->value());
+  *res = all_any_subquery_creator(pc->thd, m_pos, left, comp_op, is_all,
+                                  subselect->value());
 
   return *res == nullptr;
 }
@@ -327,15 +326,23 @@ bool PTI_text_literal_nchar_string::do_itemize(Parse_context *pc, Item **res) {
 
 bool PTI_singlerow_subselect::do_itemize(Parse_context *pc, Item **res) {
   if (super::do_itemize(pc, res) || subselect->contextualize(pc)) return true;
-  *res = new (pc->mem_root) Item_singlerow_subselect(subselect->value());
+  *res = new (pc->mem_root) Item_singlerow_subselect(m_pos, subselect->value());
+  if (*res == nullptr) return true;
+
+  pc->thd->add_item(*res);
   pc->select->n_scalar_subqueries++;
-  return *res == nullptr;
+
+  return false;
 }
 
 bool PTI_exists_subselect::do_itemize(Parse_context *pc, Item **res) {
   if (super::do_itemize(pc, res) || subselect->contextualize(pc)) return true;
-  *res = new (pc->mem_root) Item_exists_subselect(subselect->value());
-  return *res == nullptr;
+  *res = new (pc->mem_root) Item_exists_subselect(m_pos, subselect->value());
+  if (*res == nullptr) return true;
+
+  pc->thd->add_item(*res);
+
+  return false;
 }
 
 bool PTI_handle_sql2003_note184_exception::do_itemize(Parse_context *pc,
