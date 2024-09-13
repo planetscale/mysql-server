@@ -7525,7 +7525,8 @@ EXPLAIN
 -> Select #2 (subquery in projection; dependent)
     -> Limit: 1 row(s)
         -> Window aggregate with buffering: sum(t2.a) OVER w
-            -> Table scan on t2
+            -> Sort: t3.a
+                -> Table scan on t2
 
 Warnings:
 Note	1276	Field or reference 'test.t3.a' of SELECT #2 was resolved in SELECT #1
