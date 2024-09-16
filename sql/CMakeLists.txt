@@ -957,8 +957,7 @@ MYSQL_ADD_PLUGIN(mysql_native_password
   SYSTEM_INCLUDE_DIRECTORIES "${RAPIDJSON_INCLUDE_DIR}"
   STATIC_ONLY DEFAULT)
 
-TARGET_INCLUDE_DIRECTORIES(sql_main SYSTEM PUBLIC
-  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)
+TARGET_LINK_LIBRARIES(sql_main extra::unordered_dense)
 
 TARGET_LINK_LIBRARIES(sql_main ${MYSQLD_STATIC_PLUGIN_LIBS}
   mysql_server_component_services mysys strings vio
