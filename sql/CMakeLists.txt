@@ -969,8 +969,7 @@ ELSEIF(WITH_SHOW_PARSE_TREE_DEFAULT STREQUAL "default")
     $<$<CONFIG:Debug>:WITH_SHOW_PARSE_TREE=1>)
 ENDIF()
 
-TARGET_INCLUDE_DIRECTORIES(sql_main SYSTEM PUBLIC
-  ${CMAKE_SOURCE_DIR}/extra/unordered_dense/unordered_dense-4.4.0/include)
+TARGET_LINK_LIBRARIES(sql_main extra::unordered_dense)
 
 TARGET_LINK_LIBRARIES(sql_main ${MYSQLD_STATIC_PLUGIN_LIBS}
   mysql_server_component_services mysys strings vio
