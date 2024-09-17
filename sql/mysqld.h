@@ -667,6 +667,8 @@ extern uint opt_large_page_size;
 extern char lc_messages_dir[FN_REFLEN];
 extern char *lc_messages_dir_ptr;
 extern const char *log_error_dest;
+extern const char *log_dia_dest;
+extern bool log_diagnostic_enable;
 extern MYSQL_PLUGIN_IMPORT char reg_ext[FN_EXTLEN];
 extern MYSQL_PLUGIN_IMPORT uint reg_ext_length;
 extern MYSQL_PLUGIN_IMPORT uint lower_case_table_names;

@@ -201,6 +201,7 @@ int log_sink_trad(void *instance [[maybe_unused]], log_line *ll) {
   const char *iso_timestamp = "", *subsys = "";
   my_thread_id thread_id = 0;
   char *line_buffer = nullptr;
+  enum_log_type log_type = LOG_TYPE_ERROR;
 
   if (ll->count > 0) {
     for (c = 0; c < ll->count; c++) {
@@ -265,6 +266,9 @@ int log_sink_trad(void *instance [[maybe_unused]], log_line *ll) {
           break;
         case LOG_ITEM_SRV_THREAD:
           thread_id = (my_thread_id)ll->item[c].data.data_integer;
+          break;
+        case LOG_ITEM_LOG_TYPE:
+          log_type = (enum enum_log_type)ll->item[c].data.data_integer;
           break;
         default:
           out_fields--;
@@ -343,7 +347,7 @@ int log_sink_trad(void *instance [[maybe_unused]], log_line *ll) {
       }
 
       // write log-event to log-file
-      log_write_errstream(buff_line, len);
+      log_write_errstream(buff_line, len, log_type);
     }
   }
 

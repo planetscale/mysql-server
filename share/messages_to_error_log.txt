@@ -12951,6 +12951,9 @@ ER_AUTHENTICATION_OPENID_OPTION_DEREGISTER
 ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER_LOG
   eng "Unexpected enclosed by character found inside unenclosed string at row %ld in file '%s' resulting in malformed CSV."
 
+ER_DIAG_LOG_STRING
+  eng "%s"
+
 ################################################################################
 # Error numbers 50000 to 51999 are reserved. Please do not use them for
 # other error messages.

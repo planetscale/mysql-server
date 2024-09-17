@@ -1499,7 +1499,10 @@ char default_relaylog_index_name[FN_REFLEN + relay_ext_length +
                                  index_ext_length];
 char *default_tz_name;
 static char errorlog_filename_buff[FN_REFLEN];
+static char dialog_filename_buff[FN_REFLEN];
 const char *log_error_dest;
+const char *log_dia_dest;
+bool log_diagnostic_enable;
 const char *my_share_dir[FN_REFLEN];
 char glob_hostname[HOSTNAME_LENGTH + 1];
 char mysql_real_data_home[FN_REFLEN], lc_messages_dir[FN_REFLEN],
@@ -7414,6 +7417,85 @@ static bool initialize_storage_engine(const char *se_name, const char *se_kind,
   return false;
 }
 
+static void setup_diagnostic_log() {
+  /* Setup diagnostic log unless disabled. */
+  if (!log_diagnostic_enable) return;
+
+    /*
+      Enable old-fashioned diagnostic log, except when the user has requested
+      help information. Since the implementation of plugin server
+      variables the help output is now written much later.
+
+      log_diagnostic_dest can be:
+      disabled_my_option     --log-diagnostic was not used or --log-diagnostic=
+      ""                     --log-diagnostic without arguments (no '=')
+      filename               --log-diagnostic=filename
+     */
+
+#ifdef _WIN32
+  /*
+    Enable the diagnostic log file only if console option is not specified
+    and --help is not used.
+  */
+  const bool log_diagnostics_to_file =
+      !is_help_or_validate_option() && !opt_console;
+#else
+  /*
+    Enable the diagnostic log file only if --log-diagnostic=filename or
+    --log-diagnostic was used. Logging to file is disabled by default unlike on
+    Windows.
+  */
+  bool log_diagnostics_to_file =
+      !is_help_or_validate_option() && (log_dia_dest != disabled_my_option);
+#endif
+
+  if (log_diagnostics_to_file) {
+    // Construct filename if no filename was given by the user.
+    if (!log_dia_dest[0] || log_dia_dest == disabled_my_option) {
+#ifdef _WIN32
+      const char *filename = pidfile_name;
+#else
+      const char *filename = default_logfile_name;
+#endif
+      fn_format(dialog_filename_buff, filename, mysql_real_data_home, ".diag",
+                MY_REPLACE_EXT | MY_REPLACE_DIR);
+    } else {
+      fn_format(dialog_filename_buff, log_dia_dest, mysql_data_home, ".diag",
+                MY_UNPACK_FILENAME);
+    }
+
+    /*
+      log_dia_dest may have been set to disabled_my_option or "" if no
+      argument was passed, but we need to show the real name in SHOW VARIABLES.
+    */
+    log_dia_dest = dialog_filename_buff;
+
+#ifndef _WIN32
+    // Create backup stream to stdout if daemonizing and connected to tty
+    if (opt_daemonize && isatty(STDOUT_FILENO)) {
+      nstdout = fdopen(dup(STDOUT_FILENO), "a");
+      if (nstdout == nullptr) {
+        LogErr(ERROR_LEVEL, ER_DUP_FD_OPEN_FAILED, "stdout", strerror(errno));
+        unireg_abort(MYSQLD_ABORT_EXIT);
+      }
+      // Display location of diagnostic log file on stdout if connected to tty
+      fprintf(nstdout, "mysqld will log diagnostics to %s\n",
+              dialog_filename_buff);
+    }
+#endif /* ndef _WIN32 */
+
+    if (open_error_log(dialog_filename_buff, false, LOG_TYPE_DIAG))
+      unireg_abort(MYSQLD_ABORT_EXIT);
+
+#ifdef _WIN32
+      // FreeConsole();        // Remove window
+#endif /* _WIN32 */
+  } else {
+    // We are logging to stderr and SHOW VARIABLES should reflect that.
+    log_dia_dest = "stdout";
+  }
+}
+
 static void setup_error_log() {
   /* Setup logs */
 
@@ -7457,6 +7539,7 @@ static void setup_error_log() {
     } else
       fn_format(errorlog_filename_buff, log_error_dest, mysql_data_home, ".err",
                 MY_UNPACK_FILENAME);
+
     /*
       log_error_dest may have been set to disabled_my_option or "" if no
       argument was passed, but we need to show the real name in SHOW VARIABLES.
@@ -7477,7 +7560,9 @@ static void setup_error_log() {
     }
 #endif /* ndef _WIN32 */
 
-    if (open_error_log(errorlog_filename_buff, false))
+    if (open_error_log(
+            errorlog_filename_buff, false,
+            LOG_TYPE_ERROR | (log_diagnostic_enable ? 0 : LOG_TYPE_DIAG)))
       unireg_abort(MYSQLD_ABORT_EXIT);
 
 #ifdef _WIN32
@@ -7616,7 +7701,7 @@ static int setup_error_log_components() {
         len = std::min(len, sizeof(buff) - 1);
 
         // Trust nothing. Write directly. Quit.
-        log_write_errstream(buff, len);
+        log_write_errstream(buff, len, LOG_TYPE_ERROR);
 
         goto failure;
       } /* purecov: end */
@@ -7930,7 +8015,14 @@ static int init_server_components() {
   randominit(&sql_rand, (ulong)server_start_time, (ulong)server_start_time / 2);
   setup_fpu();
 
-  setup_error_log();  // opens the log if needed
+  setup_error_log();       // opens the log if needed
+  setup_diagnostic_log();  // opens the log if needed
+
+  DBUG_EXECUTE_IF("emit_diagnostic_message_upon_start", {
+    fprintf(stdout, "Message to stdout\n");
+    fflush(stdout);
+    LogDiag(INFORMATION_LEVEL, ER_DIAG_LOG_STRING, "Message to diagnostic log");
+  });
 
   enter_cond_hook = thd_enter_cond;
   exit_cond_hook = thd_exit_cond;
@@ -9444,6 +9536,7 @@ int mysqld_main(int argc, char **argv)
 
   if (init_common_variables()) {
     setup_error_log();
+    setup_diagnostic_log();
     unireg_abort(MYSQLD_ABORT_EXIT);  // Will do exit
   }
 
@@ -9509,6 +9602,12 @@ int mysqld_main(int argc, char **argv)
       (isatty(STDOUT_FILENO) || isatty(STDERR_FILENO))) {
     // Just use the default in this case.
     log_error_dest = "";
+  }
+
+  if (opt_daemonize && log_dia_dest == disabled_my_option &&
+      isatty(STDOUT_FILENO)) {
+    // Just use the default in this case.
+    log_dia_dest = "";
   }
 
   if (opt_daemonize && !opt_validate_config) {
@@ -12847,6 +12946,14 @@ bool mysqld_get_one_option(int optid,
       */
       if (argument == nullptr) /* no argument */
         log_error_dest = "";
+      break;
+    case OPT_LOG_DIAGNOSTIC:
+      /*
+        "No --log-diagnostic" == "write diagnostics to stdout",
+        "--log-diagnostic without argument" == "write diagnostics to a file".
+      */
+      if (argument == nullptr) /* no argument */
+        log_dia_dest = "";
       break;
 
     case OPT_EARLY_PLUGIN_LOAD:

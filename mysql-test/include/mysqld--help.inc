@@ -27,7 +27,8 @@ perl;
 
   # Variables which we don't want to display in result file since
   # they depend on type of build
-  @build_specific=qw/auto-generate-certs lock-order tls-version admin-tls-version debug-enable-extended-set-ops/;
+  @build_specific=qw/auto-generate-certs lock-order tls-version admin-tls-version debug-enable-extended-set-ops
+               enable-diagnostic-log log-diagnostic/;
 
   # Plugins which may or may not be there:
   @plugins=qw/innodb ngram mecab ndb ndbinfo archive blackhole federated partition ndbcluster debug ssl des-key-file
