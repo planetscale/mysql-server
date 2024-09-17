@@ -3930,6 +3930,10 @@ struct LEX : public Query_tables_list {
     return m_splitting_window_expression;
   }
 
+  void set_splitting_window_expression(bool v) {
+    m_splitting_window_expression = v;
+  }
+
  private:
   bool m_using_hypergraph_optimizer{false};
 

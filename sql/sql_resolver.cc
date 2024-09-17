@@ -4745,6 +4745,12 @@ bool WalkAndReplace(
   if (item->type() == Item::FUNC_ITEM ||
       (item->type() == Item::SUM_FUNC_ITEM && item->m_is_window_function)) {
     Item **args = down_cast<Item_func *>(item)->arguments();
+    bool saved = false;
+
+    if (item->m_is_window_function) {
+      saved = thd->lex->splitting_window_expression();
+      thd->lex->set_splitting_window_expression(false);
+    }
     const unsigned arg_count = down_cast<Item_func *>(item)->argument_count();
     for (unsigned argument_idx = 0; argument_idx < arg_count; argument_idx++) {
       if (WalkAndReplaceInner(thd, item, argument_idx, get_new_item,
@@ -4754,6 +4760,7 @@ bool WalkAndReplace(
     }
 
     if (item->m_is_window_function) {
+      thd->lex->set_splitting_window_expression(saved);
       down_cast<Item_sum *>(item)->update_after_wf_arguments_changed(thd);
     }
   } else if (item->type() == Item::ROW_ITEM) {
