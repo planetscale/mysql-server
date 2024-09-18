@@ -297,7 +297,7 @@ static struct my_option my_long_options[] = {
     {"column-statistics", 0,
      "Add an ANALYZE TABLE statement to regenerate any existing column "
      "statistics.",
-     &column_statistics, &column_statistics, nullptr, GET_BOOL, NO_ARG, 1, 0, 0,
+     &column_statistics, &column_statistics, nullptr, GET_BOOL, NO_ARG, 0, 0, 0,
      nullptr, 0, nullptr},
     {"comments", 'i', "Write additional information.", &opt_comments,
      &opt_comments, nullptr, GET_BOOL, NO_ARG, 1, 0, 0, nullptr, 0, nullptr},

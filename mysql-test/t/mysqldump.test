@@ -2291,7 +2291,7 @@ SET GLOBAL EVENT_SCHEDULER = ON;
 --echo #
 USE `test`;
 CREATE TABLE t1 (a int, b int);
-CREATE TRIGGER tt1_t1 BEFORE INSERT ON t1 FOR EACH ROW 
+CREATE TRIGGER tt1_t1 BEFORE INSERT ON t1 FOR EACH ROW
   SET NEW.b=NEW.a + 10;
 
 INSERT INTO t1 (a) VALUES (1),(2),(3);
@@ -2393,7 +2393,7 @@ DROP DATABASE b12688860_db;
 #SET @@global.log_output="TABLE";
 #SET @@global.general_log='OFF';
 #SET @@global.slow_query_log='OFF';
-#DROP DATABASE mysql; 
+#DROP DATABASE mysql;
 #--exec $MYSQL < $MYSQLTEST_VARDIR/tmp/bug45740.sql
 #SHOW CREATE TABLE mysql.general_log;
 #SHOW CREATE TABLE mysql.slow_log;
@@ -2402,7 +2402,7 @@ DROP DATABASE b12688860_db;
 #SET @@global.log_output=       @old_log_output_state;
 #SET @@global.slow_query_log=   @old_slow_query_log_state;
 #SET @@global.general_log=      @old_general_log_state;
- 
+
 --echo #
 --echo # End of 5.1 tests
 --echo #
@@ -2671,6 +2671,18 @@ FROM information_schema.COLUMN_STATISTICS;
 
 --let $assert_select= \/\*!80002 ANALYZE TABLE `t1` UPDATE HISTOGRAM ON `col1` WITH 22 BUCKETS \*\/;
 --let $assert_count= 1
+--let $assert_text= Check for ANALYZE TABLE with histogram clause
+--source include/assert_grep.inc
+
+--echo #
+--echo # Bug#35209008: mysqldump --column-statistics has invalid default value
+--echo #   by default the option must be disabled
+--echo #
+
+--exec $MYSQL_DUMP column_statistics_dump t1 > $assert_file
+
+--let $assert_select= \/\*!80002 ANALYZE TABLE `t1` UPDATE HISTOGRAM ON `col1` WITH 22 BUCKETS \*\/;
+--let $assert_count= 0
 --let $assert_text= Check for ANALYZE TABLE with histogram clause
 --source include/assert_grep.inc
 
