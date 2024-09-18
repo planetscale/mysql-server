@@ -65,6 +65,13 @@ namespace mysql::abi_helpers {
 template <class Type_enum_t>
 using Packet = Array_view<Field<Type_enum_t>>;
 
+/// @brief Class to store an array of @c Packet objects.
+///
+/// @tparam Type_enum_t Enumeration type used for the type code in the Field
+/// objects.
+template <class Type_enum_t>
+using Packet_array = Array_view<Packet<Type_enum_t>>;
+
 #ifdef MYSQL_SERVER
 /// @brief Class to help constructing a @c Packet, by pushing values one by one.
 ///

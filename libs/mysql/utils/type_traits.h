@@ -19,46 +19,27 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA.
+// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
-#ifndef MYSQL_ABI_HELPERS_FIELD_H
-#define MYSQL_ABI_HELPERS_FIELD_H
+#ifndef MYSQL_UTILS_TYPE_TRAITS_H
+#define MYSQL_UTILS_TYPE_TRAITS_H
 
 /// @file
 /// Experimental API header
 
-#include <cstdlib>      // std::size_t
-#include <type_traits>  // std::is_enum_v
-
-/// @addtogroup GroupLibsMysqlAbiHelpers
+/// @addtogroup GroupLibsMysqlUtils
 /// @{
 
-namespace mysql::abi_helpers {
+namespace mysql::utils {
 
-union Value_union {
-  long long m_int;
-  bool m_bool;
-  char *m_string;
-};
+/// True if Type is a const reference.
+template <class Type>
+concept Is_const_ref =
+    std::is_reference_v<Type> && std::is_const_v<std::remove_reference_t<Type>>;
 
-/// A type code and a value that is either a 64 bit integer, a boolean, or a
-/// bounded-length string.
-template <class Type_enum_tp>
-  requires requires { std::is_enum_v<Type_enum_tp>; }
-class Field {
- public:
-  using Type_enum_t = Type_enum_tp;
+}  // namespace mysql::utils
 
-  /// @brief The type of the field
-  Type_enum_t m_type;
-
-  /// @brief The data of the field
-  Value_union m_data;
-};
-
-}  // namespace mysql::abi_helpers
-
-// addtogroup GroupLibsMysqlAbiHelpers
+// addtogroup GroupLibsMysqlUtils
 /// @}
 
-#endif  // ifndef MYSQL_ABI_HELPERS_FIELD_H
+#endif  // ifndef MYSQL_UTILS_TYPE_TRAITS_H
