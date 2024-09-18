@@ -1272,9 +1272,10 @@ class expected<T, E> {
     }
   }
 
+  struct S {};
+
   union {
-    struct {
-    } dummy_;
+    S dummy_;
     E unex_;
   };
 
