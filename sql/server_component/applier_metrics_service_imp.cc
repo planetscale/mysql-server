@@ -26,6 +26,7 @@
 #include <mysql/components/services/rpl_applier_metrics_service.h>
 #include <cassert>
 #include <cstring>
+#include "my_dbug.h"                   // DBUG_EVALUATE_IF
 #include "mysql/abi_helpers/packet.h"  // Packet_builder
 #include "sql/psi_memory_key.h"
 #include "sql/rpl_mi.h"
@@ -171,16 +172,16 @@ DEFINE_BOOL_METHOD(Applier_metrics_service_handler::get_applier_metrics,
       }
     }
 
+    builder.push_int(transaction_pending_t, transactions_pending_count);
+
     builder.push_bool(are_transaction_pending_counts_unknown_t,
                       !are_transaction_pending_counts_known);
 
-    builder.push_int(transaction_pending_t, transactions_pending_count);
+    builder.push_int(transactions_pending_size_sum_t,
+                     transactions_pending_size_sum);
 
     builder.push_bool(are_transaction_pending_sizes_unknown_t,
                       !are_transaction_pending_sizes_known);
-
-    builder.push_int(transactions_pending_size_sum_t,
-                     transactions_pending_size_sum);
 
     builder.push_int(transactions_committed_size_sum_t,
                      transactions_committed_size_sum);
@@ -235,6 +236,19 @@ DEFINE_BOOL_METHOD(Applier_metrics_service_handler::get_applier_metrics,
         coord_metrics.get_time_to_read_from_relay_log_metric().get_time());
 
     assert(builder.get_position() == number_of_applier_metrics);
+    assert(builder.get_position() == row.size());
+
+    // Produce a packet containing just the first three fields. The component
+    // should handle this correctly by setting the fields to NULL/0/''.
+    if (DBUG_EVALUATE_IF("replication_applier_metrics_truncate_packet", true,
+                         false)) {
+      // Keep 10 fields, truncating after transaction_pending_t and before
+      // are_transaction_pending_counts_unknown_t. This allows test cases to
+      // exercise the case that a field is present but its nullness field is
+      // missing.
+      row.assign(row.data(), 10);
+      break;
+    }
 
     ++row_it;
   }
