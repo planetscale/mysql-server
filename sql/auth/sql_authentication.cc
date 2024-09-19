@@ -1608,9 +1608,9 @@ static void cannot_proxy_error(THD *thd, const MPVIO_EXT &mpvio,
                                int server_error, int client_error) {
   my_error(client_error, MYF(0), mpvio.auth_info.user_name,
            mpvio.auth_info.host_or_ip, mpvio.auth_info.authenticated_as);
-  query_logger.general_log_print(thd, COM_CONNECT, ER_DEFAULT(client_error),
-                                 mpvio.auth_info.user_name,
-                                 mpvio.auth_info.host_or_ip);
+  query_logger.general_log_print(
+      thd, COM_CONNECT, ER_DEFAULT_NONCONST(client_error),
+      mpvio.auth_info.user_name, mpvio.auth_info.host_or_ip);
   LogErr(INFORMATION_LEVEL, server_error, mpvio.auth_info.user_name,
          mpvio.auth_info.host_or_ip, mpvio.auth_info.authenticated_as);
 }
