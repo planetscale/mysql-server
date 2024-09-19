@@ -20661,7 +20661,7 @@ static int check_func_bool(THD *, SYS_VAR *, void *save,
 
     if (str == nullptr) return 1;
 
-    result = find_type(&bool_typelib, str, length, true) - 1;
+    result = find_type(&bool_typelib, str, length, false) - 1;
 
     if (result < 0) return 1;
   } else {
