@@ -1082,8 +1082,8 @@ static bool get_one_option(int optid, const struct my_option *opt,
       break;
     case (int)OPT_COMPACT:
       if (opt_compact) {
-        opt_comments = opt_drop = opt_disable_keys = opt_lock = false;
-        opt_set_charset = false;
+        opt_comments = opt_drop = opt_disable_keys = opt_lock = opt_tz_utc =
+            opt_set_charset = false;
       }
       break;
     case (int)OPT_TABLES:
