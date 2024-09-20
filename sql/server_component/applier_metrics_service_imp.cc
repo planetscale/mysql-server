@@ -22,13 +22,11 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
 #include "applier_metrics_service_imp.h"
-#include <mysql/components/service_implementation.h>
-#include <mysql/components/services/rpl_applier_metrics_service.h>
-#include <cassert>
-#include <cstring>
+#include <mysql/components/services/rpl_applier_metrics_service.h>  // Enum_applier_metric_type
+#include <cassert>                                                  // assert
 #include "my_dbug.h"                   // DBUG_EVALUATE_IF
 #include "mysql/abi_helpers/packet.h"  // Packet_builder
-#include "sql/psi_memory_key.h"
+#include "sql/psi_memory_key.h"        // key_memory_applier_metric_service
 #include "sql/rpl_mi.h"
 #include "sql/rpl_msr.h"  // channel_map
 #include "sql/rpl_rli_pdb.h"
