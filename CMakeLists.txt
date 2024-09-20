@@ -1782,6 +1782,31 @@ IF(WITH_SYSTEM_LIBS)
   UNSET(WITH_SYSTEM_LIBS CACHE)
 ENDIF()
 
+# The "annobin" plugin will normally generate a warning message if it
+# detects that neither the -D_FORTIFY_SOURCE=2 nor the
+# -D_FORTIFY_SOURCE=3 options have been provided on the command line
+# and -flto has been enabled.  This is because LTO compilation hides
+# preprocessor options, so information about them cannot be passed on
+# to the annocheck tool.
+#
+# See output from rpm --eval %optflags
+# Some of our RPM spec files will filter away some of the output.
+# To ensure consistency, and a clean build, we may filter away -flto here.
+# Note that it must be done early, before any ADD_SUBDIRECTORY or
+# MYSQL_CHECK_XXX, so that we do not break any feature tests.
+IF(LINUX_RPM_PLATFORM)
+  IF(NOT CMAKE_C_FLAGS MATCHES "FORTIFY_SOURCE")
+    IF(CMAKE_C_FLAGS MATCHES "-specs=.*redhat-annobin")
+      REMOVE_CMAKE_COMPILER_FLAGS(CMAKE_C_FLAGS "${MY_COMPILER_FLAG_FLTO}")
+    ENDIF()
+  ENDIF()
+  IF(NOT CMAKE_CXX_FLAGS MATCHES "FORTIFY_SOURCE")
+    IF(CMAKE_CXX_FLAGS MATCHES "-specs=.*redhat-annobin")
+      REMOVE_CMAKE_COMPILER_FLAGS(CMAKE_CXX_FLAGS "${MY_COMPILER_FLAG_FLTO}")
+    ENDIF()
+  ENDIF()
+ENDIF()
+
 # See whether backtrace is supported.
 MYSQL_CHECK_BACKTRACE()
 
