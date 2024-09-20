@@ -293,7 +293,7 @@ class CostingReceiver {
       table_map immediate_update_delete_candidates, bool need_rowid,
       NodeMap nodes_under_limit, SecondaryEngineFlags engine_flags,
       int subgraph_pair_limit,
-      secondary_engine_modify_access_path_cost_t secondary_engine_cost_hook,
+      secondary_engine_modify_view_ap_cost_t secondary_engine_cost_hook,
       secondary_engine_check_optimizer_request_t
           secondary_engine_planning_complexity_check_hook)
       : m_thd{thd},
@@ -315,6 +315,8 @@ class CostingReceiver {
         m_nodes_under_limit{nodes_under_limit},
         m_engine_flags{engine_flags},
         m_subgraph_pair_limit{subgraph_pair_limit},
+        m_use_secondary_engine_plan_limiting{
+            secondary_engine_planning_complexity_check_hook != nullptr},
         m_secondary_engine_cost_hook{secondary_engine_cost_hook},
         m_secondary_engine_planning_complexity_check{
             secondary_engine_planning_complexity_check_hook} {
@@ -371,6 +373,10 @@ class CostingReceiver {
 
   int subgraph_pair_limit() const { return m_subgraph_pair_limit; }
 
+  bool use_secondary_engine_plan_limiting() const {
+    return m_use_secondary_engine_plan_limiting;
+  }
+
   /// True if the result of the join is found to be always empty, typically
   /// because of an impossible WHERE clause.
   bool always_empty() const {
@@ -384,7 +390,9 @@ class CostingReceiver {
                                 const char *description_for_trace) const;
 
   bool HasSecondaryEngineCostHook() const {
-    return m_secondary_engine_cost_hook != nullptr;
+    return m_thd->secondary_engine_optimization() ==
+               Secondary_engine_optimization::SECONDARY &&
+           m_secondary_engine_cost_hook != nullptr;
   }
 
   NodeMap all_nodes() const { return TablesBetween(0, m_graph->nodes.size()); }
@@ -554,9 +562,14 @@ class CostingReceiver {
   /// planning time will come under an acceptable limit.
   int m_subgraph_pair_limit;
 
+  /// When this member is true, use a secondary engine, if available, to decide
+  /// when and how graph simplification is invoked when the plan search space is
+  /// too big.
+  bool m_use_secondary_engine_plan_limiting;
+
   /// Pointer to a function that modifies the cost estimates of an access path
   /// for execution in a secondary storage engine, or nullptr otherwise.
-  secondary_engine_modify_access_path_cost_t m_secondary_engine_cost_hook;
+  secondary_engine_modify_view_ap_cost_t m_secondary_engine_cost_hook;
 
   /// Pointer to a function that returns what state should hypergraph progress
   /// for optimization with secondary storage engine, or nullptr otherwise.
@@ -823,14 +836,16 @@ SecondaryEngineFlags EngineFlags(const THD *thd) {
 }
 
 /// Gets the secondary storage engine cost modification function, if any.
-secondary_engine_modify_access_path_cost_t SecondaryEngineCostHook(
-    const THD *thd) {
+secondary_engine_modify_view_ap_cost_t SecondaryEngineCostHook(THD *thd) {
   const handlerton *secondary_engine = SecondaryEngineHandlerton(thd);
   if (secondary_engine == nullptr) {
-    return nullptr;
-  } else {
-    return secondary_engine->secondary_engine_modify_access_path_cost;
+    secondary_engine = EligibleSecondaryEngineHandlerton(thd, nullptr);
   }
+  if (secondary_engine != nullptr) {
+    return secondary_engine->secondary_engine_modify_view_ap_cost;
+  }
+
+  return nullptr;
 }
 
 /// Gets the secondary storage engine hypergraph state hook function, if any.
@@ -838,6 +853,10 @@ secondary_engine_check_optimizer_request_t SecondaryEngineStateCheckHook(
     const THD *thd) {
   const handlerton *secondary_engine = SecondaryEngineHandlerton(thd);
   if (secondary_engine == nullptr) {
+    if (thd->eligible_secondary_engine_handlerton() != nullptr) {
+      return thd->eligible_secondary_engine_handlerton()
+          ->secondary_engine_check_optimizer_request;
+    }
     return nullptr;
   }
 
@@ -4396,6 +4415,8 @@ bool IsEmptyJoin(const RelationalExpression::Type join_type, bool left_is_empty,
 bool CostingReceiver::evaluate_secondary_engine_optimizer_state_request() {
   std::string secondary_trace;
 
+  assert(m_use_secondary_engine_plan_limiting);
+
   SecondaryEngineGraphSimplificationRequestParameters restart_parameters =
       m_secondary_engine_planning_complexity_check(
           m_thd, *m_graph, /*ap = */ nullptr,
@@ -4407,11 +4428,18 @@ bool CostingReceiver::evaluate_secondary_engine_optimizer_state_request() {
   if (TraceStarted(m_thd)) {
     Trace(m_thd) << secondary_trace;
   }
-
+  m_use_secondary_engine_plan_limiting = restart_parameters.is_enabled;
   switch (restart_parameters.secondary_engine_optimizer_request) {
-    case SecondaryEngineGraphSimplificationRequest::kRestart:
+    case SecondaryEngineGraphSimplificationRequest::kRestart: {
       m_subgraph_pair_limit = restart_parameters.subgraph_pair_limit;
+      DBUG_EXECUTE_IF("verify_hyp_opt_sg_pair_requested", {
+        if (TraceStarted(m_thd) && m_subgraph_pair_limit > 0) {
+          Trace(m_thd) << "Hypergraph non zero SG pairs requested"
+                       << "\n";
+        }
+      });
       return true;
+    }
     case SecondaryEngineGraphSimplificationRequest::kContinue:
       break;
   }
@@ -4514,8 +4542,8 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
 
   ++m_num_seen_subgraph_pairs;
 
-  if (m_secondary_engine_planning_complexity_check != nullptr) {
-    /* In presence of secondary engine complexity hook, use it preferably. */
+  if (m_use_secondary_engine_plan_limiting) {
+    /* When secondary engine plan limiting is feasible, use it preferably. */
     if (evaluate_secondary_engine_optimizer_state_request()) {
       return true;
     }
@@ -4523,6 +4551,12 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
              m_subgraph_pair_limit >= 0) {
     /* Bail out; we're going to be needing graph simplification,
      * which the caller will handle for us. */
+    DBUG_EXECUTE_IF("verify_hyp_opt_sg_pair_requested", {
+      if (TraceStarted(m_thd)) {
+        Trace(m_thd) << "Hypergraph SG pairs requested were "
+                     << m_subgraph_pair_limit << "\n";
+      }
+    });
     return true;
   }
 
@@ -4614,7 +4648,7 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
   // ZERO_ROWS path further down, temporarily disable the secondary engine cost
   // hook. There's no point in asking the secondary engine to provide a cost
   // estimate for an access path we know will be discarded.
-  const secondary_engine_modify_access_path_cost_t saved_cost_hook =
+  const secondary_engine_modify_view_ap_cost_t saved_cost_hook =
       m_secondary_engine_cost_hook;
   if (always_empty) {
     m_secondary_engine_cost_hook = nullptr;
@@ -4719,12 +4753,11 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
       }
       m_overflow_bitset_mem_root.ClearForReuse();
 
-      if (m_secondary_engine_planning_complexity_check != nullptr) {
-        /* In presence of secondary engine complexity hook, use it preferably.
+      if (m_use_secondary_engine_plan_limiting &&
+          evaluate_secondary_engine_optimizer_state_request()) {
+        /* Use secondary engine plan limiting, if feasible.
          */
-        if (evaluate_secondary_engine_optimizer_state_request()) {
-          return true;
-        }
+        return true;
       }
     }
   }
@@ -6293,10 +6326,11 @@ AccessPath *CostingReceiver::ProposeAccessPath(
     if (m_thd->is_error()) {
       return nullptr;
     }
-
-    if (m_secondary_engine_cost_hook(m_thd, *m_graph, path)) {
-      // Rejected by the secondary engine.
-      return nullptr;
+    if (m_use_secondary_engine_plan_limiting) {
+      if (m_secondary_engine_cost_hook(m_thd, *m_graph, path)) {
+        // Rejected by the secondary engine.
+        return nullptr;
+      }
     }
 
     assert(!m_thd->is_error());
@@ -8915,11 +8949,17 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
   for (const JoinHypergraph::Node &node : graph.nodes) {
     node.table()->init_cost_model(thd->cost_model());
   }
-  const secondary_engine_modify_access_path_cost_t secondary_engine_cost_hook =
-      SecondaryEngineCostHook(thd);
-  const secondary_engine_check_optimizer_request_t
-      secondary_engine_optimizer_request_state_hook =
-          SecondaryEngineStateCheckHook(thd);
+  secondary_engine_modify_view_ap_cost_t secondary_engine_cost_hook = nullptr;
+  secondary_engine_check_optimizer_request_t
+      secondary_engine_optimizer_request_state_hook = nullptr;
+
+  if ((graph.nodes.size() > 5) || (thd->secondary_engine_optimization() ==
+                                   Secondary_engine_optimization::SECONDARY)) {
+    secondary_engine_cost_hook = SecondaryEngineCostHook(thd);
+    secondary_engine_optimizer_request_state_hook =
+        SecondaryEngineStateCheckHook(thd);
+  }
+
   CostingReceiver receiver(
       thd, query_block, graph, &orderings, &sort_ahead_orderings,
       &active_indexes, &spatial_indexes, &fulltext_searches, fulltext_tables,
@@ -8945,9 +8985,16 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
                    << PrintDottyHypergraph(graph)
                    << "\nRestarting query planning with the new graph.\n";
       }
-      if (secondary_engine_optimizer_request_state_hook == nullptr) {
+      if ((secondary_engine_optimizer_request_state_hook == nullptr) ||
+          !receiver.use_secondary_engine_plan_limiting()) {
         /** ensure full enumeration is done for primary engine. */
         *subgraph_pair_limit = -1;
+        DBUG_EXECUTE_IF("verify_hyp_opt_sg_pair_requested", {
+          if (TraceStarted(thd)) {
+            Trace(thd)
+                << "Hypergraph full enumeration done after simplification\n";
+          }
+        });
       }
       // Reset the receiver and run the query again, this time with
       // the simplified hypergraph (and no query limit, in case the
@@ -9305,6 +9352,13 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
         SecondaryEngineGraphSimplificationRequest::kRestart) {
       *retry = true;
       *subgraph_pair_limit = root_path_quality_status.subgraph_pair_limit;
+      DBUG_EXECUTE_IF("verify_hyp_opt_sg_pair_requested", {
+        if (TraceStarted(thd) &&
+            root_path_quality_status.subgraph_pair_limit > 0) {
+          Trace(thd) << "Hypergraph non zero SG pairs reset requested"
+                     << "\n";
+        }
+      });
       return nullptr;
     }
   }

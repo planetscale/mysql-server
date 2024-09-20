@@ -8939,6 +8939,56 @@ const handlerton *SecondaryEngineHandlerton(const THD *thd) {
   return thd->lex->m_sql_cmd->secondary_engine();
 }
 
+std::atomic<const char *> default_secondary_engine_name;
+
+/**
+  Retrieves the secondary engine handlerton if possible.
+
+  @param  thd       Query thd.
+  @param  secondary_engine_in_name  Name of secondary engine if available.
+
+  @retval handlerton    if secondary engine handle found.
+  @retval nullptr       if secondary engine not found.
+*/
+const handlerton *EligibleSecondaryEngineHandlerton(
+    THD *thd, const LEX_CSTRING *secondary_engine_in_name) {
+  // 1st priority - retrieve handlerton cached already in thd.
+  const handlerton *secondary_engine =
+      thd->eligible_secondary_engine_handlerton();
+  if (secondary_engine == nullptr) {
+    // 2nd priority, if secondary engine name provided, then try to
+    // use that  to retrieve handlerton.
+    const LEX_CSTRING *secondary_engine_name = secondary_engine_in_name;
+    LEX_CSTRING cur_name;
+
+    if (secondary_engine_name == nullptr &&
+        default_secondary_engine_name != nullptr) {
+      /** 3rd priority - if no secondary secondary_engine_in_name provided,
+       * attempt to retrieve secondary engine name via
+       * default_secondary_engine_name, if available. */
+      cur_name = to_lex_cstring(default_secondary_engine_name);
+      secondary_engine_name = &cur_name;
+    } else if (secondary_engine_name == nullptr && (thd->lex != nullptr) &&
+               (thd->lex->m_sql_cmd != nullptr)) {
+      /** 4th priority - attempt to retrieve secondary engine name through
+       * eligible_secondary_storage_engine function */
+      secondary_engine_name =
+          thd->lex->m_sql_cmd->eligible_secondary_storage_engine(thd);
+    }
+    /* if secondary_engine_name found via 2,3 or 4th priority lookups, use the
+     * name to retrieve the handlerton */
+    if (secondary_engine_name != nullptr) {
+      plugin_ref ref = ha_resolve_by_name(thd, secondary_engine_name, false);
+      if (ref != nullptr) {
+        thd->set_eligible_secondary_engine_handlerton(
+            plugin_data<handlerton *>(ref));
+        secondary_engine = thd->eligible_secondary_engine_handlerton();
+      }
+    }
+  }
+  return secondary_engine;
+}
+
 /**
   Checks if the database name is reserved word used by SE by invoking
   the handlerton method.

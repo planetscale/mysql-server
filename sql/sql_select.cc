@@ -931,12 +931,8 @@ void accumulate_statement_cost(const LEX *lex) {
  */
 bool SecondaryEngineCallPrePrepareHook(THD *thd,
                                        const LEX_CSTRING &secondary_engine) {
-  handlerton *hton = nullptr;
-  plugin_ref ref = ha_resolve_by_name(thd, &secondary_engine, false);
-  if (ref != nullptr) {
-    hton = plugin_data<handlerton *>(ref);
-  }
-
+  const handlerton *hton =
+      EligibleSecondaryEngineHandlerton(thd, &secondary_engine);
   if (hton != nullptr) {
     secondary_engine_pre_prepare_hook_t secondary_engine_pre_prepare_hook =
         hton->secondary_engine_pre_prepare_hook;
@@ -1066,7 +1062,16 @@ void notify_plugins_after_select(THD *thd, const Sql_cmd *cmd) {
   auto executed_in = (cmd != nullptr && cmd->using_secondary_storage_engine())
                          ? SelectExecutedIn::kSecondaryEngine
                          : SelectExecutedIn::kPrimaryEngine;
+  /* if secondary engine has been cached */
+  if (thd->eligible_secondary_engine_handlerton() != nullptr &&
+      thd->eligible_secondary_engine_handlerton()->notify_after_select !=
+          nullptr) {
+    thd->eligible_secondary_engine_handlerton()->notify_after_select(
+        thd, executed_in);
+    return;
+  }
 
+  /* if secondary engine has not been cached, check for all plugins */
   plugin_foreach(
       thd,
       [](THD *t, plugin_ref plugin, void *arg) -> bool {

@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <algorithm>
+#include <atomic>
 #include <bitset>
 #include <functional>
 #include <map>
@@ -2396,9 +2397,11 @@ using compare_secondary_engine_cost_t = bool (*)(THD *thd, const JOIN &join,
                                                  double *secondary_engine_cost);
 
 /**
-  Evaluates the cost of executing the given access path in this secondary
+  Evaluates/Views the cost of executing the given access path in the secondary
   storage engine, and potentially modifies the cost estimates that are in the
-  access path. This function is only called from the hypergraph join optimizer.
+  access path when optimization is being done for secondary engine. For primary
+  engine, the cost should be only viewed. This function is only called from the
+  hypergraph join optimizer.
 
   The function is called on every access path that the join optimizer might
   compare to an alternative access path. This includes both paths that represent
@@ -2444,7 +2447,7 @@ using compare_secondary_engine_cost_t = bool (*)(THD *thd, const JOIN &join,
   @retval false on success.
   @retval true if the plan is to be rejected, or if an error was raised.
 */
-using secondary_engine_modify_access_path_cost_t = bool (*)(
+using secondary_engine_modify_view_ap_cost_t = bool (*)(
     THD *thd, const JoinHypergraph &hypergraph, AccessPath *access_path);
 
 /**
@@ -2509,12 +2512,14 @@ struct SecondaryEngineGraphSimplificationRequestParameters {
   SecondaryEngineGraphSimplificationRequest secondary_engine_optimizer_request;
   /** Subgraph pairs requested by the secondary engine. */
   int subgraph_pair_limit;
+  /** Indicates if simplification is guided using secondary engine */
+  bool is_enabled;
 };
 
 /**
-  Hook for secondary engine to evaluate the current hypergraph optimization
-  state, and returns the state that hypergraph should transition to. Usually
-  invoked after secondary_engine_modify_access_path_cost_t is invoked via
+  Hook to evaluate the current hypergraph optimization state in optimization for
+  all the engines, and returns the state that hypergraph should transition to.
+  Usually invoked after secondary_engine_modify_view_ap_cost_t is invoked via
   the optimizer.  The state is returned as object of type
   SecondaryEngineGraphSimplificationRequestParameters, and can lead to
   simplification of hypergraph search space, or resetting the graph and starting
@@ -2574,6 +2579,13 @@ constexpr SecondaryEngineFlags MakeSecondaryEngineFlags(
 /// or nullptr if a secondary engine is not used.
 const handlerton *SecondaryEngineHandlerton(const THD *thd);
 
+/// Returns the handlerton of the eligible secondary engine that is used in the
+/// session, If found, also initialises the thd member which caches this
+/// eligible secondary engine, or returns nullptr if a secondary engine is not
+/// used.
+const handlerton *EligibleSecondaryEngineHandlerton(
+    THD *thd, const LEX_CSTRING *secondary_engine_in_name);
+
 // FIXME: Temporary workaround to enable storage engine plugins to use the
 // before_commit hook. Remove after WL#11320 has been completed.
 using se_before_commit_t = void (*)(void *arg);
@@ -2621,6 +2633,10 @@ using secondary_engine_pre_prepare_hook_t = bool (*)(THD *thd);
  */
 using notify_drop_table_t = void (*)(Table_ref *tab);
 
+/**
+ * Store the name of default secondary engine, if any.
+ */
+extern std::atomic<const char *> default_secondary_engine_name;
 /*
   Page Tracking : interfaces to handlerton functions which starts/stops page
   tracking, and purges/fetches page tracking information.
@@ -2957,9 +2973,8 @@ struct handlerton {
   /// Pointer to a function that evaluates the cost of executing an access path
   /// in a secondary storage engine.
   ///
-  /// @see secondary_engine_modify_access_path_cost_t for function signature.
-  secondary_engine_modify_access_path_cost_t
-      secondary_engine_modify_access_path_cost;
+  /// @see secondary_engine_modify_view_ap_cost_t for function signature.
+  secondary_engine_modify_view_ap_cost_t secondary_engine_modify_view_ap_cost;
 
   /// Pointer to a function that returns the query offload or exec failure
   /// reason as a string given a thread context (representing the query) when

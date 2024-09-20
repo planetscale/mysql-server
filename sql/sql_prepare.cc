@@ -3092,7 +3092,7 @@ bool Prepared_statement::execute_loop(THD *thd, String *expanded_query,
   MYSQL_SET_PS_SECONDARY_ENGINE(m_prepared_stmt, used_secondary);
   mysql_thread_set_secondary_engine(used_secondary);
   mysql_statement_set_secondary_engine(thd->m_statement_psi, used_secondary);
-  thd->set_secondary_engine_statement_context(nullptr);
+  thd->cleanup_after_statement_execution();
   m_first_execution = false;
 
   return error;

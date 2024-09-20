@@ -1070,6 +1070,9 @@ class THD : public MDL_context_owner,
   std::unique_ptr<Secondary_engine_statement_context>
       m_secondary_engine_statement_context;
 
+  /* eligible secondary engine handlerton for this query */
+  handlerton *m_eligible_secondary_engine_handlerton;
+
  public:
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info *rli_fake;
@@ -1105,6 +1108,12 @@ class THD : public MDL_context_owner,
 
   Secondary_engine_statement_context *secondary_engine_statement_context() {
     return m_secondary_engine_statement_context.get();
+  }
+
+  void set_eligible_secondary_engine_handlerton(handlerton *hton);
+
+  handlerton *eligible_secondary_engine_handlerton() const {
+    return m_eligible_secondary_engine_handlerton;
   }
 
   /**
@@ -4684,6 +4693,8 @@ class THD : public MDL_context_owner,
   void set_secondary_engine_optimization(Secondary_engine_optimization state) {
     m_secondary_engine_optimization = state;
   }
+  /// cleanup all secondary engine relevant members after statement execution.
+  void cleanup_after_statement_execution();
 
   /**
     Can secondary storage engines be used for query execution in

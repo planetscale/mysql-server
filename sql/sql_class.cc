@@ -680,6 +680,7 @@ THD::THD(bool enable_plugins)
       m_dd_client(new dd::cache::Dictionary_client(this)),
       m_query_string(NULL_CSTR),
       m_db(NULL_CSTR),
+      m_eligible_secondary_engine_handlerton(nullptr),
       rli_fake(nullptr),
       rli_slave(nullptr),
       copy_status_var_ptr(nullptr),
@@ -923,6 +924,15 @@ void THD::set_transaction(Transaction_ctx *transaction_ctx) {
 void THD::set_secondary_engine_statement_context(
     std::unique_ptr<Secondary_engine_statement_context> context) {
   m_secondary_engine_statement_context = std::move(context);
+}
+
+void THD::set_eligible_secondary_engine_handlerton(handlerton *hton) {
+  m_eligible_secondary_engine_handlerton = hton;
+}
+
+void THD::cleanup_after_statement_execution() {
+  set_secondary_engine_statement_context(nullptr);
+  m_eligible_secondary_engine_handlerton = nullptr;
 }
 
 bool THD::set_db(const LEX_CSTRING &new_db) {
@@ -1485,7 +1495,7 @@ THD::~THD() {
   THD_CHECK_SENTRY(this);
   DBUG_TRACE;
   DBUG_PRINT("info", ("THD dtor, this %p", this));
-
+  assert(m_eligible_secondary_engine_handlerton == nullptr);
   assert(m_secondary_engine_statement_context == nullptr);
 
   if (has_incremented_gtid_automatic_count) {
