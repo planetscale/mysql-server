@@ -688,26 +688,22 @@ while (!$json_hide_gipk_tests_done) {
   --echo # With show_gipk_in_create_table_and_information_schema = ON generated invisible
   --echo # primary key definitions should be listed.
   SET SESSION show_gipk_in_create_table_and_information_schema = ON;
-  --skip_if_hypergraph  # Bug#37079336.
   --eval $CHECK_STMTS
 
   --echo # With show_gipk_in_create_table_and_information_schema = OFF generated invisible
   --echo # primary key definitions *not* should be listed.
   SET SESSION show_gipk_in_create_table_and_information_schema = OFF;
-  --skip_if_hypergraph  # Bug#37079336.
   --eval $CHECK_STMTS
 
   --echo # With show_gipk_in_create_table_and_information_schema = OFF, after moving table
   --echo # to engine for which feature is not supported. Primary key definitions should be listed.
   ALTER TABLE t1 ENGINE='MyISAM';
-  --skip_if_hypergraph  # Bug#37079336.
   --eval $CHECK_STMTS
 
   --echo # With show_gipk_in_create_table_and_information_schema = OFF, after moving table
   --echo # to engine for which feature is supported. Generated invisible primary key definition
   --echo # should *not* be listed.
   ALTER TABLE t1 ENGINE='InnoDB';
-  --skip_if_hypergraph  # Bug#37079336.
   --eval $CHECK_STMTS
 
   DROP TABLE t1;

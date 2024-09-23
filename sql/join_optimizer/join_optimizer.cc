@@ -157,10 +157,6 @@ AccessPath *CreateMaterializationPath(
     MaterializePathParameters::DedupType dedup_reason =
         MaterializePathParameters::NO_DEDUP);
 
-AccessPath *GetSafePathToSort(THD *thd, JOIN *join, AccessPath *path,
-                              bool need_rowid,
-                              bool force_materialization = false);
-
 struct PossibleRangeScan {
   unsigned idx;
   unsigned mrr_flags;
@@ -6575,7 +6571,15 @@ void CostingReceiver::ProposeAccessPathWithOrderings(
     return;
   }
 
-  path = GetSafePathToSort(m_thd, m_query_block->join, path, m_need_rowid);
+  // If row IDs are needed for the sorting, and it's not safe to get row IDs
+  // from "path", the intermediate result needs to be materialized first, so
+  // that the sort can get row IDs from the temporary table instead. However,
+  // FinalizePlanForQueryBlock() does not currently support adding temporary
+  // tables before all tables have been joined together, so we cannot
+  // materialize here, and we have to skip sort-ahead for this candidate.
+  if (m_need_rowid && path->safe_for_rowid == AccessPath::UNSAFE) {
+    return;
+  }
 
   // Try sort-ahead for all interesting orderings.
   // (For the final sort, this might not be so much _ahead_, but still
@@ -8714,7 +8718,8 @@ bool ApplyAggregation(
       if (force_temptable_plan) continue;
     }
 
-    root_path = GetSafePathToSort(thd, join, root_path, need_rowid);
+    root_path = GetSafePathToSort(thd, join, root_path, need_rowid,
+                                  /*force_materialization=*/false);
 
     // We need to sort. Try all sort-ahead, not just the one directly derived
     // from GROUP BY clause, because a broader one might help us elide ORDER

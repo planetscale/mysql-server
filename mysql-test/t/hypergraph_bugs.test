@@ -1532,4 +1532,41 @@ SELECT t1.a, s.b FROM t AS t1 LEFT JOIN s ON t1.a = s.b;
 
 DROP TABLE t;
 
+--echo #
+--echo # Bug#37079336: Assert failure in
+--echo # Item_eq_base::append_join_key_for_hash_join() with hypergraph
+--echo #
+
+CREATE TABLE small (id INT PRIMARY KEY, a INT, b TEXT);
+INSERT INTO small VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3), (4, 4, 4), (5, 5, 5);
+
+CREATE TABLE big (a INT, b TEXT);
+INSERT INTO big
+  WITH RECURSIVE s(n) AS (
+    SELECT 1 UNION ALL SELECT n+1 FROM s WHERE n < 100
+  )
+  SELECT n AS a, n AS b FROM s;
+
+ANALYZE TABLE small, big;
+
+# Used to return wrong results.
+SELECT t1.b, t2.b, t3.b FROM
+big AS t1,
+LATERAL (SELECT * FROM big
+         WHERE t1.a <> 100 ORDER BY a LIMIT 2) AS t2,
+small AS t3
+WHERE t1.a = t2.a AND t2.a = t3.id
+ORDER BY t1.a;
+
+# Used to hit an assertion failure.
+SELECT t1.b, t2.b, t3.b
+FROM small AS t1,
+     LATERAL (SELECT DISTINCT * FROM big
+              WHERE t1.a <> 100
+              ORDER BY a LIMIT 2) AS t2,
+     big AS t3 WHERE t1.a = t2.a AND t2.a = t3.a
+ORDER BY t1.a;
+
+DROP TABLE small, big;
+
 --source include/disable_hypergraph.inc

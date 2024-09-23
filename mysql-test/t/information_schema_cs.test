@@ -267,7 +267,6 @@ alter table t1 add constraint constraint_2 unique key_2(a);
 show create table t1;
 select * from information_schema.TABLE_CONSTRAINTS where
 TABLE_SCHEMA= "test" order by constraint_name;
---skip_if_hypergraph  # Bug#37079336.
 select * from information_schema.key_column_usage where
 TABLE_SCHEMA= "test" order by constraint_name;
 
