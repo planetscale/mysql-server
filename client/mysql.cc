@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+   Copyright (c) 2000, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -2679,8 +2679,8 @@ static bool add_line(String &buffer, char *line, size_t line_length,
       }
       buffer.length(0);
     }
-    else if (!*ml_comment && (!*in_string && (inchar == '#' ||
-                                              (inchar == '-' && pos[1] == '-' &&
+    else if (!*ml_comment && (!*in_string && ss_comment != SSC_HINT && (inchar == '#' ||
+        (inchar == '-' && pos[1] == '-' &&
                               /*
                                 The third byte is either whitespace or is the
                                 end of the line -- which would occur only
