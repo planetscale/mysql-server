@@ -788,9 +788,9 @@ static bool ok_to_rename_column(const Alter_inplace_info *ha_alter_info,
         for (dict_foreign_set::iterator it = dict_table->referenced_set.begin();
              it != dict_table->referenced_set.end(); ++it) {
           dict_foreign_t *foreign = *it;
-          const char *r_name = foreign->referenced_col_names[0];
 
           for (size_t i = 0; i < foreign->n_fields; ++i) {
+            const char *r_name = foreign->referenced_col_names[i];
             if (!my_strcasecmp(system_charset_info, r_name, col_name)) {
               if (report_error) {
                 my_error(ER_ALTER_OPERATION_NOT_SUPPORTED_REASON, MYF(0),
@@ -801,7 +801,6 @@ static bool ok_to_rename_column(const Alter_inplace_info *ha_alter_info,
               }
               return false;
             }
-            r_name = foreign->referenced_col_names[i];
           } /* each column in reference element */
         }   /* each element in reference set */
       }     /* each column being renamed */
