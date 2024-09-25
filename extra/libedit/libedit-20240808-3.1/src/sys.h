@@ -43,6 +43,7 @@
 #if defined(HAVE_SYS_TYPES_H) && defined(__sun)
 #include <sys/types.h>
 #endif
+#include <limits.h> // SIZE_MAX
 
 #if !defined(__attribute__) && (defined(__cplusplus) || !defined(__GNUC__)  || __GNUC__ == 2 && __GNUC_MINOR__ < 8)
 # define __attribute__(A)
