@@ -2346,10 +2346,10 @@ static void fprintf_string(char *row, ulong row_len, char quote,
   // Create the buffer where we'll have sanitized row.
   char buffer[2048];
   char *pbuffer;
-  uint64_t curr_row_size;
+  my_ulonglong curr_row_size;
   pbuffer = &buffer[0];
 
-  curr_row_size = ((uint64_t)row_len) * 2 + 1;
+  curr_row_size = ((my_ulonglong)row_len) * 2 + 1;
 
   // We'll allocate dynamic memory only for huge rows
   if (curr_row_size > sizeof(buffer))
