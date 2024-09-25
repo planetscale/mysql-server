@@ -1235,6 +1235,72 @@ error:
 }
 
 /**
+  When CREATE USER doesn't specify authentication plugins,
+  this function will add default authentication plugins to MFA list.
+
+  @param thd            thread context
+  @param Str            user on which attributes has to be applied
+  @param policy_factors factors specified by the authentication policy
+
+  @retval 0 ok
+  @retval 1 ERROR;
+*/
+static bool add_default_auth_plugins(
+    THD *thd, LEX_USER *Str,
+    const authentication_policy::Factors &policy_factors) {
+  size_t factor_idx(0);
+  LEX_MFA *lex_mfa(nullptr);
+
+  /*
+    If 1. factor plugin name is not present in the statement,
+    set the plugin to one defined by authentication_policy
+  */
+
+  if (Str->first_factor_auth_info.plugin.length <= 0)
+    authentication_policy::get_first_factor_default_plugin(
+        thd->mem_root, &Str->first_factor_auth_info.plugin);
+
+  /* Skip for AUTHENTICATION_POLICY_ADMIN, so the admin
+     is able to omit default plugins for subsequent factors.
+  */
+  if (thd->security_context()
+          ->has_global_grant(STRING_WITH_LEN("AUTHENTICATION_POLICY_ADMIN"))
+          .first)
+    return false;
+
+  /*
+    Loop over factors not present in the statement, but defined in the policy.
+
+    If the policy factor defines default or mandatory plugin
+    add that plugin to the lex factor.
+  */
+
+  for (factor_idx = Str->mfa_list.size() + 1;
+       factor_idx < policy_factors.size(); ++factor_idx) {
+    if (policy_factors[factor_idx].is_optional())
+      break;  // rest of factors must be optional too
+
+    const std::string &plugin_name(
+        policy_factors[factor_idx].get_mandatory_or_default_plugin());
+
+    lex_mfa = new (thd->mem_root) LEX_MFA;
+    if (lex_mfa == nullptr) return true;
+
+    if (plugin_name.empty())
+      lex_mfa->plugin = EMPTY_CSTR;
+    else
+      lex_string_strmake(thd->mem_root, &lex_mfa->plugin, plugin_name.c_str(),
+                         plugin_name.length());
+    lex_mfa->auth = EMPTY_CSTR;
+    lex_mfa->uses_identified_by_clause = false;
+    lex_mfa->uses_identified_with_clause = true;
+    lex_mfa->nth_factor = factor_idx + 1;
+    Str->mfa_list.push_back(lex_mfa);
+  }
+  return false;
+}
+
+/**
   This function does following:
    1. Convert plain text password to hash and update the same in
       user definition.
@@ -1573,44 +1639,7 @@ bool set_and_validate_user_attributes(
             acl_user->password_reuse_interval;
     }
   } else { /* User does not exist */
-    size_t factor_idx(0);
-    LEX_MFA *lex_mfa(nullptr);
-    /*
-      If 1. factor plugin name is not present in the statement,
-      set the plugin to one defined by authentication_policy
-    */
-
-    if (Str->first_factor_auth_info.plugin.length <= 0)
-      authentication_policy::get_first_factor_default_plugin(
-          thd->mem_root, &Str->first_factor_auth_info.plugin);
-
-    /*
-      Loop over factors not present in the statement, but defined in the policy.
-
-      If the policy factor defines default plugin
-      add that plugin to the lex factor.
-    */
-
-    for (factor_idx = Str->mfa_list.size() + 1;
-         factor_idx < policy_factors.size(); ++factor_idx) {
-      if (policy_factors[factor_idx].is_optional())
-        break;  // rest of factors must be optional too
-
-      const std::string &plugin_name(
-          policy_factors[factor_idx].get_default_plugin());
-      if (plugin_name.empty()) continue;  // no default plugin defined
-
-      lex_mfa = new (thd->mem_root) LEX_MFA;
-      if (lex_mfa == nullptr) return true;
-
-      lex_string_strmake(thd->mem_root, &lex_mfa->plugin, plugin_name.c_str(),
-                         plugin_name.length());
-      lex_mfa->auth = EMPTY_CSTR;
-      lex_mfa->uses_identified_by_clause = false;
-      lex_mfa->uses_identified_with_clause = true;
-      lex_mfa->nth_factor = factor_idx + 1;
-      Str->mfa_list.push_back(lex_mfa);
-    }
+    if (add_default_auth_plugins(thd, Str, policy_factors)) return true;
 
     if (command == SQLCOM_GRANT) {
       my_error(ER_CANT_CREATE_USER_WITH_GRANT, MYF(0));
