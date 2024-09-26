@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "mem_root_deque.h"
@@ -332,6 +333,33 @@ static table_map GetNullableEqRefTables(const AccessPath *root_path) {
 }
 
 namespace {
+
+/**
+  Collect all the single-row index lookups that are located below the given path
+  with no intermediate materialization step in between, and which cache the
+  result of the index lookup.
+
+  These are used by iterators that may overwrite the contents of
+  table->record[0] in a way that disturbs EQRefIterator's cache, and which
+  therefore need to mark the cache as invalid to force the next read from the
+  EQRefIterator to read again from the index. Examples of iterators that may
+  disturb EQRefIterator's cache include AggregateIterator, SortingIterator,
+  HashJoinIterator and BKAIterator.
+ */
+std::span<AccessPath *> CollectSingleRowIndexLookups(THD *thd,
+                                                     AccessPath *root) {
+  Mem_root_array<AccessPath *> lookups(thd->mem_root);
+  WalkAccessPaths(root, /*join=*/nullptr,
+                  WalkAccessPathPolicy::STOP_AT_MATERIALIZATION,
+                  [&lookups](AccessPath *path, const JOIN *) {
+                    if (path->type == AccessPath::EQ_REF &&
+                        !path->eq_ref().ref->disable_cache) {
+                      return lookups.push_back(path);
+                    }
+                    return false;
+                  });
+  return {lookups};
+}
 
 // Mirrors QEP_TAB::pfs_batch_update(), with one addition:
 // If there is more than one table, batch mode will be handled by the join
@@ -1018,7 +1046,8 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
         Filesort *filesort = param.filesort;
         iterator = NewIterator<SortingIterator>(
             thd, mem_root, filesort, std::move(job.children[0]),
-            num_rows_estimate, param.tables_to_get_rowid_for, examined_rows);
+            CollectSingleRowIndexLookups(thd, param.child), num_rows_estimate,
+            param.tables_to_get_rowid_for, examined_rows);
         if (filesort->m_remove_duplicates) {
           filesort->tables[0]->duplicate_removal_iterator =
               down_cast<SortingIterator *>(iterator->real_iterator());

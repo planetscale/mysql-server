@@ -3535,9 +3535,17 @@ SELECT t1.x, dt.* FROM t1, LATERAL (
 --eval EXPLAIN FORMAT=TREE $query
 
 # Verify that the results are correct.
---skip_if_hypergraph  # Bug#37057380.
 --sorted_result
 --eval $query
+
+# Variant of the above that still gave wrong results with hypergraph
+# after the original fix. Fixed in bug#37057380.
+--sorted_result
+SELECT t1.x, dt.* FROM t1, LATERAL (
+  SELECT SQL_BIG_RESULT t2.y, SUM(t3.x)
+  FROM t2 LEFT JOIN t3 ON t2.x = t3.id AND t2.y + t3.y < t1.y AND t3.x < 100
+  GROUP BY t2.y
+) AS dt;
 
 DROP TABLE t1, t2, t3;
 
