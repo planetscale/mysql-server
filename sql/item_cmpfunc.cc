@@ -3116,6 +3116,7 @@ bool Item_func_between::fix_fields(THD *thd, Item **ref) {
   // Ensure that string values are compared using BETWEEN's effective collation
   if (args[1]->result_type() == STRING_RESULT &&
       args[2]->result_type() == STRING_RESULT) {
+    if (simplify_string_args(thd, args[0]->collation, args + 1, 2)) return true;
     if (!args[1]->eq_by_collation(args[2], args[0]->collation.collation))
       return false;
   } else {
