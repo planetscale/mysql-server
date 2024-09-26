@@ -1,3 +1,5 @@
+--source include/not_embedded.inc
+
 --echo # Bug#30875669 CORE CLIENT CANNOT SEND QUERY WITH NUMBER SIGN OR DOUBLE DASH IN HINT COMMENT
 
 CREATE USER myuser;
