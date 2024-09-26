@@ -164,7 +164,7 @@
 #include "sql/sql_locale.h"      // my_locale_by_number
 #include "sql/sql_parse.h"       // mysql_test_parse_for_slave
 #include "sql/sql_plugin.h"      // plugin_foreach
-#include "sql/sql_show.h"        // append_identifier
+#include "sql/sql_show.h"        // append_identifier_*
 #include "sql/sql_tablespace.h"  // Sql_cmd_tablespace
 #include "sql/table.h"
 #include "sql/transaction.h"  // trans_rollback_stmt

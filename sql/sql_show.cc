@@ -1459,7 +1459,8 @@ static const char *require_quotes(const char *name, size_t name_length) {
   @param length                length of the appending identifier
 */
 
-void append_identifier(String *packet, const char *name, size_t length) {
+void append_identifier_with_backtick(String *packet, const char *name,
+                                     size_t length) {
   const char *name_end;
   const char quote_char = '`';
 
@@ -1497,6 +1498,8 @@ void append_identifier(String *packet, const char *name, size_t length) {
 /**
   Convert and quote the given identifier if needed and append it to the
   target string. If the given identifier is empty, it will be quoted.
+  This function use the backtick or double quotes as escape char based on
+  sql_mode.
 
   @param thd                   thread handler
   @param packet                target string
@@ -1509,6 +1512,7 @@ void append_identifier(String *packet, const char *name, size_t length) {
 void append_identifier(const THD *thd, String *packet, const char *name,
                        size_t length, const CHARSET_INFO *from_cs,
                        const CHARSET_INFO *to_cs) {
+  assert(thd);
   const char *name_end;
   char quote_char;
   int q;
@@ -1598,14 +1602,6 @@ int get_quote_char_for_identifier(const THD *thd, const char *name,
     return EOF;
   if (thd->variables.sql_mode & MODE_ANSI_QUOTES) return '"';
   return '`';
-}
-
-void append_identifier(const THD *thd, String *packet, const char *name,
-                       size_t length) {
-  if (thd == nullptr)
-    append_identifier(packet, name, length);
-  else
-    append_identifier(thd, packet, name, length, nullptr, nullptr);
 }
 
 /* Append directory name (if exists) to CREATE INFO */

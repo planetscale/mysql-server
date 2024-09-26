@@ -880,7 +880,8 @@ Auth_id_ref create_authid_from(const LEX_USER *user);
 std::string create_authid_str_from(const LEX_USER *user);
 std::pair<std::string, std::string> get_authid_from_quoted_string(
     std::string str);
-void append_identifier(String *packet, const char *name, size_t length);
+void append_identifier_with_backtick(String *packet, const char *name,
+                                     size_t length);
 bool is_role_id(LEX_USER *authid);
 void shutdown_acl_cache();
 bool is_granted_role(LEX_CSTRING user, LEX_CSTRING host, LEX_CSTRING role,

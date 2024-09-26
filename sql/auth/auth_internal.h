@@ -53,8 +53,6 @@ struct TABLE;
 class Rewrite_params;
 
 typedef struct user_resources USER_RESOURCES;
-void append_identifier(const THD *thd, String *packet, const char *name,
-                       size_t length);
 typedef std::map<std::string, Access_bitmask> Column_map;
 struct Grant_table_aggregate {
   Grant_table_aggregate() : table_access(0l), cols(0l) {}

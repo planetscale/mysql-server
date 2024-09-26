@@ -98,7 +98,7 @@
 #include "sql/sql_list.h"
 #include "sql/sql_parse.h"  // get_current_user
 #include "sql/sql_servers.h"
-#include "sql/sql_show.h"  // append_identifier
+#include "sql/sql_show.h"  // append_identifier_*
 #include "sql/table.h"
 #include "sql_string.h"  // String
 #include "string_with_len.h"

@@ -47,7 +47,7 @@
 #include "sql/sql_error.h"  // Sql_condition
 #include "sql/sql_lex.h"
 #include "sql/sql_parse.h"  // parse_sql
-#include "sql/sql_show.h"   // append_identifier
+#include "sql/sql_show.h"   // append_identifier_*
 #include "sql/strfunc.h"
 #include "sql/system_variables.h"
 #include "sql/trigger_creation_ctx.h"  // Trigger_creation_ctx

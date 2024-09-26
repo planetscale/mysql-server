@@ -279,10 +279,10 @@ void PTI_function_call_generic_2d::add_json_info(Json_object *obj) {
   String func_str;
 
   if (db.length > 0) {
-    append_identifier(nullptr, &func_str, db.str, db.length);
+    append_identifier_with_backtick(&func_str, db.str, db.length);
     func_str.append('.');
   }
-  append_identifier(nullptr, &func_str, func.str, func.length);
+  append_identifier_with_backtick(&func_str, func.str, func.length);
   obj->add_alias("func_name", create_dom_ptr<Json_string>(func_str.ptr(),
                                                           func_str.length()));
 }

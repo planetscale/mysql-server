@@ -88,7 +88,7 @@
 #include "sql/sql_error.h"
 #include "sql/sql_list.h"
 #include "sql/sql_parse.h"  // parse_sql
-#include "sql/sql_show.h"   // append_identifier
+#include "sql/sql_show.h"   // append_identifier_*
 #include "sql/sql_table.h"  // write_bin_log
 #include "sql/strfunc.h"    // lex_string_strmake
 #include "sql/system_variables.h"

@@ -64,11 +64,8 @@ bool store_create_info(THD *thd, Table_ref *table_list, String *packet,
                        bool for_show_create_stmt);
 
 void append_identifier(const THD *thd, String *packet, const char *name,
-                       size_t length, const CHARSET_INFO *from_cs,
-                       const CHARSET_INFO *to_cs);
-
-void append_identifier(const THD *thd, String *packet, const char *name,
-                       size_t length);
+                       size_t length, const CHARSET_INFO *from_cs = nullptr,
+                       const CHARSET_INFO *to_cs = nullptr);
 
 void mysqld_list_fields(THD *thd, Table_ref *table, const char *wild);
 bool mysqld_show_create(THD *thd, Table_ref *table_list);

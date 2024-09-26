@@ -119,7 +119,7 @@
 #include "sql/sql_list.h"
 #include "sql/sql_parse.h"   /* get_current_user */
 #include "sql/sql_rewrite.h" /* Grant_params */
-#include "sql/sql_show.h"    /* append_identifier */
+#include "sql/sql_show.h"    /* append_identifier_* */
 #include "sql/sql_view.h"    /* VIEW_ANY_ACL */
 #include "sql/strfunc.h"
 #include "sql/system_variables.h"
@@ -1409,9 +1409,11 @@ void get_sp_access_map(
       Access_bitmask proc_access = grant_proc->privs;
       if (proc_access != 0) {
         String key;
-        append_identifier(&key, grant_proc->db, strlen(grant_proc->db));
+        append_identifier(current_thd, &key, grant_proc->db,
+                          strlen(grant_proc->db));
         key.append(".");
-        append_identifier(&key, grant_proc->tname, strlen(grant_proc->tname));
+        append_identifier(current_thd, &key, grant_proc->tname,
+                          strlen(grant_proc->tname));
         (*sp_map)[std::string(key.c_ptr())] |= proc_access;
       }
     }
@@ -1618,10 +1620,11 @@ class Get_access_maps : public boost::default_bfs_visitor {
         boost::get(boost::edge_capacity_t(), granted_roles)[edge];
     if (with_admin_opt) {
       String qname;
-      append_identifier(&qname, to_user.user, strlen(to_user.user));
+      append_identifier_with_backtick(&qname, to_user.user,
+                                      strlen(to_user.user));
       qname.append('@');
       /* Up-cast to base class, see above. */
-      append_identifier(
+      append_identifier_with_backtick(
           &qname, implicit_cast<ACL_ACCESS *>(&to_user)->host.get_host(),
           implicit_cast<ACL_ACCESS *>(&to_user)->host.get_host_len());
       /* We save the granted role in the Acl_map of the granted user */
@@ -4741,9 +4744,11 @@ void get_privilege_access_maps(
       int vertex_count = 0;
       for (auto &&rid : granted_active_roles) {
         String rolestr;
-        append_identifier(&rolestr, rid.user().c_str(), rid.user().length());
+        append_identifier_with_backtick(&rolestr, rid.user().c_str(),
+                                        rid.user().length());
         rolestr.append('@');
-        append_identifier(&rolestr, rid.host().c_str(), rid.host().length());
+        append_identifier_with_backtick(&rolestr, rid.host().c_str(),
+                                        rid.host().length());
         Role_index_map::iterator rindex =
             g_authid_to_vertex->find(rolestr.c_ptr_quick());
         if (rindex == g_authid_to_vertex->end()) {
@@ -6651,9 +6656,9 @@ bool alter_user_set_default_roles(THD *thd, TABLE *table, LEX_USER *user,
 */
 std::string create_authid_str_from(const LEX_USER *user) {
   String tmp;
-  append_identifier(&tmp, user->user.str, user->user.length);
+  append_identifier_with_backtick(&tmp, user->user.str, user->user.length);
   tmp.append('@');
-  append_identifier(&tmp, user->host.str, user->host.length);
+  append_identifier_with_backtick(&tmp, user->host.str, user->host.length);
   return std::string(tmp.c_ptr_quick());
 }
 
@@ -6686,17 +6691,18 @@ Auth_id_ref create_authid_from(const LEX_CSTRING &user,
 std::string create_authid_str_from(const ACL_USER *user) {
   String tmp;
   const size_t length = user->get_username_length();
-  append_identifier(&tmp, user->user, length);
+  append_identifier_with_backtick(&tmp, user->user, length);
   tmp.append("@");
-  append_identifier(&tmp, user->host.get_host(), user->host.get_host_len());
+  append_identifier_with_backtick(&tmp, user->host.get_host(),
+                                  user->host.get_host_len());
   return std::string(tmp.c_ptr_quick());
 }
 
 std::string create_authid_str_from(const Auth_id_ref &user) {
   String tmp;
-  append_identifier(&tmp, user.first.str, user.first.length);
+  append_identifier_with_backtick(&tmp, user.first.str, user.first.length);
   tmp.append("@");
-  append_identifier(&tmp, user.second.str, user.second.length);
+  append_identifier_with_backtick(&tmp, user.second.str, user.second.length);
   return std::string(tmp.c_ptr_quick());
 }
 

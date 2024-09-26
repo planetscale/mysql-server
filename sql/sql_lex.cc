@@ -70,7 +70,7 @@
 #include "sql/sql_parse.h"      // add_to_list
 #include "sql/sql_plugin.h"     // plugin_unlock_list
 #include "sql/sql_profile.h"
-#include "sql/sql_show.h"   // append_identifier
+#include "sql/sql_show.h"   // append_identifier_*
 #include "sql/sql_table.h"  // primary_key_name
 #include "sql/sql_yacc.h"
 #include "sql/system_variables.h"

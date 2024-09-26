@@ -139,7 +139,7 @@
 #include "sql/sql_parse.h"    // is_update_query
 #include "sql/sql_prepare.h"  // Reprepare_observer
 #include "sql/sql_select.h"   // reset_statement_timer
-#include "sql/sql_show.h"     // append_identifier
+#include "sql/sql_show.h"     // append_identifier_*
 #include "sql/sql_sort.h"
 #include "sql/sql_table.h"   // build_table_filename
 #include "sql/sql_update.h"  // records_are_comparable

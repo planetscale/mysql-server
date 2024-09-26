@@ -140,7 +140,7 @@
 #include "sql/sql_load.h"       // Sql_cmd_load_table
 #include "sql/sql_optimizer.h"  // JOIN
 #include "sql/sql_parse.h"      // check_stack_overrun
-#include "sql/sql_show.h"       // append_identifier
+#include "sql/sql_show.h"       // append_identifier_*
 #include "sql/sql_time.h"       // TIME_from_longlong_packed
 #include "sql/strfunc.h"        // find_type
 #include "sql/system_variables.h"

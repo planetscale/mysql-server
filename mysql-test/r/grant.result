@@ -3445,3 +3445,73 @@ CREATE USER bug33578113;
 GRANT DROP ON performance_schema.* TO bug33578113;
 REVOKE DROP ON performance_schema.* FROM bug33578113;
 DROP USER bug33578113;
+#
+# Bug#37003502 inconsistency in whether SHOW GRANTS quotes Function or Stored Procedure's name
+#
+CREATE DATABASE test_db;
+USE test_db;
+CREATE PROCEDURE sp_test()
+BEGIN
+SELECT 'Hello, World!';
+END|
+CREATE FUNCTION fc_test()
+RETURNS VARCHAR(50)
+BEGIN
+RETURN 'Hello, World!';
+END|
+CREATE TABLE t1 (
+id INT PRIMARY KEY
+);
+CREATE USER test;
+GRANT EXECUTE ON FUNCTION fc_test TO test;
+GRANT EXECUTE ON PROCEDURE sp_test TO test;
+GRANT SELECT ON t1 TO test;
+GRANT ALL ON test_db.t1 TO test;
+GRANT EXECUTE ON test_db.* TO test;
+SET sql_mode='ANSI_QUOTES';
+CREATE DATABASE "test_.'`db";
+USE "test_.'`db";
+CREATE PROCEDURE "sp.'`_test"()
+BEGIN
+SELECT 'Hello, World!';
+END|
+CREATE FUNCTION "fc_.'`test"()
+RETURNS VARCHAR(50)
+BEGIN
+RETURN 'Hello, World!';
+END|
+CREATE TABLE "t.'`1" (
+id INT PRIMARY KEY
+);
+GRANT EXECUTE ON FUNCTION "fc_.'`test" TO test;
+GRANT EXECUTE ON PROCEDURE "sp.'`_test" TO test;
+GRANT SELECT ON "t.'`1" TO test;
+GRANT ALL ON "test_.'`db"."t.'`1" TO test;
+GRANT EXECUTE ON "test_.'`db".* TO test;
+SHOW GRANTS FOR test;
+Grants for test@%
+GRANT USAGE ON *.* TO "test"@"%"
+GRANT EXECUTE ON "test_.'`db".* TO "test"@"%"
+GRANT EXECUTE ON "test_db".* TO "test"@"%"
+GRANT ALL PRIVILEGES ON "test_.'`db"."t.'`1" TO "test"@"%"
+GRANT ALL PRIVILEGES ON "test_db"."t1" TO "test"@"%"
+GRANT EXECUTE ON PROCEDURE "test_.'`db"."sp.'`_test" TO "test"@"%"
+GRANT EXECUTE ON PROCEDURE "test_db"."sp_test" TO "test"@"%"
+GRANT EXECUTE ON FUNCTION "test_.'`db"."fc_.'`test" TO "test"@"%"
+GRANT EXECUTE ON FUNCTION "test_db"."fc_test" TO "test"@"%"
+SET sql_mode='';
+SHOW GRANTS FOR test;
+Grants for test@%
+GRANT USAGE ON *.* TO `test`@`%`
+GRANT EXECUTE ON `test_.'``db`.* TO `test`@`%`
+GRANT EXECUTE ON `test_db`.* TO `test`@`%`
+GRANT ALL PRIVILEGES ON `test_.'``db`.`t.'``1` TO `test`@`%`
+GRANT ALL PRIVILEGES ON `test_db`.`t1` TO `test`@`%`
+GRANT EXECUTE ON PROCEDURE `test_.'``db`.`sp.'``_test` TO `test`@`%`
+GRANT EXECUTE ON PROCEDURE `test_db`.`sp_test` TO `test`@`%`
+GRANT EXECUTE ON FUNCTION `test_.'``db`.`fc_.'``test` TO `test`@`%`
+GRANT EXECUTE ON FUNCTION `test_db`.`fc_test` TO `test`@`%`
+SET SQL_MODE='ANSI_QUOTES';
+DROP DATABASE "test_.'`db";
+DROP DATABASE test_db;
+DROP USER test;

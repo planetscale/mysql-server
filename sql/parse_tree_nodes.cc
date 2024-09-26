@@ -4009,7 +4009,8 @@ void PT_joined_table_using::add_json_info(Json_object *obj) {
   String using_fields_str;
 
   for (String *curr_str = using_fields_it++;;) {
-    append_identifier(&using_fields_str, curr_str->ptr(), curr_str->length());
+    append_identifier_with_backtick(&using_fields_str, curr_str->ptr(),
+                                    curr_str->length());
     if ((curr_str = using_fields_it++) == nullptr) break;
     using_fields_str.append(",", 1, system_charset_info);
   }
