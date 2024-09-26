@@ -1890,3 +1890,40 @@ b	b	b
 1	1	1
 2	2	2
 DROP TABLE small, big;
+#
+# Bug#36997713: Hypergraph : Result set mismatch (1 row vs empty set)
+#
+CREATE TABLE t1 (f1 INTEGER, f2 VARCHAR(10));
+CREATE TABLE t2 (f1 INTEGER, f2 VARCHAR(10));
+INSERT INTO t1 VALUES (10, 'o');
+INSERT INTO t2 VALUES (100, 'c');
+INSERT INTO t2 VALUES (100, 'o');
+ANALYZE TABLE t1,t2;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	OK
+test.t2	analyze	status	OK
+EXPLAIN FORMAT=TREE SELECT *
+FROM ((SELECT * FROM t1
+WHERE EXISTS (SELECT 1 FROM t2 WHERE t2.f2 >= t1.f2)) AS table1
+INNER JOIN t2 AS table2 ON (table2.f2 = table1.f2))
+WHERE (table2.f2 = 'x' ) OR (table1.f1 > 1);
+EXPLAIN
+-> Inner hash join (table2.f2 = t1.f2), extra conditions: (((table2.f2 = 'x') and (t1.f2 = 'x')) or (t1.f1 > 1))  (rows=0.0151)
+    -> Table scan on table2  (rows=2)
+    -> Hash
+        -> Hash semijoin (FirstMatch) (no condition), extra conditions: (t2.f2 >= t1.f2)  (rows=0.189)
+            -> Filter: ((t1.f2 = 'x') or (t1.f1 > 1))  (rows=0.4)
+                -> Table scan on t1  (rows=1)
+            -> Hash
+                -> Table scan on t2  (rows=2)
+
+Warnings:
+Note	1276	Field or reference 'test.t1.f2' of SELECT #3 was resolved in SELECT #2
+SELECT *
+FROM ((SELECT * FROM t1
+WHERE EXISTS (SELECT 1 FROM t2 WHERE t2.f2 >= t1.f2)) AS table1
+INNER JOIN t2 AS table2 ON (table2.f2 = table1.f2))
+WHERE (table2.f2 = 'x' ) OR (table1.f1 > 1);
+f1	f2	f1	f2
+10	o	100	o
+DROP TABLE t1,t2;

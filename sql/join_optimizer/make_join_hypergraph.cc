@@ -2321,20 +2321,49 @@ Item_field *GetSubstitutionField(Item_field *item, Item_func *parent,
   return item;
 }
 
-Item *PropagateEqualities(Item *cond, const RelationalExpression *join) {
-  table_map tables_in_subtree = TablesBetween(0, MAX_TABLES);
-  // If this is a degenerate join condition (that is, all fields in the
-  // join condition come from the same side of the join), we need to
-  // find replacements, if any, from the same side, so that the condition
-  // continues to be pushable to that side.
-  if (join != nullptr) {
-    tables_in_subtree =
-        IsSubset(cond->used_tables(), join->left->tables_in_subtree)
-            ? join->left->tables_in_subtree
-            : (IsSubset(cond->used_tables(), join->right->tables_in_subtree)
-                   ? join->right->tables_in_subtree
-                   : join->tables_in_subtree);
+// Helper function for PropagateEqualities. If a join condition's
+// fields come from one side of the join, then the replacement
+// field while propagating equalities should come from the same
+// side so that the condition could be pushed down later. We find
+// the tables that can be used to find these replacements.
+table_map GetUsableTables(const table_map used_tables,
+                          const RelationalExpression *expr) {
+  switch (expr->type) {
+    case RelationalExpression::TABLE:
+      return expr->tables_in_subtree;
+    case RelationalExpression::SEMIJOIN:
+    case RelationalExpression::ANTIJOIN:
+    case RelationalExpression::INNER_JOIN:
+    case RelationalExpression::STRAIGHT_INNER_JOIN:
+    case RelationalExpression::LEFT_JOIN:
+    case RelationalExpression::FULL_OUTER_JOIN: {
+      for (const RelationalExpression *child : {expr->left, expr->right}) {
+        if (IsSubset(used_tables, child->tables_in_subtree)) {
+          return GetUsableTables(used_tables, child);
+        }
+      }
+      break;
+    }
+    case RelationalExpression::MULTI_INNER_JOIN: {
+      for (RelationalExpression *child : expr->multi_children) {
+        if (IsSubset(used_tables, child->tables_in_subtree)) {
+          return GetUsableTables(used_tables, child);
+        }
+      }
+      break;
+    }
   }
+  return expr->tables_in_subtree;
+}
+
+Item *PropagateEqualities(Item *cond, const RelationalExpression *join) {
+  // If we have a degenerate join condition (all fields coming from the
+  // same side of the join), we need to find replacements from the same
+  // side of the join. So, get the tables that could be used to find
+  // the replacements.
+  assert(join != nullptr);
+  const table_map tables_in_subtree =
+      GetUsableTables(cond->used_tables(), join);
 
   // While walking down the item tree, maintain a stack of pointers to enclosing
   // functions, so that the visitor can access the parent function.
@@ -3686,7 +3715,7 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
     if (ExtractConditions(where_cond, &where_conditions)) {
       return true;
     }
-    if (EarlyNormalizeConditions(thd, /*join=*/nullptr, &where_conditions,
+    if (EarlyNormalizeConditions(thd, root, &where_conditions,
                                  where_is_always_false)) {
       return true;
     }
