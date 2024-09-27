@@ -1382,6 +1382,8 @@ static void cleanup_tmp_tables(Table_ref *list) {
         // Clear indexes added during optimization, keep possible unique index
         TABLE *t = tl->table;
         t->s->keys = t->s->is_distinct ? 1 : 0;
+        t->s->key_parts =
+            t->s->is_distinct ? t->s->key_info[0].user_defined_key_parts : 0;
         t->s->first_unused_tmp_key = 0;
         t->keys_in_use_for_query.clear_all();
         t->keys_in_use_for_group_by.clear_all();
