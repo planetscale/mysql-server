@@ -329,6 +329,8 @@ VALUES (
 'Y', 'Y',  'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y',
 /*!50001 'Y', 'Y', 'Y', 'Y', 'Y', */'', '', '', '', '0', '0', '0');
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 DROP USER inserttest@localhost;
 SELECT IS_NULLABLE, COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE
 COLUMN_NAME IN ('authentication_string', 'plugin') AND

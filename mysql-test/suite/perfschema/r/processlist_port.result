@@ -22,6 +22,8 @@ grant ALL on *.* to user3@localhost;
 grant ALL on *.* to user4@localhost;
 
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 
 show grants for user1@localhost;
 Grants for user1@localhost

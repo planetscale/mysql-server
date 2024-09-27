@@ -393,15 +393,14 @@ bool Grant_validator::validate_dynamic_privileges() {
         dynamic privileges to grant.
       */
       privileges_to_check = new (m_thd->mem_root) List<LEX_CSTRING>;
-      iterate_all_dynamic_non_deprecated_privileges(
-          m_thd, [&](const char *str) {
-            LEX_CSTRING *new_str =
-                (LEX_CSTRING *)m_thd->alloc(sizeof(LEX_CSTRING));
-            new_str->str = str;
-            new_str->length = strlen(str);
-            privileges_to_check->push_back(new_str);
-            return false;
-          });
+      iterate_all_dynamic_privileges(m_thd, [&](const char *str) {
+        LEX_CSTRING *new_str =
+            reinterpret_cast<LEX_CSTRING *>(m_thd->alloc(sizeof(LEX_CSTRING)));
+        new_str->str = str;
+        new_str->length = strlen(str);
+        privileges_to_check->push_back(new_str);
+        return false;
+      });
     } else
       privileges_to_check =
           &const_cast<List<LEX_CSTRING> &>(m_dynamic_privilege);
@@ -3607,15 +3606,14 @@ bool mysql_grant(THD *thd, const char *db, List<LEX_USER> &list,
             dynamic privileges to grant.
           */
           privileges_to_check = new (thd->mem_root) List<LEX_CSTRING>;
-          iterate_all_dynamic_non_deprecated_privileges(
-              thd, [&](const char *str) {
-                LEX_CSTRING *new_str =
-                    (LEX_CSTRING *)thd->alloc(sizeof(LEX_CSTRING));
-                new_str->str = str;
-                new_str->length = strlen(str);
-                privileges_to_check->push_back(new_str);
-                return false;
-              });
+          iterate_all_dynamic_privileges(thd, [&](const char *str) {
+            LEX_CSTRING *new_str = reinterpret_cast<LEX_CSTRING *>(
+                thd->alloc(sizeof(LEX_CSTRING)));
+            new_str->str = str;
+            new_str->length = strlen(str);
+            privileges_to_check->push_back(new_str);
+            return false;
+          });
           granted_dynamic_privs = privileges_to_check;
         } else
           privileges_to_check =

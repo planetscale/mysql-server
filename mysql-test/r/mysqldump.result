@@ -3387,6 +3387,8 @@ revoke all privileges on mysqldump_myDB.* from myDB_User@localhost;
 drop user myDB_User@localhost;
 drop database mysqldump_myDB;
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 # Bug#21424 continues from here.
 # Restore. Flush Privileges test ends.
 #

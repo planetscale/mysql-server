@@ -173,6 +173,8 @@ CREATE USER test_user1;
 # Creating user 'test_user2'
 CREATE USER test_user2;
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 #
 # Now trying to connect again..
 # Connecting using 'test_user1'

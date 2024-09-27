@@ -269,6 +269,8 @@ localhost	joe	%	wp_administrators
 ALTER USER CURRENT_USER() DEFAULT ROLE NONE;
 ++ Flushing and reloading privileges shouldn't break the server
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 # Restart the server and verify that the role graph and default roles
 # are properly imported.
 # restart
@@ -630,6 +632,8 @@ Acl_cache_items_count	6
 FLUSH PRIVILEGES;
 ERROR 42000: Access denied; you need (at least one of) the RELOAD or FLUSH_PRIVILEGES privilege(s) for this operation
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 SELECT * FROM mysql.role_edges;
 FROM_HOST	FROM_USER	TO_HOST	TO_USER	WITH_ADMIN_OPTION
 %	backup_admin	%	db_admin	N

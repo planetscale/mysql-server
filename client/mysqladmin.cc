@@ -741,7 +741,15 @@ static int execute_commands(MYSQL *mysql, int argc, char **argv) {
         break;
       }
       case ADMIN_FLUSH_PRIVILEGES:
+        CLIENT_WARN_DEPRECATED_NO_REPLACEMENT("flush-privileges");
+        if (0 != mysql_query(mysql, "flush privileges")) {
+          my_printf_error(0, "reload failed; error: '%s'", error_flags,
+                          mysql_error(mysql));
+          return -1;
+        }
+        break;
       case ADMIN_RELOAD:
+        CLIENT_WARN_DEPRECATED_NO_REPLACEMENT("reload");
         if (mysql_query(mysql, "flush privileges")) {
           my_printf_error(0, "reload failed; error: '%s'", error_flags,
                           mysql_error(mysql));

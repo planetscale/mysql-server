@@ -471,6 +471,8 @@ delete from mysql.db where user like 'mysqltest%';
 delete from mysql.tables_priv where user like 'mysqltest%';
 delete from mysql.columns_priv where user like 'mysqltest%';
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 drop table t1;
 create table t1 (a int not null, primary key(a));
 alter table t1 add constraint constraint_1 unique (a);
@@ -543,6 +545,8 @@ delete from mysql.db where user='joe';
 delete from mysql.tables_priv where user='joe';
 delete from mysql.columns_priv where user='joe';
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 create table t1 (a int not null auto_increment,b int, primary key (a));
 insert into t1 values (1,1),(NULL,3),(NULL,4);
 analyze table t1;
@@ -880,6 +884,8 @@ VIEW_TABLE_USAGE	TABLE_NAME	select
 delete from mysql.user where user='mysqltest_4';
 delete from mysql.db where user='mysqltest_4';
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 SELECT table_schema, count(*) FROM information_schema.TABLES WHERE
 table_schema IN ('mysql', 'information_schema', 'test', 'mysqltest')
 AND table_name not like 'ndb%' AND table_name COLLATE utf8mb3_general_ci not like 'innodb_%'
@@ -2631,6 +2637,8 @@ Warnings:
 Warning	4005	User 'root'@'localhost' is referenced as a definer account in a stored routine.
 Warning	4005	User 'root'@'localhost' is referenced as a definer account in a trigger.
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 # Without patch, SHOW DATABASES returns error ERROR 1449 (HY000):
 # The user specified as a definer ('root'@'localhost') does not exist
 SHOW DATABASES;
@@ -2646,6 +2654,8 @@ Warnings:
 Warning	4005	User 'root'@'localhost' is referenced as a definer account in a stored routine.
 Warning	4005	User 'root'@'localhost' is referenced as a definer account in a trigger.
 FLUSH PRIVILEGES;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 #
 # Bug#27041452 assertion
 # `ticket->m_lock->m_obtrusive_locks_granted_waiting_count != 0' failed.

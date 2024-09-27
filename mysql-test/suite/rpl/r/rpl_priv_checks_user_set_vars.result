@@ -121,3 +121,5 @@ DROP TABLE t_session;
 DROP DATABASE new_db;
 SET default_table_encryption = OPT_DEFAULT_TABLE_ENCRYPTION;
 include/rpl/deinit.inc
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.

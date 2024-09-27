@@ -1864,6 +1864,8 @@ Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Pl
 create user 'user_1'@'localhost';
 grant execute on db_storedproc.* to 'user_1'@'localhost';
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 drop table IF EXISTS mysql.t1;
 Warnings:
 Note	1051	Unknown table 'mysql.t1'

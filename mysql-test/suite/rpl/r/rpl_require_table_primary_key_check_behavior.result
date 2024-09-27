@@ -126,5 +126,7 @@ include/rpl/sync_to_replica.inc [FOR CHANNEL 'channel_1']
 [connection server_3]
 include/rpl/sync_to_replica.inc [FOR CHANNEL 'channel_3']
 include/rpl/deinit.inc
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 RESET REPLICA ALL FOR CHANNEL 'channel_1';
 RESET REPLICA ALL FOR CHANNEL 'channel_3';

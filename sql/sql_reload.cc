@@ -53,6 +53,7 @@
 #include "sql/sql_class.h"    // THD
 #include "sql/sql_connect.h"  // reset_mqh
 #include "sql/sql_const.h"
+#include "sql/sql_error.h"    // push_deprecated_warn_no_replacement
 #include "sql/sql_servers.h"  // servers_reload
 #include "sql/system_variables.h"
 #include "sql/table.h"
@@ -152,6 +153,8 @@ bool handle_reload_request(THD *thd, unsigned long options, Table_ref *tables,
 
   if (options & REFRESH_GRANT) {
     THD *tmp_thd = nullptr;
+    if (thd != nullptr)
+      push_deprecated_warn_no_replacement(thd, "FLUSH PRIVILEGES");
     /*
       If handle_reload_request() is called from SIGHUP handler we have to
       allocate temporary THD for execution of acl_reload()/grant_reload().

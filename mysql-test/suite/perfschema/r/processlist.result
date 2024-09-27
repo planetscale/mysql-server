@@ -22,6 +22,8 @@ grant ALL on *.* to user3@localhost;
 grant ALL on *.* to user4@localhost;
 
 flush privileges;
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 
 use test;
 create table test.t1 (s1 int, s2 int, s3 int, s4 int);

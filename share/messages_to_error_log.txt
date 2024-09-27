@@ -12407,7 +12407,7 @@ ER_FIREWALL_SCHEDULER_REGISTER_FAILED
 ER_FIREWALL_INVALID_RELOAD_INTERVAL_VALUE
   eng "Invalid reload interval specified: %lu. Valid values are 0 (off) or greater than or equal to %d. Adjusting to %d."
 
-ER_WARN_DEPRECATED_DYNAMIC_PRIV_FOR_USER
+OBSOLETE_ER_WARN_DEPRECATED_DYNAMIC_PRIV_FOR_USER
    eng "'%s' (granted to '%s@%s') is deprecated and will be removed in a future release."
 
 ER_BULK_MULTI_READER_INFO

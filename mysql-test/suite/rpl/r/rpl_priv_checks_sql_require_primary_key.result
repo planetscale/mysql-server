@@ -28,3 +28,5 @@ include/rpl/sync_to_replica.inc
 SET @@global.sql_require_primary_key = SQL_REQUIRE_PRIMARY_KEY;
 DROP TABLE t1;
 include/rpl/deinit.inc
+Warnings:
+Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
