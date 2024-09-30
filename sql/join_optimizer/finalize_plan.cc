@@ -776,6 +776,28 @@ Item *AddCachesAroundConstantConditions(Item *item) {
   }
 }
 
+/// Perform finalization specific to UPDATE and DELETE access paths. Make sure
+/// that rows in the target tables can be deleted using the information that
+/// comes up through the access paths. In particular, paths that potentially
+/// reorder the rows returned by the underlying scans, specifically SORT and
+/// HASH_JOIN, must be told to preserve row IDs, so that the correct row can be
+/// updated or deleted.
+void FinalizeUpdateOrDelete(AccessPath *root_path, table_map target_tables) {
+  WalkAccessPaths(
+      root_path, /*join=*/nullptr,
+      WalkAccessPathPolicy::STOP_AT_MATERIALIZATION,
+      [target_tables](AccessPath *path, const JOIN *) {
+        if ((path->type == AccessPath::SORT ||
+             path->type == AccessPath::HASH_JOIN) &&
+            Overlaps(target_tables,
+                     GetUsedTableMap(path, /*include_pruned_tables=*/true))) {
+          FindTablesToGetRowidFor(path);
+          return true;
+        }
+        return false;
+      });
+}
+
 /// Create Filesort objects for all SORT access paths in a query block. This is
 /// done in a top-down fashion, in contrast to the bottom-up processing in
 /// FinalizePlanForQueryBlock(). It is done top-down because a Filesort that
@@ -859,10 +881,22 @@ bool FinalizePlanForQueryBlock(THD *thd, Query_block *query_block) {
 
   AccessPath *const root_path = join->root_access_path();
   assert(root_path != nullptr);
-  if (root_path->type == AccessPath::EQ_REF) {
-    // None of the finalization below is relevant to point selects, so just
-    // return immediately.
-    return false;
+
+  switch (root_path->type) {
+    case AccessPath::EQ_REF:
+      // None of the finalization below is relevant to point selects, so just
+      // return immediately.
+      return false;
+    case AccessPath::DELETE_ROWS:
+      FinalizeUpdateOrDelete(root_path,
+                             root_path->delete_rows().tables_to_delete_from);
+      break;
+    case AccessPath::UPDATE_ROWS:
+      FinalizeUpdateOrDelete(root_path,
+                             root_path->update_rows().tables_to_update);
+      break;
+    default:
+      break;
   }
 
   // If the query is offloaded to an external executor, we don't need to create

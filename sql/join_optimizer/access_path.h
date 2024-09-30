@@ -1836,7 +1836,7 @@ AccessPath *NewDeleteRowsAccessPath(THD *thd, AccessPath *child,
                                     table_map immediate_tables);
 
 AccessPath *NewUpdateRowsAccessPath(THD *thd, AccessPath *child,
-                                    table_map delete_tables,
+                                    table_map update_tables,
                                     table_map immediate_tables);
 
 /**

@@ -285,7 +285,6 @@ class CostingReceiver {
       const Mem_root_array<SpatialDistanceScanInfo> *spatial_indexes,
       const Mem_root_array<FullTextIndexInfo> *fulltext_searches,
       NodeMap fulltext_tables, uint64_t sargable_fulltext_predicates,
-      table_map update_delete_target_tables,
       table_map immediate_update_delete_candidates, bool need_rowid,
       NodeMap nodes_under_limit, SecondaryEngineFlags engine_flags,
       int subgraph_pair_limit,
@@ -303,8 +302,6 @@ class CostingReceiver {
         m_fulltext_searches{fulltext_searches},
         m_fulltext_tables{fulltext_tables},
         m_sargable_fulltext_predicates{sargable_fulltext_predicates},
-        m_update_delete_target_nodes{GetNodeMapFromTableMap(
-            update_delete_target_tables, graph.table_num_to_node_num)},
         m_immediate_update_delete_candidates{GetNodeMapFromTableMap(
             immediate_update_delete_candidates, graph.table_num_to_node_num)},
         m_need_rowid{need_rowid},
@@ -511,9 +508,6 @@ class CostingReceiver {
   /// (where const must be high enough to make the comparison return false for
   /// documents with zero score).
   uint64_t m_sargable_fulltext_predicates = 0;
-
-  /// The target tables of an UPDATE or DELETE statement.
-  NodeMap m_update_delete_target_nodes = 0;
 
   /// The set of tables that are candidates for immediate update or delete.
   /// Immediate update/delete means that the rows from the table are deleted
@@ -1336,7 +1330,7 @@ AccessPath RefAccessBuilder::MakePath(
     // since we don't know how the engine behaves if doing an index lookup on a
     // changing index.
     //
-    // EQ_REF should be safe, though. I has at most one matching row, with a
+    // EQ_REF should be safe, though. It has at most one matching row, with a
     // constant lookup value as this is the first table. So this row won't be
     // seen a second time; the iterator won't even try a second read.
     if (path.type != AccessPath::EQ_REF && IsUpdateStatement(thd()) &&
@@ -4975,15 +4969,6 @@ void CostingReceiver::ProposeHashJoin(
   join_path.hash_join().tables_to_get_rowid_for = 0;
   join_path.hash_join().allow_spill_to_disk = true;
 
-  // The rows from the inner side of a hash join come in different order from
-  // that of the underlying scan, so we need to store row IDs for any
-  // update/delete target tables on the inner side, so that we know which rows
-  // to update or delete. The same applies to rows from the outer side, if the
-  // hash join spills to disk, so we need to store row IDs for both sides.
-  if (Overlaps(m_update_delete_target_nodes, left | right)) {
-    FindTablesToGetRowidFor(&join_path);
-  }
-
   // See the equivalent code in ProposeNestedLoopJoin().
   if (rewrite_semi_to_inner) {
     int ordering_idx = edge->ordering_idx_needed_for_semijoin_rewrite;
@@ -7834,8 +7819,6 @@ bool ObeysIndexOrderHints(AccessPath *root_path, JOIN *join, bool grouping) {
    @param orderings The set of interesting orders.
    @param order_by_ordering_idx The order by which the result should be ordered.
    @param query_block The enclosing query block.
-   @param force_sort_rowids True if row IDs must be preserved through the
-       ORDER BY clause (for UPDATE OR DELETE).
    @param need_rowid True if we need rowids.
    @param root_candidates The candidate paths.
    @returns The new root paths.
@@ -7844,7 +7827,6 @@ AccessPathArray ApplyOrderBy(THD *thd, const CostingReceiver &receiver,
                              const LogicalOrderings &orderings,
                              int order_by_ordering_idx,
                              const Query_block &query_block, bool need_rowid,
-                             bool force_sort_rowids,
                              const AccessPathArray &root_candidates) {
   JOIN *join = query_block.join;
   assert(join->order.order != nullptr);
@@ -7886,16 +7868,12 @@ AccessPathArray ApplyOrderBy(THD *thd, const CostingReceiver &receiver,
       sort_path->sort().filesort = nullptr;
       sort_path->sort().remove_duplicates = false;
       sort_path->sort().unwrap_rollup = false;
+      sort_path->sort().force_sort_rowids = false;
       sort_path->sort().limit =
           push_limit_to_filesort ? limit_rows : HA_POS_ERROR;
       sort_path->sort().order = join->order.order;
       sort_path->has_group_skip_scan = root_path->has_group_skip_scan;
       EstimateSortCost(thd, sort_path);
-
-      // If this is a DELETE or UPDATE statement, row IDs must be preserved
-      // through the ORDER BY clause, so that we know which rows to delete or
-      // update.
-      sort_path->sort().force_sort_rowids = force_sort_rowids;
       root_path = sort_path;
     }
 
@@ -8968,9 +8946,9 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
   CostingReceiver receiver(
       thd, query_block, graph, &orderings, &sort_ahead_orderings,
       &active_indexes, &spatial_indexes, &fulltext_searches, fulltext_tables,
-      sargable_fulltext_predicates, update_delete_target_tables,
-      immediate_update_delete_candidates, need_rowid, nodes_under_limit,
-      EngineFlags(thd), *subgraph_pair_limit, secondary_engine_cost_hook,
+      sargable_fulltext_predicates, immediate_update_delete_candidates,
+      need_rowid, nodes_under_limit, EngineFlags(thd), *subgraph_pair_limit,
+      secondary_engine_cost_hook,
       secondary_engine_optimizer_request_state_hook);
   if (graph.nodes.size() == 1) {
     // Fast path for single-table queries. No need to run the join enumeration
@@ -9019,10 +8997,8 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
           thd, query_block, graph, &orderings, &sort_ahead_orderings,
           &active_indexes, &spatial_indexes, &fulltext_searches,
           fulltext_tables, sargable_fulltext_predicates,
-          update_delete_target_tables, immediate_update_delete_candidates,
-          need_rowid, nodes_under_limit, EngineFlags(thd),
-          /*subgraph_pair_limit=*/*subgraph_pair_limit,
-          secondary_engine_cost_hook,
+          immediate_update_delete_candidates, need_rowid, nodes_under_limit,
+          EngineFlags(thd), *subgraph_pair_limit, secondary_engine_cost_hook,
           secondary_engine_optimizer_request_state_hook);
       // Reset the secondary engine planning flags
       graph.secondary_engine_costing_flags = {};
@@ -9228,15 +9204,7 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
     // Nothing to do if the secondary engine has rejected all candidates.
     assert(receiver.HasSecondaryEngineCostHook());
   } else {
-    // UPDATE and DELETE must preserve row IDs through ORDER BY in order to keep
-    // track of which rows to update or delete.
-    const bool force_sort_rowids = update_delete_target_tables != 0;
-
     if (join->select_distinct) {
-      // The force_sort_rowids flag is only set for UPDATE and DELETE,
-      // which don't have any syntax for specifying DISTINCT.
-      assert(!force_sort_rowids);
-
       const ApplyDistinctParameters params{
           .thd = thd,
           .receiver = &receiver,
@@ -9258,9 +9226,9 @@ static AccessPath *FindBestQueryPlanInner(THD *thd, Query_block *query_block,
       assert(receiver.HasSecondaryEngineCostHook());
     } else {
       if (join->order.order != nullptr) {
-        root_candidates = ApplyOrderBy(
-            thd, receiver, orderings, order_by_ordering_idx, *query_block,
-            need_rowid, force_sort_rowids, root_candidates);
+        root_candidates =
+            ApplyOrderBy(thd, receiver, orderings, order_by_ordering_idx,
+                         *query_block, need_rowid, root_candidates);
       }
     }
   }
