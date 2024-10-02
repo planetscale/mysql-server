@@ -2443,7 +2443,8 @@ bool init_ref_part(THD *thd, unsigned part_no, Item *val, bool *cond_guard,
                                    key_part_info, key_buff, nullable);
   if (unlikely(!s_key || thd->is_error())) return true;
 
-  if (used_tables & ~INNER_TABLE_BIT) {
+  if (used_tables & ~INNER_TABLE_BIT ||
+      !evaluate_during_optimization(val, thd->lex->current_query_block())) {
     /* Comparing against a non-constant. */
     ref->key_copy[part_no] = s_key;
   } else {

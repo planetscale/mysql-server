@@ -366,7 +366,104 @@ SELECT /*+ SET_VAR(optimizer_switch='use_index_extensions=off')
 # primary index (pk) and one on the secondary index (k). Only the scan
 # on the secondary index used to be shown.
 SELECT JSON_PRETTY(JSON_EXTRACT(@explain, '$**.operation'));
+DROP TABLE t;
 
+--echo #
+--echo # Bug#37126176 Add lookup references to iterator-based EXPLAIN FORMAT=JSON for index lookups
+--echo #
+
+SET @v1 = NULL;
+CREATE TABLE t (pk INT PRIMARY KEY AUTO_INCREMENT, i INT DEFAULT NULL, INDEX idx(i));
+INSERT INTO t(i) VALUES (3), (2), (1), (NULL);
+ANALYZE TABLE t;
+
+# Even though these plans are mostly pretty simple we use JSON functions to
+# extract the relevant paths from the EXPLAIN output in case the plan should
+# change in the future but still contains the desired path.
+# As long as the EXPLAIN output contains the desired fields and values in the
+# right relative position we do not care about other parts of the plan.
+
+# CONCAT(SUBSTRING_INDEX(path, '.', CHAR_LENGTH - CHAR_LENGTH)) extracts the
+# path to the lookup object found with the JSON_SEARCH.
+# The same effect could probably be achieved with
+# JSON_EXTRACT(@v1, '$**.lookup_references[0]'), but this way we make sure the
+# access type is right and from the right object.
+# This is probably more useful with more complex plans.
+
+--echo # Index lookup shows correct reference type in "lookup_references".
+# Single-row index lookup (EQ_REF)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT pk FROM t WHERE pk = 1;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "const"
+  AS index_lookup_references_const
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Index lookup (REF)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT t1.i FROM t t1, t t2 WHERE t1.i = t2.i + 1;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "func"
+  AS index_lookup_references_func
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Single-row index lookup (EQ_REF)
+# "lookup_references" can be either '["test.t1.pk"]' or '["test.t2.pk"]'.
+# The important thing is that lookup_references contains a column name.
+EXPLAIN FORMAT=JSON INTO @v1 SELECT t1.pk FROM t t1, t t2 WHERE t1.pk = t2.pk;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  IN ("test.t1.pk", "test.t2.pk")
+  AS index_lookup_references_column
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+DROP TABLE t;
+
+# Fulltext search (FULLTEXT)
+--echo # Fulltext search has "lookup_references", should only show "const"
+CREATE TABLE t (a VARCHAR(200), b TEXT, FULLTEXT (a,b)) ENGINE = InnoDB charset utf8mb4;
+INSERT INTO t VALUES  ('This is a sample text', 'I made up for this test.'),
+                      ('We want to show that fulltext', 'search references a constant in the "lookup_condition".'),
+                      ('In this test the EXPLAIN output', 'should contain a field called "lookup_references".'),
+                      ('"lookup_references" should be an array.', 'That array should contain an element that is "const".'),
+                      ('Function MATCH ... AGAINST()','is used to do a fulltext search.'),
+                      ('Fulltext search in MySQL', 'are confusing.');
+ANALYZE TABLE t;
+
+# Fulltext search (FULLTEXT)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT * FROM t WHERE MATCH(a,b) AGAINST ("fulltext");
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "const"
+  AS fulltext_search_references_const
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'full_text_search')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
 DROP TABLE t;
 
 --source include/disable_hypergraph.inc

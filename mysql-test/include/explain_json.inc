@@ -574,3 +574,140 @@ SELECT JSON_EXTRACT(@v1, '$.query_type') = 'delete';
 DROP TABLE t1, t2;
 SET @v1=NULL;
 SET @@explain_json_format_version = @saved_json_format_version;
+
+--echo #
+--echo # Bug#37126176 Add lookup references to iterator-based EXPLAIN FORMAT=JSON for index lookups
+--echo #
+
+SET @saved_json_format_version = @@explain_json_format_version;
+SET @@explain_json_format_version = 2;
+
+SET @v1 = NULL;
+CREATE TABLE t (pk INT PRIMARY KEY AUTO_INCREMENT, i INT DEFAULT NULL, INDEX idx(i));
+INSERT INTO t(i) VALUES (3), (2), (1), (NULL);
+ANALYZE TABLE t;
+
+# Even though these plans are mostly pretty simple we use JSON functions to
+# extract the relevant paths from the EXPLAIN output in case the plan should
+# change in the future but still contains the desired path.
+# As long as the EXPLAIN output contains the desired fields and values in the
+# right relative position we do not care about other parts of the plan.
+
+# CONCAT(SUBSTRING_INDEX(path, '.', CHAR_LENGTH - CHAR_LENGTH)) extracts the
+# path to the lookup object found with the JSON_SEARCH.
+# The same effect could probably be achieved with
+# JSON_EXTRACT(@v1, '$**.lookup_references[0]'), but this way we make sure the
+# access type is right and from the right object.
+# This is probably more useful with more complex plans.
+
+--echo # Index lookup shows correct reference type in "lookup_references".
+# Index lookup (REF)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT i FROM t WHERE i = 1;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "const"
+  AS index_lookup_references_const
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Single-row index lookup (EQ_REF)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT t1.pk FROM t t1, t t2 WHERE t1.pk = t2.pk + 1;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "func"
+  AS index_lookup_references_func
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Single-row index lookup (EQ_REF)
+# "lookup_references" can be either '["test.t1.pk"]' or '["test.t2.pk"]'.
+# If the plan changes we do not care as long as "lookup_references" contains a
+# fully qualified column name.
+EXPLAIN FORMAT=JSON INTO @v1 SELECT t1.pk FROM t t1, t t2 WHERE t1.pk = t2.pk;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  IN ("test.t1.pk", "test.t2.pk")
+  AS index_lookup_references_column
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Index lookup (REF_OR_NULL)
+EXPLAIN FORMAT=JSON INTO @v1 SELECT * FROM t WHERE i = 1 OR i IS NULL;
+SELECT JSON_UNQUOTE(JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_condition')))
+  LIKE "% or NULL"
+  AS is_ref_or_null
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'index_lookup')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+
+# Multi-range read (MRR)
+SET @saved_optimizer_switch = @@optimizer_switch;
+SET optimizer_switch='batched_key_access=on,mrr=on,mrr_cost_based=off';
+
+EXPLAIN FORMAT=JSON INTO @v1 SELECT /*+ BKA(t2) */ * FROM t t1 LEFT JOIN t t2 ON t1.pk = t2.pk AND t1.i = 1 AND t1.i = 2;
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references')) IS NOT NULL
+  AS mrr_has_lookup_references
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'multi_range_read')) AS index_access_type_path) AS t;
+
+SET optimizer_switch = @saved_optimizer_switch;
+
+SET @v1 = NULL;
+DROP TABLE t;
+
+# Fulltext search (FULLTEXT)
+--echo # Fulltext search has "lookup_references", should only show "const"
+CREATE TABLE t (a VARCHAR(200), b TEXT, FULLTEXT (a,b)) ENGINE = InnoDB charset utf8mb4;
+INSERT INTO t VALUES  ('This is a sample text', 'I made up for this test.'),
+                      ('We want to show that fulltext', 'search references a constant in the "lookup_condition".'),
+                      ('In this test the EXPLAIN output', 'should contain a field called "lookup_references".'),
+                      ('"lookup_references" should be an array.', 'That array should contain an element that is "const".'),
+                      ('Function MATCH ... AGAINST()','is used to do a fulltext search.'),
+                      ('Fulltext searches in MySQL', 'are confusing.');
+ANALYZE TABLE t;
+
+EXPLAIN FORMAT=JSON INTO @v1 SELECT * FROM t WHERE MATCH(a,b) AGAINST ("fulltext");
+SELECT JSON_EXTRACT(@v1,
+  CONCAT(
+    SUBSTRING_INDEX(index_access_type_path, '.',
+      CHAR_LENGTH(index_access_type_path)
+        -
+      CHAR_LENGTH(REPLACE(index_access_type_path, '.', ''))),
+    '.lookup_references[0]'))
+  = "const"
+  AS fulltext_search_references_const
+FROM (SELECT JSON_UNQUOTE(JSON_SEARCH(@v1, 'one', 'full_text_search')) AS index_access_type_path) AS t;
+
+SET @v1 = NULL;
+DROP TABLE t;
+
+SET @@explain_json_format_version = @saved_json_format_version;

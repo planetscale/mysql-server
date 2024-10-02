@@ -1117,16 +1117,17 @@ RefAccessBuilder::KeyMatch RefAccessBuilder::FindKeyMatch() const {
       Item_func_eq *item = down_cast<Item_func_eq *>(
           graph()->predicates[sp.predicate_index].condition);
       if (sp.field->eq(keyinfo.field)) {
-        const table_map other_side_tables =
-            sp.other_side->used_tables() & ~PSEUDO_TABLE_BITS;
-        if (IsSubset(other_side_tables, m_allowed_parameter_tables)) {
-          result.parameter_tables |= other_side_tables;
+        const table_map other_side_tables = sp.other_side->used_tables();
+        const table_map parameter_tables =
+            other_side_tables & ~PSEUDO_TABLE_BITS;
+        if (IsSubset(parameter_tables, m_allowed_parameter_tables)) {
+          result.parameter_tables |= parameter_tables;
           matched_this_keypart = true;
           result.keyparts[keypart_idx].field = sp.field;
           result.keyparts[keypart_idx].condition = item;
           result.keyparts[keypart_idx].val = sp.other_side;
           result.keyparts[keypart_idx].null_rejecting = true;
-          result.keyparts[keypart_idx].used_tables = item->used_tables();
+          result.keyparts[keypart_idx].used_tables = other_side_tables;
           result.keyparts[keypart_idx].can_evaluate = sp.can_evaluate;
           ++result.matched_keyparts;
           result.length += keyinfo.store_length;
