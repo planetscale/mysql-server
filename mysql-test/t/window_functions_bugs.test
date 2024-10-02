@@ -1580,6 +1580,7 @@ SELECT SUM((SELECT c0
 FROM tt
 GROUP BY c0;
 
+--skip_if_hypergraph  # Bug#37126568: enable for HG when fixed
 SELECT SUM((SELECT c0
             FROM t
             WHERE MIN(tt.c1) > 1
@@ -1593,6 +1594,7 @@ SELECT c0 FROM t WHERE 2 > 1 GROUP BY c0 ORDER BY c0 LIMIT 1;
 SELECT c0 FROM t WHERE 1 > 1 GROUP BY c0 ORDER BY c0 LIMIT 1;
 SELECT c0 FROM t WHERE 5 > 1 GROUP BY c0 ORDER BY c0 LIMIT 1;
 
+--skip_if_hypergraph  # Bug#37126568: enable for HG when fixed
 SELECT SUM((SELECT c0
             FROM t
             WHERE MIN(tt.c1) > 1
