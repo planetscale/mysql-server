@@ -1008,7 +1008,6 @@ bool optimize_secondary_engine(THD *thd) {
   if (retry_engine.has_value() &&
       (thd->lex->can_execute_only_in_secondary_engine() ||
        SecondaryEngineCallPrePrepareHook(thd, *retry_engine))) {
-    // NOLINTNEXTLINE(cppcoreguidelines-avoid-do-while)
     DBUG_EXECUTE_IF("emulate_user_query_kill", {
       thd->get_stmt_da()->set_error_status(thd, ER_QUERY_INTERRUPTED);
       return true;

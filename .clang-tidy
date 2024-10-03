@@ -47,6 +47,8 @@ Checks:
   misc-*,
   -misc-const-correctness,
   -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion,
+  -misc-use-anonymous-namespace,
   modernize-use-nullptr,
   llvm-*,
   -llvm-header-guard,
@@ -71,5 +73,7 @@ CheckOptions:
     value:           2
   - key: readability-function-cognitive-complexity.Threshold
     value: 50
+  - key: cppcoreguidelines-avoid-do-while.IgnoreMacros
+    value: true
 
 FormatStyle: "file"
