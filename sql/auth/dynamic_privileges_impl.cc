@@ -300,6 +300,8 @@ bool dynamic_privilege_init(void) {
   ret += service->register_privilege(STRING_WITH_LEN("TELEMETRY_LOG_ADMIN"));
   ret += service->register_privilege(STRING_WITH_LEN("REPLICATION_APPLIER"));
   ret += service->register_privilege(STRING_WITH_LEN("SHOW_ROUTINE"));
+  ret += service->register_privilege(
+      STRING_WITH_LEN("CREATE_SPATIAL_REFERENCE_SYSTEM"));
   ret += service->register_privilege(STRING_WITH_LEN("INNODB_REDO_LOG_ENABLE"));
   ret += service->register_privilege(STRING_WITH_LEN("FLUSH_OPTIMIZER_COSTS"));
   ret += service->register_privilege(STRING_WITH_LEN("FLUSH_STATUS"));

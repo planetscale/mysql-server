@@ -8328,7 +8328,7 @@ ER_MISSING_TABLESPACE_FILE
 ER_PERSIST_ONLY_ACCESS_DENIED_ERROR 42000
   eng "Access denied; you need %-.128s privileges for this operation"
 
-ER_CMD_NEED_SUPER
+OBSOLETE_ER_CMD_NEED_SUPER
   eng "You need the SUPER privilege for command '%-.192s'"
 
 ER_PATH_IN_DATADIR
@@ -10529,6 +10529,9 @@ ER_LH_VECTOR_TOO_MANY_ENTRIES
 
 ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER
   eng "Unexpected enclosed by character found inside unenclosed string at row %ld in file '%s' resulting in malformed CSV."
+
+ER_CMD_NEED_SUPER_OR_CREATE_SPATIAL_REFERENCE_SYSTEM
+  eng "You need the SUPER or CREATE_SPATIAL_REFERENCE_SYSTEM privilege for command '%-.192s'"
 
 #
 #  End of 9.x error messages (server-to-client).

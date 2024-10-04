@@ -791,6 +791,7 @@ BINLOG_ADMIN	Server Admin
 BINLOG_ENCRYPTION_ADMIN	Server Admin	
 CLONE_ADMIN	Server Admin	
 CONNECTION_ADMIN	Server Admin	
+CREATE_SPATIAL_REFERENCE_SYSTEM	Server Admin	
 Create	Databases,Tables,Indexes	To create new databases and tables
 Create role	Server Admin	To create new roles
 Create routine	Databases	To use CREATE FUNCTION/PROCEDURE

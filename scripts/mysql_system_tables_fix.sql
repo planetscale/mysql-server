@@ -1625,3 +1625,10 @@ FROM mysql.user WHERE Reload_priv = 'Y' AND @hadFlushPrivilegesPriv = 0;
 
 -- SET_USER_ID is removed dynamic privilege, revoke all grants of it.
 DELETE FROM global_grants WHERE PRIV = 'SET_USER_ID';
+
+-- Add the privilege CREATE_SPATIAL_REFERENCE_SYSTEM for every user who has the privilege SUPER
+-- provided that there isn't a user who already has the privilege CREATE_SPATIAL_REFERENCE_SYSTEM.
+SET @hadCreateSpatialRefrenceSystem =
+  (SELECT COUNT(*) FROM global_grants WHERE priv = 'CREATE_SPATIAL_REFERENCE_SYSTEM');
+INSERT INTO global_grants SELECT user, host, 'CREATE_SPATIAL_REFERENCE_SYSTEM', IF(grant_priv = 'Y', 'Y', 'N')
+FROM mysql.user WHERE super_priv = 'Y' AND @hadCreateSpatialRefrenceSystem = 0 AND user NOT IN ('mysql.infoschema','mysql.session','mysql.sys');
