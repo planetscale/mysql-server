@@ -54,28 +54,24 @@ Table::Table(TABLE *table_arg)
 // well include a table with no columns, like t2 in the following query:
 //
 //   SELECT t1.col1 FROM t1, t2;  # t2 will be included without any columns.
-TableCollection::TableCollection(
-    const Prealloced_array<TABLE *, 4> &tables, bool store_rowids,
-    table_map tables_to_get_rowid_for,
-    table_map tables_to_store_contents_of_null_rows_for)
-    : m_tables_bitmap(0),
-      m_store_rowids(store_rowids),
+TableCollection::TableCollection(const Prealloced_array<TABLE *, 4> &tables,
+                                 bool store_rowids,
+                                 table_map tables_to_get_rowid_for)
+    : m_store_rowids(store_rowids),
       m_tables_to_get_rowid_for(tables_to_get_rowid_for) {
   if (!store_rowids) {
     assert(m_tables_to_get_rowid_for == table_map{0});
   }
   for (TABLE *table : tables) {
     const Table_ref *ref = table->pos_in_table_list;
-    AddTable(table, ref != nullptr &&
-                        Overlaps(ref->map(),
-                                 tables_to_store_contents_of_null_rows_for));
+    AddTable(table);
     if (ref != nullptr) {
       m_tables_bitmap |= ref->map();
     }
   }
 }
 
-void TableCollection::AddTable(TABLE *tab, bool store_contents_of_null_rows) {
+void TableCollection::AddTable(TABLE *tab) {
   // When constructing the iterator tree, we might end up adding a
   // WeedoutIterator _after_ a HashJoinIterator has been constructed.
   // When adding the WeedoutIterator, QEP_TAB::rowid_status will be changed
@@ -118,8 +114,6 @@ void TableCollection::AddTable(TABLE *tab, bool store_contents_of_null_rows) {
     m_ref_and_null_bytes_size += tab->s->null_bytes;
   }
 
-  table.store_contents_of_null_rows = store_contents_of_null_rows;
-
   m_tables.push_back(std::move(table));
 }
 
@@ -132,13 +126,8 @@ void TableCollection::AddTable(TABLE *tab, bool store_contents_of_null_rows) {
    want to return 4 gigabytes for a BLOB column if it only contains 10 bytes of
    data.
    @param column     the column to calculate size for
-   @param skip_blob_null_check
-                     If true, disregard the NULL status of blob columns,
-                     presuming the table buffer has valid data for the blob;
-                     count that.
 */
-static size_t CalculateColumnStorageSize(const Column &column,
-                                         bool skip_blob_null_check) {
+static size_t CalculateColumnStorageSize(const Column &column) {
   bool is_blob_column = false;
   switch (column.field_type) {
     case MYSQL_TYPE_DECIMAL:
@@ -196,7 +185,7 @@ static size_t CalculateColumnStorageSize(const Column &column,
     // does not include the size of the length variable for blob types, so we
     // have to add that ourselves.
     const Field_blob *field_blob = down_cast<const Field_blob *>(column.field);
-    return (!skip_blob_null_check && field_blob->is_null())
+    return field_blob->is_null()
                ? 0
                : field_blob->data_length() + field_blob->pack_length_no_ptr();
   }
@@ -213,12 +202,8 @@ size_t ComputeRowSizeUpperBound(const TableCollection &tables) {
       // columns may very well be counted here, but the only effect is that we
       // end up reserving a bit too much space in the buffer for holding the
       // row data. That is more welcome than having to call Field::is_null()
-      // for every column in every row.  For blobs, we may or may not check
-      // NULLs, see predicate in final argument.
-      total_size +=
-          CalculateColumnStorageSize(column,
-                                     /*skip_blob_null_check*/
-                                     table.store_contents_of_null_rows);
+      // for every column in every row.
+      total_size += CalculateColumnStorageSize(column);
     }
   }
 
@@ -236,8 +221,7 @@ size_t ComputeRowSizeUpperBoundSansBlobs(const TableCollection &tables) {
       // a bit too much space in the buffer for holding the row data. That is
       // more welcome than having to call Field::is_null() for every column in
       // every row.
-      total_size += CalculateColumnStorageSize(column,
-                                               /*skip_blob_null_check*/ false);
+      total_size += CalculateColumnStorageSize(column);
     }
   }
 
@@ -275,17 +259,7 @@ const uchar *LoadIntoTableBuffers(const TableCollection &tables,
   for (const Table &tbl : tables.tables()) {
     TABLE *table = tbl.table;
 
-    const NullRowFlag null_row_flag = table->is_nullable()
-                                          ? static_cast<NullRowFlag>(*ptr++)
-                                          : NullRowFlag::kNotNull;
-    assert(null_row_flag == NullRowFlag::kNotNull ||
-           null_row_flag == NullRowFlag::kNullWithoutData ||
-           null_row_flag == NullRowFlag::kNullWithData);
-
-    // If the NULL row flag is set, it may override the NULL flags for the
-    // columns. This may in turn cause columns not to be restored when they
-    // should, so clear the NULL row flag when restoring the row.
-    table->reset_null_row();
+    const bool null_row_flag = table->is_nullable() && *ptr++ != 0;
 
     if (tbl.copy_null_flags) {
       memcpy(table->null_flags, ptr, table->s->null_bytes);
@@ -293,16 +267,15 @@ const uchar *LoadIntoTableBuffers(const TableCollection &tables,
     }
 
     // Load all non-null column values.
-    if (null_row_flag != NullRowFlag::kNullWithoutData) {
+    if (null_row_flag) {
+      table->set_null_row();
+    } else {
+      table->reset_null_row();
       for (const Column &column : tbl.columns) {
         if (!column.field->is_null()) {
           ptr = column.field->unpack(ptr);
         }
       }
-    }
-
-    if (null_row_flag != NullRowFlag::kNotNull) {
-      table->set_null_row();
     }
 
     if (tables.store_rowids() && ShouldCopyRowId(table)) {

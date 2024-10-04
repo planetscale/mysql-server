@@ -112,8 +112,7 @@ static TableCollection CreateTenTableJoin(
 
   return {tables,
           /*store_rowids=*/false,
-          /*tables_to_get_rowid_for=*/0,
-          /*tables_to_store_contents_of_null_rows_for=*/0};
+          /*tables_to_get_rowid_for=*/0};
 }
 
 static void DestroyFakeTables(const TableCollection &table_collection) {
