@@ -2659,7 +2659,7 @@ class Dbtc : public SimulatedBlock {
 
   bool validate_filter(Signal *);
   bool match_and_print(Signal *, ApiConnectRecordPtr);
-  bool ndbinfo_write_trans(Ndbinfo::Row &, ApiConnectRecordPtr);
+  bool ndbinfo_write_trans(Ndbinfo::Row &, ApiConnectRecordPtr, bool);
 
 #ifdef ERROR_INSERT
   bool testFragmentDrop(Signal *signal);
