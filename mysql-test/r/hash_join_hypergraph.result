@@ -4661,6 +4661,45 @@ id	j	i
 9	9223372036854775807	9223372036854775807
 DROP TABLE t1, t2, t3;
 #
+# Bug#37057380: Wrong results with sorting or hash join reading from
+#               single-record index lookups
+#
+CREATE TABLE t1(a INT);
+INSERT INTO t1 VALUES (1), (2), (3), (4);
+CREATE TABLE t2(a INT);
+INSERT INTO t2 VALUES (1), (2), (3), (4);
+CREATE TABLE t3 (a INT, b INT);
+INSERT INTO t3 VALUES (1, 1), (2, 2), (3, 3), (4, 1);
+CREATE TABLE t4 (id INT PRIMARY KEY, a INT);
+INSERT INTO t4 VALUES (1, 1), (2, 2), (3, 3), (4, 4);
+ANALYZE TABLE t1, t2, t3, t4;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	OK
+test.t2	analyze	status	OK
+test.t3	analyze	status	OK
+test.t4	analyze	status	OK
+SELECT t1.a AS t1a, dt.* FROM t1,
+LATERAL (
+SELECT dt1.*, t2.a AS t2a FROM
+(SELECT * FROM t3 JOIN t4 ON t3.b = t4.id AND t3.a = t4.a)
+AS dt1(t3a, t3b, id, t4a)
+JOIN t2 ON t2.a = t3a AND t1.a <> 100 LIMIT 100
+) AS dt;
+t1a	t3a	t3b	id	t4a	t2a
+1	1	1	1	1	1
+1	2	2	2	2	2
+1	3	3	3	3	3
+2	1	1	1	1	1
+2	2	2	2	2	2
+2	3	3	3	3	3
+3	1	1	1	1	1
+3	2	2	2	2	2
+3	3	3	3	3	3
+4	1	1	1	1	1
+4	2	2	2	2	2
+4	3	3	3	3	3
+DROP TABLE t1, t2, t3, t4;
+#
 # Bug#34940000 Hash join execution may be ineficcient if probe input is empty
 #
 CREATE TABLE t1(

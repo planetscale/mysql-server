@@ -1016,7 +1016,8 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
             param.store_rowids, param.tables_to_get_rowid_for,
             thd->variables.join_buff_size, std::move(conditions),
             param.allow_spill_to_disk, join_type, *extra_conditions,
-            first_input, probe_input_batch_mode, hash_table_generation);
+            CollectSingleRowIndexLookups(thd, path), first_input,
+            probe_input_batch_mode, hash_table_generation);
         break;
       }
       case AccessPath::FILTER: {

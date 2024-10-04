@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <cassert>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "my_alloc.h"
@@ -46,6 +47,7 @@
 
 class Item;
 class THD;
+struct AccessPath;
 
 struct ChunkPair {
   HashJoinChunk probe_chunk;
@@ -306,6 +308,8 @@ class HashJoinIterator final : public RowIterator {
   ///   A list of extra conditions that the iterator will evaluate after a
   ///   lookup in the hash table is done, but before the row is returned. The
   ///   conditions are AND-ed together into a single Item.
+  /// @param single_row_index_lookups
+  ///   All the single-row index lookups in the build input and probe input.
   /// @param first_input
   ///   The first input (build or probe) to read from. (If this is empty, we
   ///   will not have to read from the other.)
@@ -329,6 +333,7 @@ class HashJoinIterator final : public RowIterator {
                    const std::vector<HashJoinCondition> &join_conditions,
                    bool allow_spill_to_disk, JoinType join_type,
                    const Mem_root_array<Item *> &extra_conditions,
+                   std::span<AccessPath *> single_row_index_lookups,
                    HashJoinInput first_input, bool probe_input_batch_mode,
                    uint64_t *hash_table_generation);
 
@@ -642,6 +647,9 @@ class HashJoinIterator final : public RowIterator {
   // the probe row saving read file contains is contained in the HashJoinChunk
   // (see m_probe_row_saving_read_file).
   ha_rows m_probe_row_saving_read_file_current_row{0};
+
+  // All the single-row index lookups that provide rows to this iterator.
+  std::span<AccessPath *> m_single_row_index_lookups;
 
   // The "type" of hash join we are executing. We currently have three different
   // types of hash join:

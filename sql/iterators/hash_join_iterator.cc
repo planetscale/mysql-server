@@ -45,9 +45,11 @@
 #include "sql/item_cmpfunc.h"
 #include "sql/iterators/hash_join_buffer.h"
 #include "sql/iterators/row_iterator.h"
+#include "sql/join_optimizer/access_path.h"
 #include "sql/pfs_batch_mode.h"
 #include "sql/sql_class.h"
 #include "sql/sql_list.h"
+#include "sql/sql_opt_exec_shared.h"
 #include "sql/system_variables.h"
 #include "sql/table.h"
 
@@ -66,7 +68,8 @@ HashJoinIterator::HashJoinIterator(
     table_map tables_to_get_rowid_for, size_t max_memory_available,
     const std::vector<HashJoinCondition> &join_conditions,
     bool allow_spill_to_disk, JoinType join_type,
-    const Mem_root_array<Item *> &extra_conditions, HashJoinInput first_input,
+    const Mem_root_array<Item *> &extra_conditions,
+    std::span<AccessPath *> single_row_index_lookups, HashJoinInput first_input,
     bool probe_input_batch_mode, uint64_t *hash_table_generation)
     : RowIterator(thd),
       m_state(State::READING_ROW_FROM_PROBE_ITERATOR),
@@ -95,7 +98,8 @@ HashJoinIterator::HashJoinIterator(
               : first_input),
       m_probe_input_batch_mode(probe_input_batch_mode),
       m_allow_spill_to_disk(allow_spill_to_disk),
-      m_join_type(join_type) {
+      m_join_type(join_type),
+      m_single_row_index_lookups(single_row_index_lookups) {
   assert(m_build_input != nullptr);
   assert(m_probe_input != nullptr);
 
@@ -213,6 +217,14 @@ bool HashJoinIterator::Init() {
   // dependent subquery), we must clear the NULL row flag, as it may have been
   // set by the previous execution of this hash join.
   m_build_input->SetNullRowFlag(/*is_null_row=*/false);
+
+  // Invalidate the cache in all single-row index lookups below us. The previous
+  // execution of the hash join may have overwritten the cached value in
+  // EQRefIterator with a value from a different row, and the next read from the
+  // EQRefIterator must read the correct value from the index.
+  for (AccessPath *lookup : m_single_row_index_lookups) {
+    lookup->eq_ref().ref->key_err = true;
+  }
 
   // If we are entirely in-memory and the JOIN we are part of hasn't been
   // asked to clear its hash tables since last time, we can reuse the table

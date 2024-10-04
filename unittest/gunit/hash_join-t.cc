@@ -429,7 +429,8 @@ TEST(HashJoinTest, InnerJoinIntOneToOneMatch) {
         /*store_rowids=*/false,
         /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
         {*test_helper.join_condition}, true, JoinType::INNER,
-        test_helper.extra_conditions, first_input,
+        test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+        first_input,
         /*probe_input_batch_mode=*/false, nullptr);
 
     ASSERT_FALSE(hash_join_iterator.Init());
@@ -452,7 +453,8 @@ TEST(HashJoinTest, InnerJoinIntNoMatch) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -472,7 +474,8 @@ TEST(HashJoinTest, InnerJoinIntOneToManyMatch) {
       test_helper.right_tables(), /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -496,7 +499,8 @@ TEST(HashJoinTest, InnerJoinStringOneToOneMatch) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -521,7 +525,8 @@ TEST(HashJoinTest, HashTableCaching) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, &hash_table_generation);
 
   Field *const probe_field = test_helper.left_qep_tab->table()->field[0];
@@ -581,7 +586,8 @@ static void BM_HashTableIteratorBuild(size_t num_iterations) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   StartBenchmarkTiming();
@@ -627,7 +633,8 @@ static void BM_HashTableIteratorProbe(size_t num_iterations) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   for (size_t i = 0; i < num_iterations; ++i) {
@@ -678,7 +685,8 @@ static void BM_HashTableIteratorProbeSemiJoin(size_t num_iterations) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::SEMI,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions,
+      /*single_row_index_lookups=*/{}, HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   for (size_t i = 0; i < num_iterations; ++i) {
@@ -710,7 +718,8 @@ TEST(HashJoinTest, SemiJoinInt) {
         /*store_rowids=*/false,
         /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
         {*test_helper.join_condition}, true, JoinType::SEMI,
-        test_helper.extra_conditions, first_input,
+        test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+        first_input,
         /*probe_input_batch_mode=*/false, nullptr);
 
     ASSERT_FALSE(hash_join_iterator.Init());
@@ -736,7 +745,8 @@ TEST(HashJoinTest, AntiJoinInt) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 10 * 1024 * 1024 /* 10 MB */,
       {*test_helper.join_condition}, true, JoinType::ANTI,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -760,7 +770,8 @@ TEST(HashJoinTest, LeftHashJoinInt) {
       std::move(test_helper.left_iterator), test_helper.left_tables(),
       /*store_rowids=*/false, /*tables_to_get_rowid_for=*/0,
       10 * 1024 * 1024 /* 10 MB */, {*test_helper.join_condition}, true,
-      JoinType::OUTER, test_helper.extra_conditions, HashJoinInput::kBuild,
+      JoinType::OUTER, test_helper.extra_conditions,
+      /*single_row_index_lookups=*/{}, HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -793,7 +804,8 @@ TEST(HashJoinTest, HashJoinResetNullFlagBeforeBuild) {
       std::move(test_helper.left_iterator), test_helper.left_tables(),
       /*store_rowids=*/false, /*tables_to_get_rowid_for=*/0,
       10 * 1024 * 1024 /* 10 MB */, {*test_helper.join_condition}, true,
-      JoinType::OUTER, test_helper.extra_conditions, HashJoinInput::kBuild,
+      JoinType::OUTER, test_helper.extra_conditions,
+      /*single_row_index_lookups=*/{}, HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -830,7 +842,8 @@ TEST(HashJoinTest, HashJoinChunkFiles) {
       /*store_rowids=*/false,
       /*tables_to_get_rowid_for=*/0, 1024 /* 1 KB */,
       {*test_helper.join_condition}, true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -870,7 +883,8 @@ TEST(HashJoinTest, InnerJoinIntNullable) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -898,7 +912,8 @@ TEST(HashJoinTest, InnerJoinStringNullable) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -926,7 +941,8 @@ TEST(HashJoinTest, InnerJoinIntNullSafeEqual) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -954,7 +970,8 @@ TEST(HashJoinTest, LeftJoinIntNullSafeEqual) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::OUTER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -1000,7 +1017,8 @@ TEST(HashJoinTest, InnerJoinStringNullSafeEqual) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::INNER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());
@@ -1030,7 +1048,8 @@ TEST(HashJoinTest, LeftJoinStringNullSafeEqual) {
       /*max_memory_available=*/size_t{10} * 1024 * 1024,
       {*test_helper.join_condition},
       /*allow_spill_to_disk=*/true, JoinType::OUTER,
-      test_helper.extra_conditions, HashJoinInput::kBuild,
+      test_helper.extra_conditions, /*single_row_index_lookups=*/{},
+      HashJoinInput::kBuild,
       /*probe_input_batch_mode=*/false, /*hash_table_generation=*/nullptr);
 
   ASSERT_FALSE(hash_join_iterator.Init());

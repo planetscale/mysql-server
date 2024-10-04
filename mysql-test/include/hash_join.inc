@@ -2919,3 +2919,33 @@ SELECT * FROM t1, t3 WHERE t1.j = t3.i;
 SELECT * FROM t1, t3 WHERE t1.j <=> t3.i;
 
 DROP TABLE t1, t2, t3;
+
+--echo #
+--echo # Bug#37057380: Wrong results with sorting or hash join reading from
+--echo #               single-record index lookups
+--echo #
+
+CREATE TABLE t1(a INT);
+INSERT INTO t1 VALUES (1), (2), (3), (4);
+
+CREATE TABLE t2(a INT);
+INSERT INTO t2 VALUES (1), (2), (3), (4);
+
+CREATE TABLE t3 (a INT, b INT);
+INSERT INTO t3 VALUES (1, 1), (2, 2), (3, 3), (4, 1);
+
+CREATE TABLE t4 (id INT PRIMARY KEY, a INT);
+INSERT INTO t4 VALUES (1, 1), (2, 2), (3, 3), (4, 4);
+
+ANALYZE TABLE t1, t2, t3, t4;
+
+--sorted_result
+SELECT t1.a AS t1a, dt.* FROM t1,
+LATERAL (
+  SELECT dt1.*, t2.a AS t2a FROM
+    (SELECT * FROM t3 JOIN t4 ON t3.b = t4.id AND t3.a = t4.a)
+       AS dt1(t3a, t3b, id, t4a)
+    JOIN t2 ON t2.a = t3a AND t1.a <> 100 LIMIT 100
+) AS dt;
+
+DROP TABLE t1, t2, t3, t4;
