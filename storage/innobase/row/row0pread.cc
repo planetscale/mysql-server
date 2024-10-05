@@ -220,6 +220,21 @@ class PCursor {
   /** Resume from savepoint. */
   void resume() noexcept;
 
+  /** Store the position of the user record that is added to the key buffer and,
+  commit the mini-transaction. The cursor must not be positioned at infimum
+  or supremum.
+  @note This method must be paired with
+  restore_to_last_processed_user_record() to restore the record position */
+  void save_current_user_record_as_last_processed() noexcept;
+
+  /** Restore the cursor to the saved record. If the saved record was physically
+  removed then restore to the largest record which is smaller than the saved
+  record. If all records were removed then restore the cursor to the infimum;
+  this must be fine if the next step of the caller is to advance the cursor.
+  @note This method must be paired with
+  save_current_user_record_as_last_processed() to restore the record position */
+  void restore_to_last_processed_user_record() noexcept;
+
   /** Move to the next block.
   @param[in]  index             Index being traversed.
   @return DB_SUCCESS or error code. */
@@ -355,6 +370,39 @@ void PCursor::resume() noexcept {
   }
 }
 
+void PCursor::save_current_user_record_as_last_processed() noexcept {
+  ut_a(m_pcur->is_on_user_rec());
+  m_pcur->store_position(m_mtr);
+  m_mtr->commit();
+}
+
+void PCursor::restore_to_last_processed_user_record() noexcept {
+  ut_a(m_pcur->m_rel_pos == BTR_PCUR_ON);
+  m_mtr->start();
+  m_mtr->set_log_mode(MTR_LOG_NO_REDO);
+
+  [[maybe_unused]] const auto same_row =
+      m_pcur->restore_position(BTR_SEARCH_LEAF, m_mtr, UT_LOCATION_HERE);
+
+  /* Since m_rel_pos was BTR_PCUR_ON, the state can't be
+  BTR_PCUR_IS_POSITIONED_OPTIMISTIC */
+  ut_a(BTR_PCUR_IS_POSITIONED_OPTIMISTIC != m_pcur->m_pos_state);
+
+  /* If the cursor was pointing to the user record then 'PAGE_CUR_LE' mode
+  used by the btr_pcur_t::restore_position() restores the cursor to a record
+  lower than the original one if it was removed, and in particular, if all
+  smaller ones were removed, cur could be on infimum now. This would be fine,
+  as our next step will be to advance the cursor, anyway.
+  However, right now the only usage of this method is in the bulk inserter
+  for a B-Tree. which only calls it when the current row was visible to the
+  scan, and thus can't be purged. So, we know it can't happen, unless someone
+  reuses this function in a new context, in which case they should probably
+  repeat the proof of correctness. The purpose of following debug assert is
+  to show the limited the scope of this method, and thus how risky it
+  is to use it in new context: */
+  ut_ad(same_row);
+}
+
 dberr_t PCursor::move_to_user_rec() noexcept {
   auto cur = m_pcur->get_page_cur();
   const auto next_page_no = btr_page_get_next(page_cur_get_page(cur), m_mtr);
@@ -419,6 +467,16 @@ dberr_t Parallel_reader::Thread_ctx::restore_from_savepoint() noexcept {
 
 void Parallel_reader::Thread_ctx::savepoint() noexcept {
   m_pcursor->savepoint();
+}
+
+void Parallel_reader::Thread_ctx::
+    save_current_user_record_as_last_processed() noexcept {
+  m_pcursor->save_current_user_record_as_last_processed();
+}
+
+void Parallel_reader::Thread_ctx::
+    restore_to_last_processed_user_record() noexcept {
+  m_pcursor->restore_to_last_processed_user_record();
 }
 
 dberr_t PCursor::move_to_next_block(dict_index_t *index) {
