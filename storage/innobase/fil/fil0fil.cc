@@ -967,6 +967,9 @@ class Fil_shard {
 
   /** Flushes to disk possible writes cached by the OS. If the space does
   not exist or is being dropped, does not do anything.
+  The caller must own the shard mutex. The mutex might be released and
+  re-acquired before returning.
+
   @param[in]    space_id        file space ID (id of tablespace of the database)
 */
   void space_flush(space_id_t space_id);
@@ -4850,8 +4853,6 @@ static void fil_name_write_rename(space_id_t space_id, const char *old_name,
 @param[in,out]  mtr             Mini-transaction */
 static void fil_op_write_space_extend(space_id_t space_id, os_offset_t offset,
                                       os_offset_t size, mtr_t *mtr) {
-  ut_ad(space_id != TRX_SYS_SPACE);
-
   byte *log_ptr;
 
   if (!mlog_open(mtr, 7 + 8 + 8, log_ptr)) {
@@ -4878,11 +4879,14 @@ static void fil_op_write_space_extend(space_id_t space_id, os_offset_t offset,
   mach_write_to_8(log_ptr, size);
   log_ptr += 8;
 
-#ifdef UNIV_DEBUG
   ut_ad(log_ptr <= start_log + 23);
-#endif /*  UNIV_DEBUG */
 
   mlog_close(mtr, log_ptr);
+
+  DBUG_EXECUTE_IF(
+      "ib_redo_log_system_tablespace_expansion", if (space_id == 0) {
+        ib::info() << "System tablespace expansion is redo logged.";
+      });
 }
 #endif
 #endif /* !UNIV_HOTBACKUP */
@@ -6620,14 +6624,10 @@ bool Fil_shard::space_extend(fil_space_t *space, page_no_t size) {
     ut_ad(len > 0);
 
 #if !defined(UNIV_HOTBACKUP) && defined(UNIV_LINUX)
-    /* Do not write redo log record for temporary tablespace
-    and the system tablespace as they don't need to be recreated.
-    Temporary tablespaces are reinitialized during startup and
-    hence need not be recovered during recovery. The system
-    tablespace is neither recreated nor resized and hence we do
-    not need to redo log any operations on it. */
-    if (!recv_recovery_is_on() && space->purpose != FIL_TYPE_TEMPORARY &&
-        space->id != TRX_SYS_SPACE) {
+    /* Do not write redo log, during replay and, for temporary tablespaces
+    because they are reinitialized during startup hence they need not be
+    recovered during replay. */
+    if (!recv_recovery_is_on() && space->purpose != FIL_TYPE_TEMPORARY) {
       /* Write the redo log record for extending the space */
       mtr_t mtr;
       mtr_start(&mtr);
@@ -10398,10 +10398,6 @@ byte *fil_tablespace_redo_extend(byte *ptr, const byte *end,
                                  const page_id_t &page_id, ulint parsed_bytes,
                                  bool parse_only) {
   ut_a(page_id.page_no() == 0);
-
-  /* We never recreate the system tablespace. */
-  ut_a(page_id.space() != TRX_SYS_SPACE);
-
   ut_a(parsed_bytes != ULINT_UNDEFINED);
 
   /* Check for valid offset and size values */
@@ -10431,34 +10427,42 @@ byte *fil_tablespace_redo_extend(byte *ptr, const byte *end,
   }
 
 #ifndef UNIV_HOTBACKUP
-  const auto result =
-      fil_system->get_scanned_filename_by_space_id(page_id.space());
+  dberr_t err = DB_SUCCESS;
+  if (page_id.space() == TRX_SYS_SPACE) {
+    /* System tablespace must have been loaded in the fil system at the time
+    of server start up. Tablespace scanning of the fil system doesn't expect to
+    be probed for the system tablespace. */
+    ut_a(fil_space_t::s_sys_space);
+  } else {
+    const auto result =
+        fil_system->get_scanned_filename_by_space_id(page_id.space());
 
-  if (result.second == nullptr) {
-    /* No files found for this tablespace ID. It's possible that the
-    files were deleted later. */
-    return ptr;
-  }
-
-  dberr_t err = fil_tablespace_open_for_recovery(page_id.space());
-
-  if (err != DB_SUCCESS) {
-    /* fil_tablespace_open_for_recovery may fail if the tablespace being
-    opened is an undo tablespace which is also marked for truncation.
-    In such a case, skip processing this redo log further and goto the
-    next record without doing anything more here. */
-    if (fsp_is_undo_tablespace(page_id.space()) &&
-        undo::is_active_truncate_log_present(undo::id2num(page_id.space()))) {
+    if (result.second == nullptr) {
+      /* No files found for this tablespace ID. It's possible that the
+      files were deleted later. */
       return ptr;
     }
-    return nullptr;
-  }
 
-  /* Open the space */
-  bool success = fil_space_open(page_id.space());
+    err = fil_tablespace_open_for_recovery(page_id.space());
 
-  if (!success) {
-    return nullptr;
+    if (err != DB_SUCCESS) {
+      /* fil_tablespace_open_for_recovery may fail if the tablespace being
+      opened is an undo tablespace which is also marked for truncation.
+      In such a case, skip processing this redo log further and goto the
+      next record without doing anything more here. */
+      if (fsp_is_undo_tablespace(page_id.space()) &&
+          undo::is_active_truncate_log_present(undo::id2num(page_id.space()))) {
+        return ptr;
+      }
+      return nullptr;
+    }
+
+    /* Open the space */
+    bool success = fil_space_open(page_id.space());
+
+    if (!success) {
+      return nullptr;
+    }
   }
 
   fil_space_t *space = fil_space_get(page_id.space());
@@ -10542,10 +10546,14 @@ byte *fil_tablespace_redo_extend(byte *ptr, const byte *end,
   /* Get the final size of the file and adjust file->size accordingly. */
   os_offset_t end_fsize = os_file_get_size(file->handle);
 
+  auto shard = fil_system->shard_by_id(page_id.space());
+  shard->mutex_acquire();
+
   file->size = end_fsize / phy_page_size;
   space->size = file->size;
 
-  fil_flush(space->id);
+  shard->space_flush(page_id.space());
+  shard->mutex_release();
 
   fil_space_close(space->id);
 #endif /* !UNIV_HOTBACKUP */
