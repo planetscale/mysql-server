@@ -38,13 +38,9 @@
  *
  */
 
-#include <array>
 #include <atomic>
 #include <chrono>
-#include <map>
 #include <memory>
-#include <mutex>
-#include <stdexcept>
 
 #ifndef _WIN32
 #include <arpa/inet.h>
@@ -79,7 +75,6 @@
 #include "mysqlrouter/uri.h"
 #include "plugin_config.h"
 #include "socket_container.h"
-#include "tcp_address.h"
 
 namespace mysql_harness {
 class PluginFuncEnv;
@@ -192,17 +187,15 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
    */
   void run(mysql_harness::PluginFuncEnv *env);
 
-  /** @brief Sets the destinations from URI
+  void set_destinations(const std::string &dests);
+
+  /**
+   * Sets the destinations.
    *
-   * Sets destinations using the given string. The string should be a comma
-   * separated list of MySQL servers.
-   *
-   * Example of destinations:
-   *   "10.0.10.5,10.0.11.6:3307"
-   *
-   * @param csv destinations as comma-separated-values
+   * @param dests destinations
    */
-  void set_destinations_from_csv(const std::string &csv);
+  void set_destinations_from_dests(
+      const std::vector<mysql_harness::Destination> &dests);
 
   void set_destinations_from_uri(const mysqlrouter::URI &uri);
 
@@ -256,7 +249,7 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
 
   routing::RoutingStrategy get_routing_strategy() const override;
 
-  std::vector<mysql_harness::TCPAddress> get_destinations() const override;
+  std::vector<mysql_harness::Destination> get_destinations() const override;
 
   std::vector<MySQLRoutingAPI::ConnData> get_connections() override;
 

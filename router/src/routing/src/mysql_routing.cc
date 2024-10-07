@@ -26,15 +26,14 @@
 #include "mysql_routing.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <memory>  // shared_ptr
 #include <mutex>
 #include <sstream>  // ostringstream
 #include <stdexcept>
 #include <system_error>  // error_code
-#include <thread>
 #include <type_traits>
+#include <variant>
 
 #include <sys/types.h>
 
@@ -49,8 +48,10 @@
 #include "dest_next_available.h"
 #include "dest_round_robin.h"
 #include "destination_ssl_context.h"
+#include "destinations_option_parser.h"
 #include "hostname_validator.h"
-#include "my_thread.h"                 // my_thread_self_setname
+#include "my_thread.h"  // my_thread_self_setname
+#include "mysql/harness/destination.h"
 #include "mysql/harness/filesystem.h"  // make_file_private
 #include "mysql/harness/loader.h"
 #include "mysql/harness/logging/logging.h"
@@ -68,6 +69,7 @@
 #include "mysql/harness/string_utils.h"  // trim
 #include "mysql/harness/tls_server_context.h"
 #include "mysql/harness/utility/string.h"  // string_format
+#include "mysql_routing_common.h"          // get_routing_thread_name
 #include "mysqlrouter/base_protocol.h"
 #include "mysqlrouter/connection_pool_component.h"
 #include "mysqlrouter/datatypes.h"
@@ -81,7 +83,6 @@
 #include "plugin_config.h"
 #include "protocol/protocol.h"
 #include "scope_guard.h"
-#include "tcp_address.h"
 #include "x_connection.h"
 
 using mysql_harness::utility::string_format;
@@ -675,11 +676,11 @@ MySQLRouting::MySQLRouting(const RoutingConfig &routing_config,
   // This test is only a basic assertion.  Calling code is expected to check the
   // validity of these arguments more thoroughly. At the time of writing,
   // routing_plugin.cc : init() is one such place.
-  if (!context_.get_bind_address().port() &&
+  if (context_.get_bind_address().port() == 0 &&
       !routing_config.named_socket.is_set()) {
     throw std::invalid_argument(
         string_format("No valid address:port (%s:%d) or socket (%s) to bind to",
-                      routing_config.bind_address.address().c_str(),
+                      routing_config.bind_address.hostname().c_str(),
                       routing_config.bind_address.port(),
                       routing_config.named_socket.c_str()));
   }
@@ -688,9 +689,10 @@ MySQLRouting::MySQLRouting(const RoutingConfig &routing_config,
 void MySQLRouting::run(mysql_harness::PluginFuncEnv *env) {
   my_thread_self_setname(get_routing_thread_name(context_.get_name(), "RtM")
                              .c_str());  // "Rt main" would be too long
+
   if (context_.get_bind_address().port() > 0) {
     accepting_endpoints_.push_back(std::make_unique<AcceptingEndpointTcpSocket>(
-        io_ctx_, context_.get_name(), context_.get_bind_address().address(),
+        io_ctx_, context_.get_name(), context_.get_bind_address().hostname(),
         context_.get_bind_address().port()));
   }
 
@@ -754,8 +756,8 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
   destination_->register_stop_router_socket_acceptor(
       [this]() { stop_socket_acceptors(); });
   destination_->register_query_quarantined_destinations(
-      [this](const mysql_harness::TCPAddress &addr) -> bool {
-        return get_context().shared_quarantine().is_quarantined(addr);
+      [this](const mysql_harness::Destination &dest) -> bool {
+        return get_context().shared_quarantine().is_quarantined(dest);
       });
   destination_->register_md_refresh_callback(
       [this](const bool nodes_changed_on_md_refresh,
@@ -1041,6 +1043,21 @@ void MySQLRouting::set_unix_socket_permissions(const char *socket_file) {
 #endif
 }
 
+void MySQLRouting::set_destinations(const std::string &dests) {
+  auto parse_res = DestinationsOptionParser::parse(dests);
+  if (!parse_res) {
+    throw std::invalid_argument("'" + dests +
+                                "' is invalid: " + parse_res.error());
+  }
+
+  if (std::holds_alternative<mysqlrouter::URI>(*parse_res)) {
+    set_destinations_from_uri(std::get<mysqlrouter::URI>(*parse_res));
+  } else {
+    set_destinations_from_dests(
+        std::get<std::vector<mysql_harness::Destination>>(*parse_res));
+  }
+}
+
 void MySQLRouting::set_destinations_from_uri(const mysqlrouter::URI &uri) {
   if (uri.scheme == "metadata-cache") {
     // Syntax:
@@ -1082,54 +1099,37 @@ std::unique_ptr<RouteDestination> create_standalone_destination(
 }
 }  // namespace
 
-void MySQLRouting::set_destinations_from_csv(const std::string &csv) {
-  std::stringstream ss(csv);
-  std::string part;
-
+void MySQLRouting::set_destinations_from_dests(
+    const std::vector<mysql_harness::Destination> &dests) {
   is_destination_standalone_ = true;
   destination_ = create_standalone_destination(io_ctx_, routing_strategy_,
                                                context_.get_protocol());
 
-  // Fall back to comma separated list of MySQL servers
-  //
-  // dests = dest *["," dest]
-  // dest = host [":" port]
-  // host = hostname-or-address
-  // port = NUM+
-  //
-  //
-  //
-  while (std::getline(ss, part, ',')) {
-    mysql_harness::trim(part);
-
-    auto make_res = mysql_harness::make_tcp_address(part);
-    if (!make_res) {
-      throw std::runtime_error(
-          string_format("Destination address '%s' is invalid", part.c_str()));
-    }
-
-    auto addr = make_res.value();
-
-    if (mysql_harness::is_valid_domainname(addr.address())) {
-      if (addr.port() == 0) {
-        addr.port(Protocol::get_default_port(context_.get_protocol()));
-      }
-
-      destination_->add(addr);
+  for (const auto &dest : dests) {
+    if (dest.is_local()) {
+      destination_->add(dest);
     } else {
-      throw std::runtime_error(
-          string_format("Destination address '%s' is invalid", part.c_str()));
+      auto addr = dest.as_tcp();
+
+      if (mysql_harness::is_valid_domainname(addr.hostname())) {
+        if (addr.port() == 0) {
+          addr.port(Protocol::get_default_port(context_.get_protocol()));
+        }
+
+        destination_->add(
+            mysql_harness::TcpDestination(addr.hostname(), addr.port()));
+      }
     }
   }
 
   // Check whether bind address is part of list of destinations
-  for (auto &it : *(destination_)) {
+  for (const auto &it : *(destination_)) {
     if (it == context_.get_bind_address()) {
       throw std::runtime_error("Bind Address can not be part of destinations");
     }
   }
 
-  if (destination_->size() == 0) {
+  if (destination_->empty()) {
     throw std::runtime_error("No destinations available");
   }
 }
@@ -1160,7 +1160,7 @@ routing::RoutingStrategy MySQLRouting::get_routing_strategy() const {
   return routing_strategy_;
 }
 
-std::vector<mysql_harness::TCPAddress> MySQLRouting::get_destinations() const {
+std::vector<mysql_harness::Destination> MySQLRouting::get_destinations() const {
   return destination_->get_destinations();
 }
 

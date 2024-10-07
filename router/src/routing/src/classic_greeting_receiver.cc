@@ -44,6 +44,7 @@
 #include "classic_frame.h"
 #include "classic_greeting_forwarder.h"
 #include "classic_lazy_connect.h"
+#include "connection.h"
 #include "harness_assert.h"
 #include "hexify.h"
 #include "mysql/harness/logging/logger.h"
@@ -937,15 +938,22 @@ stdx::expected<Processor::Result, std::error_code> ClientGreetor::accepted() {
 
     // if a connection is taken from the pool, make sure it matches the TLS
     // requirements.
-    connection()->requires_tls(dest_ssl_mode == SslMode::kRequired ||
-                               dest_ssl_mode == SslMode::kPreferred ||
-                               (dest_ssl_mode == SslMode::kAsClient &&
-                                (source_ssl_mode == SslMode::kPreferred ||
-                                 source_ssl_mode == SslMode::kRequired)));
+    using TC = TransportConstraints::Constraint;
+    const bool has_dest_ssl_cert =
+        !connection()->context().dest_ssl_cert().empty();
 
-    if (connection()->requires_tls() &&
-        !connection()->context().dest_ssl_cert().empty()) {
-      connection()->requires_client_cert(true);
+    if (dest_ssl_mode == SslMode::kRequired ||
+        (dest_ssl_mode == SslMode::kAsClient &&
+         source_ssl_mode == SslMode::kRequired)) {
+      connection()->expected_server_transport_constraints(
+          has_dest_ssl_cert ? TC::kHasClientCert : TC::kEncrypted);
+    } else if (dest_ssl_mode == SslMode::kPreferred ||
+               (dest_ssl_mode == SslMode::kAsClient &&
+                source_ssl_mode == SslMode::kRequired)) {
+      connection()->expected_server_transport_constraints(
+          has_dest_ssl_cert ? TC::kHasClientCert : TC::kSecure);
+    } else {
+      connection()->expected_server_transport_constraints(TC::kPlaintext);
     }
 
     if (connection()->context().access_mode() == routing::AccessMode::kAuto &&

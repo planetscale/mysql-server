@@ -260,7 +260,6 @@ SET(harness_source
   signal_handler.cc
   sd_notify.cc
   socket_operations.cc
-  tcp_address.cc
   tls_cipher.cc
   tty.cc
   vt100.cc

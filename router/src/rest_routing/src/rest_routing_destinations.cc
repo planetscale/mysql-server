@@ -70,12 +70,20 @@ bool RestRoutingDestinations::on_handle_request(
     for (const auto &dst : inst.get_destinations()) {
       rapidjson::Value el;
 
-      el.SetObject()
-          .AddMember("address",
-                     rapidjson::Value(dst.address().data(),
-                                      dst.address().size(), allocator),
-                     allocator)
-          .AddMember("port", dst.port(), allocator);
+      if (dst.is_tcp()) {
+        const auto &tcp_dest = dst.as_tcp();
+        el.SetObject()
+            .AddMember("address",
+                       rapidjson::Value(tcp_dest.hostname(), allocator),
+                       allocator)
+            .AddMember("port", tcp_dest.port(), allocator);
+
+      } else {
+        const auto &local_dest = dst.as_local();
+        el.SetObject().AddMember("socket",
+                                 rapidjson::Value(local_dest.path(), allocator),
+                                 allocator);
+      }
       destinations.PushBack(el, allocator);
     }
 

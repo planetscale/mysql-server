@@ -23,7 +23,6 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <array>
 #include <thread>
 
 #include <gmock/gmock.h>
@@ -38,10 +37,8 @@
 #include <rapidjson/stringbuffer.h>
 
 #include "config_builder.h"
-#include "dim.h"
 #include "mock_server_rest_client.h"
 #include "mock_server_testutils.h"
-#include "mysql/harness/logging/registry.h"
 #include "mysql/harness/stdx/ranges.h"     // enumerate
 #include "mysql/harness/utility/string.h"  // ::join
 #include "mysqlrouter/mysql_session.h"
@@ -49,20 +46,21 @@
 #include "rest_api_testutils.h"
 #include "router_component_test.h"
 #include "router_component_testutils.h"  // make_bad_connection
-#include "tcp_address.h"
 #include "tcp_port_pool.h"
 #include "test/helpers.h"
 #include "test/temp_directory.h"
 
 using namespace std::string_literals;
-
 using namespace std::chrono_literals;
 
 class RestRoutingApiTest
     : public RestApiComponentTest,
       public ::testing::WithParamInterface<RestApiTestParams> {
  protected:
-  RestRoutingApiTest() : mock_port_{port_pool_.get_next_available()} {}
+  RestRoutingApiTest()
+      : mock_port_(port_pool_.get_next_available()),
+        mock_socket_(
+            mysql_harness::Path(socket_dir_.name()).join("mock.sock").str()) {}
 
   bool wait_route_ready(std::chrono::milliseconds max_wait_time,
                         const std::string &route_name, const uint16_t http_port,
@@ -92,11 +90,19 @@ class RestRoutingApiTest
     return false;
   }
 
+  TempDirectory socket_dir_;
+
   const uint16_t mock_port_;
+  const std::string mock_socket_;
   std::vector<uint16_t> routing_ports_;
 
  public:
-  static const size_t kRoutesQty = 5;
+  static const size_t kRoutesQty = 5
+#ifndef _WIN32
+                                   // for the "sockets" route. (not on windows)
+                                   + 1
+#endif
+      ;
 };
 
 /*static*/ const size_t RestRoutingApiTest::kRoutesQty;
@@ -132,15 +138,28 @@ TEST_P(RestRoutingApiTest, ensure_openapi) {
 
   const std::string userfile = create_password_file();
 
-  const std::vector<std::string> route_names{"", "_", "123", "Aaz", "ro"};
+  const std::vector<std::string> route_names{
+      "",        "_", "123", "Aaz", "ro",
+#ifndef _WIN32
+      "sockets",
+#endif
+  };
+
+  ASSERT_EQ(route_names.size(), kRoutesQty);
 
   auto config_sections = get_restapi_config("rest_routing", userfile,
                                             GetParam().request_authentication);
   for (const auto [i, route_name] : stdx::views::enumerate(route_names)) {
     // let's make "_" route a metadata cache one, all other are static
-    const std::string destinations =
-        (route_name == "_") ? "metadata-cache://test/default?role=PRIMARY"
-                            : "127.0.0.1:" + std::to_string(mock_port_);
+    std::string destinations;
+    if (route_name == "_") {
+      destinations = "metadata-cache://test/default?role=PRIMARY";
+    } else if (route_name == "sockets") {
+      destinations = "local:" + mock_socket_;
+    } else {
+      destinations = "127.0.0.1:" + std::to_string(mock_port_);
+    }
+
     config_sections.push_back(mysql_harness::ConfigBuilder::build_section(
         std::string("routing") + (route_name.empty() ? "" : ":") + route_name,
         {
@@ -174,7 +193,8 @@ TEST_P(RestRoutingApiTest, ensure_openapi) {
   const auto state_file = create_state_file(
       get_test_temp_dir_name(),
       create_state_file_content(
-          {mysql_harness::TCPAddress("198.51.100.1", 3060)}, "uuid", "", 0));
+          {mysql_harness::TcpDestination("198.51.100.1", 3060)}, "uuid", "",
+          0));
   default_section["dynamic_state"] = state_file;
 
   const std::string conf_file{create_config_file(
@@ -193,8 +213,10 @@ TEST_P(RestRoutingApiTest, ensure_openapi) {
   // queries
 
   SCOPED_TRACE("// launch the server mock");
-  mock_server_spawner().spawn(
-      mock_server_cmdline("bootstrap_gr.js").port(mock_port_).args());
+  mock_server_spawner().spawn(mock_server_cmdline("bootstrap_gr.js")
+                                  .port(mock_port_)
+                                  .socket(mock_socket_)
+                                  .args());
 
   // wait for route being available if we expect it to be and plan to do some
   // connections to it (which are routes: "ro" and "Aaz")
@@ -219,6 +241,13 @@ TEST_P(RestRoutingApiTest, ensure_openapi) {
   mysqlrouter::MySQLSession client_Aaz_1;
   EXPECT_NO_THROW(client_Aaz_1.connect("127.0.0.1", routing_ports_[3], "root",
                                        "fake-pass", "", ""));
+
+#ifndef _WIN32
+  // make 1 connection to route "socket"
+  mysqlrouter::MySQLSession client_sockets;
+  EXPECT_NO_THROW(client_sockets.connect("127.0.0.1", routing_ports_[5], "root",
+                                         "fake-pass", "", ""));
+#endif
 
   // call wait_port_ready a few times on "123" to trigger blocked client
   // on that route (we set max_connect_errors to 2)
@@ -368,6 +397,28 @@ get_expected_destinations_fields(int expected_destinations_num) {
   return result;
 }
 
+static const RestApiComponentTest::json_verifiers_t
+get_expected_destinations_socket_fields(int expected_destinations_num) {
+  RestApiComponentTest::json_verifiers_t result{
+      {"/items",
+       [=](const JsonValue *value) {
+         ASSERT_NE(value, nullptr);
+         ASSERT_TRUE(value->IsArray());
+         ASSERT_EQ(value->GetArray().Size(), expected_destinations_num);
+       }},
+  };
+
+  for (int i = 0; i < expected_destinations_num; ++i) {
+    result.emplace_back("/items/0/socket", [](const JsonValue *value) {
+      ASSERT_TRUE(value != nullptr);
+      ASSERT_TRUE(value->IsString());
+      ASSERT_THAT(value->GetString(), Not(testing::IsEmpty()));
+    });
+  }
+
+  return result;
+}
+
 static RestApiComponentTest::json_verifiers_t get_expected_blocked_hosts_fields(
     const int expected_blocked_hosts) {
   RestApiComponentTest::json_verifiers_t result{
@@ -451,7 +502,12 @@ static const RestApiTestParams rest_api_valid_methods[]{
      /*request_authentication =*/true,
      get_expected_status_fields(
          /*expected_max_total_connections=*/512,
-         /*expected_current_total_connections=*/3 + 1),
+         /*expected_current_total_connections=*/
+         3 + 1
+#ifndef _WIN32
+             + 1
+#endif
+         ),
      kRoutingSwaggerPaths},
     {"routing_routes_status_ro",
      std::string(rest_api_basepath) + "/routes/ro/status",
@@ -557,6 +613,14 @@ static const RestApiTestParams rest_api_valid_methods[]{
             ASSERT_TRUE(value->IsString());
             ASSERT_STREQ(value->GetString(), "ro");
           }},
+#ifndef _WIN32
+         {"/items/5/name",
+          [](const JsonValue *value) {
+            ASSERT_TRUE(value != nullptr);
+            ASSERT_TRUE(value->IsString());
+            ASSERT_STREQ(value->GetString(), "sockets");
+          }},
+#endif
      },
      kRoutingSwaggerPaths},
     {"routes_config_ro", std::string(rest_api_basepath) + "/routes/ro/config",
@@ -617,6 +681,14 @@ static const RestApiTestParams rest_api_valid_methods[]{
      kContentTypeJson, kRestApiUsername, kRestApiPassword,
      /*request_authentication =*/true, get_expected_health_fields(true),
      kRoutingSwaggerPaths},
+#ifndef _WIN32
+    {"routes_health_sockets",
+     std::string(rest_api_basepath) + "/routes/sockets/health",
+     "/routes/{routeName}/health", HttpMethod::Get, HttpStatusCode::Ok,
+     kContentTypeJson, kRestApiUsername, kRestApiPassword,
+     /*request_authentication =*/true, get_expected_health_fields(true),
+     kRoutingSwaggerPaths},
+#endif
     {"routes_health_123_params",
      std::string(rest_api_basepath) + "/routes/123/health?someparam",
      "/routes/{routeName}/health",
@@ -663,6 +735,14 @@ static const RestApiTestParams rest_api_valid_methods[]{
      /*request_authentication =*/true,
      {},
      kRoutingSwaggerPaths},
+#ifndef _WIN32
+    {"routes_destinations_sockets",
+     std::string(rest_api_basepath) + "/routes/sockets/destinations",
+     "/routes/{routeName}/destinations", HttpMethod::Get, HttpStatusCode::Ok,
+     kContentTypeJson, kRestApiUsername, kRestApiPassword,
+     /*request_authentication =*/true,
+     get_expected_destinations_socket_fields(1), kRoutingSwaggerPaths},
+#endif
     {"routes_destinations_nonexistent",
      std::string(rest_api_basepath) + "/routes/nonexistent/destinations",
      "/routes/{routeName}/destinations", HttpMethod::Get,

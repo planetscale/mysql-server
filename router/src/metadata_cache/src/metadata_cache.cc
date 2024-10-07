@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "my_thread.h"  // my_thread_self_setname
+#include "mysql/harness/destination.h"
 #include "mysql/harness/event_state_tracker.h"
 #include "mysql/harness/logging/logging.h"
 #include "mysql/harness/plugin.h"
@@ -49,7 +50,7 @@ IMPORT_LOG_FUNCTIONS()
 
 MetadataCache::MetadataCache(
     const unsigned router_id, const std::string &clusterset_id,
-    const std::vector<mysql_harness::TCPAddress> &metadata_servers,
+    const std::vector<mysql_harness::TcpDestination> &metadata_servers,
     std::shared_ptr<MetaData> cluster_metadata,
     const metadata_cache::MetadataCacheTTLConfig &ttl_config,
     const mysqlrouter::SSLOptions &ssl_options,
@@ -67,8 +68,8 @@ MetadataCache::MetadataCache(
       use_cluster_notifications_(use_cluster_notifications),
       close_connection_after_refresh_(close_connection_after_refresh),
       router_attributes_(router_attributes) {
-  for (const auto &s : metadata_servers) {
-    metadata_servers_.emplace_back(s);
+  for (const auto &srv : metadata_servers) {
+    metadata_servers_.emplace_back(srv);
   }
 }
 
@@ -275,16 +276,15 @@ metadata_cache::ManagedInstance::ManagedInstance(
 }
 
 metadata_cache::ManagedInstance::ManagedInstance(
-    mysqlrouter::InstanceType p_type, const TCPAddress &addr)
+    mysqlrouter::InstanceType p_type, const mysql_harness::TcpDestination &dest)
     : ManagedInstance(p_type) {
-  host = addr.address();
-  port = addr.port();
+  host = dest.hostname();
+  port = dest.port();
 }
 
-metadata_cache::ManagedInstance::operator TCPAddress() const {
-  TCPAddress result(host, port);
-
-  return result;
+metadata_cache::ManagedInstance::operator mysql_harness::TcpDestination()
+    const {
+  return mysql_harness::TcpDestination(host, port);
 }
 
 namespace metadata_cache {
@@ -406,7 +406,7 @@ void MetadataCache::on_refresh_succeeded(
       true, EventStateTracker::EventId::MetadataRefreshOk);
   stats_([&metadata_server](auto &stats) {
     stats.last_refresh_succeeded = std::chrono::system_clock::now();
-    stats.last_metadata_server_host = metadata_server.address();
+    stats.last_metadata_server_host = metadata_server.hostname();
     stats.last_metadata_server_port = metadata_server.port();
     stats.refresh_succeeded++;
   });
@@ -422,7 +422,7 @@ void MetadataCache::on_instances_changed(
   {
     std::lock_guard<std::mutex> lock(cluster_instances_change_callbacks_mtx_);
 
-    for (auto each : state_listeners_) {
+    for (auto *each : state_listeners_) {
       each->notify_instances_changed(cluster_topology, md_servers_reachable,
                                      view_id);
     }

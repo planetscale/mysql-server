@@ -30,7 +30,10 @@
 
 #include <cstdint>
 #include <string>
+#include <system_error>
 #include <variant>
+
+#include "mysql/harness/stdx/expected.h"
 
 namespace mysql_harness {
 
@@ -114,6 +117,22 @@ class HARNESS_EXPORT Destination {
  private:
   std::variant<TcpDestination, LocalDestination> dest_;
 };
+
+/**
+ * create a TcpDestination from a string.
+ *
+ * - ipv4
+ * - ipv6
+ * - hostname
+ *
+ * followed by optional port.
+ *
+ * If IPv6 is followed by port, the address port is expected to be wrapped in
+ * '[]'
+ */
+stdx::expected<TcpDestination, std::error_code> HARNESS_EXPORT
+make_tcp_destination(std::string dest);
+
 }  // namespace mysql_harness
 
 #endif

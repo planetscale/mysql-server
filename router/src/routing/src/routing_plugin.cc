@@ -84,7 +84,7 @@ static void validate_socket_info(const std::string &err_prefix,
 
   // validate bind_address : IP
   if (have_bind_addr &&
-      !mysql_harness::is_valid_domainname(config.bind_address.address())) {
+      !mysql_harness::is_valid_domainname(config.bind_address.hostname())) {
     throw std::invalid_argument(err_prefix +
                                 "invalid IP or name in bind_address '" +
                                 config.bind_address.str() + "'");
@@ -152,7 +152,7 @@ static void init(mysql_harness::PluginFuncEnv *env) {
       MySQLRoutingComponent::get_instance().init(*info->config);
       bool have_metadata_cache = false;
       bool need_metadata_cache = false;
-      std::vector<mysql_harness::TCPAddress> bind_addresses;
+      std::vector<mysql_harness::TcpDestination> bind_addresses;
       for (const mysql_harness::ConfigSection *section :
            info->config->sections()) {
         if (section->name == kSectionName) {
@@ -180,12 +180,12 @@ static void init(mysql_harness::PluginFuncEnv *env) {
                   config.bind_address.str() + "'");
             }
             // Check ADDR_ANY binding on same port
-            else if (config_addr.address() == "0.0.0.0" ||
-                     config_addr.address() == "::") {
+            else if (config_addr.hostname() == "0.0.0.0" ||
+                     config_addr.hostname() == "::") {
               found_addr = std::find_if(
                   bind_addresses.begin(), bind_addresses.end(),
-                  [&config](const mysql_harness::TCPAddress &addr) {
-                    return config.bind_address.port() == addr.port();
+                  [&config](const mysql_harness::TcpDestination &dest) {
+                    return config.bind_address.port() == dest.port();
                   });
               if (found_addr != bind_addresses.end()) {
                 throw std::invalid_argument(
@@ -513,13 +513,8 @@ static void start(mysql_harness::PluginFuncEnv *env) {
         config.dest_ssl_mode != SslMode::kDisabled ? dest_tls_context.get()
                                                    : nullptr);
 
-    try {
-      // don't allow rootless URIs as we did already in the
-      // get_option_destinations()
-      r->set_destinations_from_uri(URI(config.destinations, false));
-    } catch (const URIError &) {
-      r->set_destinations_from_csv(config.destinations);
-    }
+    r->set_destinations(config.destinations);
+
     MySQLRoutingComponent::get_instance().register_route(section->key, r);
 
     Scope_guard guard{[section_key = section->key]() {

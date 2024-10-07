@@ -275,9 +275,8 @@ class SharedRouter {
   static std::vector<std::string> destinations_from_shared_servers(
       const std::array<SharedServer *, N> &servers) {
     std::vector<std::string> dests;
-    for (const auto &s : servers) {
-      dests.push_back(s->server_host() + ":" +
-                      std::to_string(s->server_port()));
+    for (const auto &srv : servers) {
+      dests.push_back(srv->classic_tcp_destination().str());
     }
 
     return dests;
@@ -774,9 +773,8 @@ class ShareConnectionTestWithRestartedServer
   }
 
   static void start_intermediate_router_for_server(
-      SharedRestartableRouter *inter, SharedServer *s) {
-    inter->spawn_router(
-        {s->server_host() + ":"s + std::to_string(s->server_port())});
+      SharedRestartableRouter *inter, SharedServer *srv) {
+    inter->spawn_router({srv->classic_tcp_destination().str()});
   }
 
   static void restart_intermediate_router(SharedRestartableRouter *inter,
@@ -791,7 +789,7 @@ class ShareConnectionTestWithRestartedServer
     // instead of purely waiting for the expiry, the intermediate router is
     // restarted which drops connections.
     for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-      if (s->server_port() == srv_port) {
+      if (s->classic_tcp_destination().port() == srv_port) {
         auto inter = intermediate_routers()[ndx];
 
         // stop the intermediate router to force a close of all connections
@@ -1331,7 +1329,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
     int nodes_shutdown{0};
 
     for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-      if (s->server_port() != my_port) {
+      if (s->classic_tcp_destination().port() != my_port) {
         auto inter = intermediate_routers()[ndx];
 
         ASSERT_NO_FATAL_FAILURE(stop_intermediate_router(inter));
@@ -1374,7 +1372,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
   {
     int started{};
     for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-      if (s->server_port() == my_port) {
+      if (s->classic_tcp_destination().port() == my_port) {
         auto inter = intermediate_routers()[ndx];
 
         ASSERT_NO_FATAL_FAILURE(stop_intermediate_router(inter));
@@ -1453,7 +1451,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
 
   // restart the other servers.
   for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-    if (s->server_port() != my_port) {
+    if (s->classic_tcp_destination().port() != my_port) {
       auto inter = intermediate_routers()[ndx];
 
       ASSERT_NO_FATAL_FAILURE(this->restart_intermediate_router(inter, s));
@@ -1497,7 +1495,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
     int nodes_shutdown{0};
 
     for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-      if (s->server_port() != my_port) {
+      if (s->classic_tcp_destination().port() != my_port) {
         auto inter = intermediate_routers()[ndx];
         ASSERT_NO_FATAL_FAILURE(stop_intermediate_router(inter));
 
@@ -1535,7 +1533,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
   {
     int started{};
     for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-      if (s->server_port() == my_port) {
+      if (s->classic_tcp_destination().port() == my_port) {
         auto inter = intermediate_routers()[ndx];
 
         ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));
@@ -1613,7 +1611,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
 
   // restart the other servers.
   for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-    if (s->server_port() != my_port) {
+    if (s->classic_tcp_destination().port() != my_port) {
       auto inter = intermediate_routers()[ndx];
 
       this->start_intermediate_router_for_server(inter, s);
@@ -1674,7 +1672,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
       int nodes_shutdown{0};
 
       for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-        if (s->server_port() != my_port) {
+        if (s->classic_tcp_destination().port() != my_port) {
           auto inter = intermediate_routers()[ndx];
 
           ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));
@@ -1703,7 +1701,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
       int nodes_shutdown{0};
 
       for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-        if (s->server_port() == my_port) {
+        if (s->classic_tcp_destination().port() == my_port) {
           auto inter = intermediate_routers()[ndx];
 
           ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));
@@ -1802,7 +1800,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
       int nodes_shutdown{0};
 
       for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-        if (s->server_port() != my_port) {
+        if (s->classic_tcp_destination().port() != my_port) {
           auto inter = intermediate_routers()[ndx];
 
           ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));
@@ -1831,7 +1829,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
       int nodes_shutdown{0};
 
       for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-        if (s->server_port() == my_port) {
+        if (s->classic_tcp_destination().port() == my_port) {
           auto inter = intermediate_routers()[ndx];
 
           ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));
@@ -1942,7 +1940,7 @@ TEST_P(ShareConnectionTestWithRestartedServer,
   // shut down the intermediate router while the connection is pooled
 
   for (auto [ndx, s] : stdx::views::enumerate(shared_servers())) {
-    if (s->server_port() == my_port) {
+    if (s->classic_tcp_destination().port() == my_port) {
       auto *inter = intermediate_routers()[ndx];
 
       ASSERT_NO_FATAL_FAILURE(this->stop_intermediate_router(inter));

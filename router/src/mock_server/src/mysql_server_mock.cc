@@ -25,6 +25,7 @@
 
 #include "mysql_server_mock.h"
 
+#include <functional>
 #include <iostream>  // cout
 #include <memory>    // shared_ptr
 #include <string>
@@ -37,6 +38,7 @@
 #include "mysql/harness/destination.h"
 #include "mysql/harness/destination_acceptor.h"
 #include "mysql/harness/destination_endpoint.h"
+#include "mysql/harness/destination_socket.h"
 #include "mysql/harness/logging/logger.h"
 #include "mysql/harness/net_ts/impl/resolver.h"
 #include "mysql/harness/net_ts/impl/socket_constants.h"
@@ -127,7 +129,11 @@ class Acceptor {
         tls_server_ctx_{tls_server_ctx},
         with_tls_{with_tls} {}
 
-  ~Acceptor() { stop(); }
+  ~Acceptor() {
+    stop();
+
+    if (at_destruct_) at_destruct_();
+  }
 
   stdx::expected<void, std::error_code> init(
       const mysql_harness::Destination &dest) {
@@ -153,6 +159,10 @@ class Acceptor {
 
     res = sock.listen(256);
     if (!res) return stdx::unexpected(res.error());
+
+    if (ep.is_local()) {
+      at_destruct_ = [path = ep.as_local().path()]() { unlink(path.c_str()); };
+    }
 
     sock_ = std::move(sock);
 
@@ -296,6 +306,8 @@ class Acceptor {
   WaitableMonitor<int> work_{0};
 
   mysql_harness::logging::DomainLogger logger_;
+
+  std::function<void()> at_destruct_;
 };
 
 void MySQLServerMock::run(mysql_harness::PluginFuncEnv *env) {

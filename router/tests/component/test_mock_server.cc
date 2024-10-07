@@ -1077,13 +1077,17 @@ const MockServerConnectTestParam mock_server_connect_test_param[] = {
                    ::testing::SizeIs(::testing::Ge(5)));  // x.y.z
      }},
     {"via_socket",
-     // certificate is required, but no cert is presented
+     // connect via unix-domain socket.
      {
          "--filename", "@datadir@/my_port.js",  //
          "--module-prefix", "@datadir@",        //
          "--socket", "@socket@",                //
      },
      [](const std::map<std::string, std::string> &config) {
+#ifdef _WIN32
+       GTEST_SKIP() << "libmysqlclient does not support connecting to "
+                       "unix-sockets on windows.";
+#endif
        auto sock = config.at("socket");
        const char username[] = "username";
        const char password[] = "password";

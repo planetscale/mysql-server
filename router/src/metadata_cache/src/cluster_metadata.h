@@ -33,7 +33,6 @@
 #include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/mysql_session.h"
 #include "router_options.h"
-#include "tcp_address.h"
 
 #include <chrono>
 #include <memory>
@@ -45,10 +44,11 @@ struct GroupReplicationMember;
 
 namespace mysqlrouter {
 class MySQLSession;
-}
+}  // namespace mysqlrouter
+
 namespace xcl {
 class XSession;
-}
+}  // namespace xcl
 
 using ConnectCallback =
     std::function<bool(mysqlrouter::MySQLSession &connection,

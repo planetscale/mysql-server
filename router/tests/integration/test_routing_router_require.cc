@@ -193,8 +193,7 @@ class SharedRouter {
     dests.reserve(servers.size());
 
     for (const auto &s : servers) {
-      dests.push_back(s->server_host() + ":" +
-                      std::to_string(s->server_port()));
+      dests.push_back(s->classic_tcp_destination().str());
     }
 
     return dests;
@@ -206,8 +205,7 @@ class SharedRouter {
     dests.reserve(servers.size());
 
     for (const auto &s : servers) {
-      dests.push_back(s->server_host() + ":" +
-                      std::to_string(s->server_mysqlx_port()));
+      dests.push_back(s->x_tcp_destination().str());
     }
 
     return dests;
@@ -2008,9 +2006,8 @@ class RouterRequireConnectionPoolTest : public RouterComponentTest {
     std::vector<std::string> dests;
     dests.reserve(servers.size());
 
-    for (const auto &s : servers) {
-      dests.push_back(s->server_host() + ":" +
-                      std::to_string(s->server_port()));
+    for (const auto &srv : servers) {
+      dests.push_back(srv->classic_tcp_destination().str());
     }
 
     return dests;

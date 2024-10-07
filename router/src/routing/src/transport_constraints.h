@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2017, 2024, Oracle and/or its affiliates.
+  Copyright (c) 2024, Oracle and/or its affiliates.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License, version 2.0,
@@ -23,36 +23,42 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifndef ROUTING_DEST_ROUND_ROBIN_INCLUDED
-#define ROUTING_DEST_ROUND_ROBIN_INCLUDED
+#ifndef ROUTING_TRANSPORT_CONSTRAINTS_INCLUDED
+#define ROUTING_TRANSPORT_CONSTRAINTS_INCLUDED
 
-#include "destination.h"
-#include "mysqlrouter/routing.h"
+#include <string>
 
-class DestRoundRobin : public RouteDestination {
+class TransportConstraints {
  public:
-  /** @brief Default constructor
-   *
-   * @param io_ctx context for io operations
-   * @param protocol Protocol for the destination, defaults to value returned
-   *        by Protocol::get_default()
-   */
-  DestRoundRobin(net::io_context &io_ctx,
-                 Protocol::Type protocol = Protocol::get_default())
-      : RouteDestination(io_ctx, protocol) {}
+  enum class Constraint {
+    kPlaintext,      // no encryption
+    kSecure,         // used initially for kPreferred,
+                     // to pick either TCP+Encrypted or Unix+Plaintext.
+    kEncrypted,      // force encryption
+    kHasClientCert,  // force encryption + client-cert set.
+  };
 
-  /** @brief Destructor */
-  ~DestRoundRobin() override = default;
+  constexpr TransportConstraints(Constraint val) : val_(val) {}
 
-  Destinations destinations() override;
+  [[nodiscard]] constexpr Constraint constraint() const { return val_; }
 
-  routing::RoutingStrategy get_strategy() override {
-    return routing::RoutingStrategy::kRoundRobin;
+  [[nodiscard]] std::string to_string() const {
+    switch (val_) {
+      case Constraint::kPlaintext:
+        return "plaintext";
+      case Constraint::kSecure:
+        return "secure";
+      case Constraint::kEncrypted:
+        return "encrypted";
+      case Constraint::kHasClientCert:
+        return "has-client-cert";
+    };
+
+    return "unknown";
   }
 
- protected:
-  // MUST take the RouteDestination Mutex
-  size_t start_pos_{};
+ private:
+  Constraint val_;
 };
 
-#endif  // ROUTING_DEST_ROUND_ROBIN_INCLUDED
+#endif

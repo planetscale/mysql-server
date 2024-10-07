@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2017, 2024, Oracle and/or its affiliates.
+  Copyright (c) 2024, Oracle and/or its affiliates.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License, version 2.0,
@@ -23,36 +23,28 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifndef ROUTING_DEST_ROUND_ROBIN_INCLUDED
-#define ROUTING_DEST_ROUND_ROBIN_INCLUDED
+#ifndef MYSQL_ROUTER_ROUTING_DESTINATIONS_OPTION_PARSER_H
+#define MYSQL_ROUTER_ROUTING_DESTINATIONS_OPTION_PARSER_H
 
-#include "destination.h"
-#include "mysqlrouter/routing.h"
+#include <string>
+#include <variant>
+#include <vector>
 
-class DestRoundRobin : public RouteDestination {
+#include "mysql/harness/destination.h"
+#include "mysql/harness/stdx/expected.h"
+#include "mysqlrouter/routing_export.h"  // ROUTING_EXPORT
+#include "mysqlrouter/uri.h"
+
+class ROUTING_EXPORT DestinationsOptionParser {
  public:
-  /** @brief Default constructor
-   *
-   * @param io_ctx context for io operations
-   * @param protocol Protocol for the destination, defaults to value returned
-   *        by Protocol::get_default()
+  /**
+   * parse the destination string and either return a metadata-cache URI or a
+   * vector of destinations.
    */
-  DestRoundRobin(net::io_context &io_ctx,
-                 Protocol::Type protocol = Protocol::get_default())
-      : RouteDestination(io_ctx, protocol) {}
-
-  /** @brief Destructor */
-  ~DestRoundRobin() override = default;
-
-  Destinations destinations() override;
-
-  routing::RoutingStrategy get_strategy() override {
-    return routing::RoutingStrategy::kRoundRobin;
-  }
-
- protected:
-  // MUST take the RouteDestination Mutex
-  size_t start_pos_{};
+  [[nodiscard]] static stdx::expected<
+      std::variant<mysqlrouter::URI, std::vector<mysql_harness::Destination>>,
+      std::string>
+  parse(const std::string &value);
 };
 
-#endif  // ROUTING_DEST_ROUND_ROBIN_INCLUDED
+#endif

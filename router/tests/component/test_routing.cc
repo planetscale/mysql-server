@@ -1445,9 +1445,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{#mysqld1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{#mysqld1}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {#mysqld1} is invalid: "
+               "invalid destination address '{#mysqld1}'")));
      }},
     {"invalid_destination_host_mid",
      {
@@ -1457,9 +1459,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{mysqld1@1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{mysqld1@1}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {mysqld1@1} is invalid: "
+               "invalid destination address '{mysqld1@1}'")));
      }},
     {"invalid_destination_host_end",
      {
@@ -1469,9 +1473,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{mysqld1`}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{mysqld1`}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {mysqld1`} is invalid: "
+               "invalid destination address '{mysqld1`}'")));
      }},
     {"invalid_destination_host_many",
      {
@@ -1481,9 +1487,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{mysql$d1%1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{mysql$d1%1}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {mysql$d1%1} is invalid: "
+               "invalid destination address '{mysql$d1%1}'")));
      }},
     {"invalid_destination_space_start",
      {
@@ -1493,9 +1501,10 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{ mysql1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{ mysql1}'")));
+       EXPECT_THAT(
+           lines, ::testing::Contains(::testing::HasSubstr(
+                      "option destinations in [routing]: { mysql1} is invalid: "
+                      "invalid destination address '{ mysql1}'")));
      }},
     {"invalid_destination_space_mid",
      {
@@ -1505,9 +1514,10 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{my sql1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{my sql1}'")));
+       EXPECT_THAT(
+           lines, ::testing::Contains(::testing::HasSubstr(
+                      "option destinations in [routing]: {my sql1} is invalid: "
+                      "invalid destination address '{my sql1}'")));
      }},
     {"invalid_destination_space_end",
      {
@@ -1517,9 +1527,10 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{mysql1 }"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{mysql1 }'")));
+       EXPECT_THAT(
+           lines, ::testing::Contains(::testing::HasSubstr(
+                      "option destinations in [routing]: {mysql1 } is invalid: "
+                      "invalid destination address '{mysql1 }'")));
      }},
     {"invalid_destination_space",
      {
@@ -1529,9 +1540,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{m@ysql d1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{m@ysql d1}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {m@ysql d1} is invalid: "
+               "invalid destination address '{m@ysql d1}'")));
      }},
     {"invalid_destination_multiple_space",
      {
@@ -1541,9 +1554,11 @@ const RoutingConfigParam routing_config_param[] = {
          {"destinations", "{my sql d1}"},
      },
      [](const std::vector<std::string> &lines) {
-       EXPECT_THAT(lines, ::testing::Contains(::testing::HasSubstr(
-                              "option destinations in [routing] has an "
-                              "invalid destination address '{my sql d1}'")));
+       EXPECT_THAT(
+           lines,
+           ::testing::Contains(::testing::HasSubstr(
+               "option destinations in [routing]: {my sql d1} is invalid: "
+               "invalid destination address '{my sql d1}'")));
      }},
     {"invalid_bind_port",
      {

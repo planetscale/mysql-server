@@ -69,6 +69,7 @@ ROUTER_ADD_SHARED_LIBRARY(routing
   mysql_routing.cc
   destination.cc
   destination_error.cc
+  destinations_option_parser.cc
   dest_metadata_cache.cc
   dest_first_available.cc
   dest_next_available.cc
