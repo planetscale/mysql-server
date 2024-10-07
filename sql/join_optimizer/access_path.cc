@@ -916,7 +916,8 @@ unique_ptr_destroy_only<RowIterator> CreateIteratorFromAccessPath(
             GetUsedTables(param.outer, /*include_pruned_tables=*/true),
             std::move(job.children[1]), thd->variables.join_buff_size,
             param.mrr_length_per_rec, param.rec_per_key, param.store_rowids,
-            param.tables_to_get_rowid_for, mrr_iterator, param.join_type);
+            param.tables_to_get_rowid_for, mrr_iterator,
+            CollectSingleRowIndexLookups(thd, path), param.join_type);
         break;
       }
       case AccessPath::HASH_JOIN: {

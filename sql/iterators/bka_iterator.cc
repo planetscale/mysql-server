@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <iterator>
 #include <new>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -67,16 +68,14 @@ static size_t BytesNeededForMatchFlags(size_t rows) {
   return (rows + 7) / 8;
 }
 
-BKAIterator::BKAIterator(THD *thd,
-                         unique_ptr_destroy_only<RowIterator> outer_input,
-                         const Prealloced_array<TABLE *, 4> &outer_input_tables,
-                         unique_ptr_destroy_only<RowIterator> inner_input,
-                         size_t max_memory_available,
-                         size_t mrr_bytes_needed_for_single_inner_row,
-                         float expected_inner_rows_per_outer_row,
-                         bool store_rowids, table_map tables_to_get_rowid_for,
-                         MultiRangeRowIterator *mrr_iterator,
-                         JoinType join_type)
+BKAIterator::BKAIterator(
+    THD *thd, unique_ptr_destroy_only<RowIterator> outer_input,
+    const Prealloced_array<TABLE *, 4> &outer_input_tables,
+    unique_ptr_destroy_only<RowIterator> inner_input,
+    size_t max_memory_available, size_t mrr_bytes_needed_for_single_inner_row,
+    float expected_inner_rows_per_outer_row, bool store_rowids,
+    table_map tables_to_get_rowid_for, MultiRangeRowIterator *mrr_iterator,
+    std::span<AccessPath *> single_row_index_lookups, JoinType join_type)
     : RowIterator(thd),
       m_outer_input(std::move(outer_input)),
       m_inner_input(std::move(inner_input)),
@@ -89,6 +88,7 @@ BKAIterator::BKAIterator(THD *thd,
       m_mrr_bytes_needed_for_single_inner_row(
           mrr_bytes_needed_for_single_inner_row),
       m_mrr_iterator(mrr_iterator),
+      m_single_row_index_lookups(single_row_index_lookups),
       m_join_type(join_type) {
   assert(m_outer_input != nullptr);
   assert(m_inner_input != nullptr);
@@ -122,6 +122,15 @@ void BKAIterator::BeginNewBatch() {
   new (&m_rows) Mem_root_array<BufferRow>(&m_mem_root);
   m_bytes_used = 0;
   m_state = State::NEED_OUTER_ROWS;
+
+  // Invalidate the cache in all single-row index lookups below us. The previous
+  // execution of the join, or the processing of the previous batch in the same
+  // join, may have overwritten the cached value in EQRefIterator with a value
+  // from a different row, and the next read from the EQRefIterator must read
+  // the correct value from the index.
+  for (AccessPath *lookup : m_single_row_index_lookups) {
+    lookup->eq_ref().ref->key_err = true;
+  }
 }
 
 int BKAIterator::ReadOuterRows() {
