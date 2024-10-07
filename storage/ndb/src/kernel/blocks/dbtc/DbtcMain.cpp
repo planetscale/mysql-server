@@ -6764,6 +6764,7 @@ void Dbtc::copyApi(ApiConnectRecordPtr copyPtr, ApiConnectRecordPtr regApiPtr)
   copyPtr.p->m_transaction_nodes = Tnodes;
   copyPtr.p->num_commit_ack_markers = 0;
   copyPtr.p->singleUserMode = 0;
+  copyPtr.p->failureNr = regApiPtr.p->failureNr;
 
   Ptr<GcpRecord> gcpPtr;
   gcpPtr.i = TgcpPointer;
