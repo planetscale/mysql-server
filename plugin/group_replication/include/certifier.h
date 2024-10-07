@@ -763,7 +763,7 @@ class Certifier : public Certifier_interface {
   void update_certified_transaction_count(bool result, bool local_transaction);
 
   /* Number of garbage collector run */
-  uint64 garbage_collect_runs{0};
+  uint64 garbage_collect_runs{1};
 };
 
 /*

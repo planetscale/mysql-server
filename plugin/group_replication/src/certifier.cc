@@ -634,7 +634,6 @@ int Certifier::initialize(ulonglong gtid_assignment_block_size) {
 
   error = broadcast_thread->initialize();
   initialized = !error;
-  garbage_collect_runs = 0;
 
 end:
   mysql_mutex_unlock(&LOCK_certification_info);
