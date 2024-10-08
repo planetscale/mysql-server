@@ -2661,6 +2661,11 @@ class Query_tables_list {
   uint sroutines_list_own_elements;
 
   /**
+   Does this LEX context have any stored functions
+  */
+  bool has_stored_functions;
+
+  /**
     Locking state of tables in this particular statement.
 
     If we under LOCK TABLES or in prelocked mode we consider tables
@@ -3185,7 +3190,7 @@ class Query_tables_list {
   }
 
   /**
-    true if the parsed tree contains references to stored procedures
+    true if the parsed tree contains references to stored procedures, triggers
     or functions, false otherwise
   */
   bool uses_stored_routines() const { return sroutines_list.elements != 0; }

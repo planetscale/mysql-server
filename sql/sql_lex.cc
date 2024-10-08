@@ -3657,6 +3657,7 @@ void Query_tables_list::reset_query_tables_list(bool init) {
   sroutines_list.clear();
   sroutines_list_own_last = sroutines_list.next;
   sroutines_list_own_elements = 0;
+  has_stored_functions = false;
   binlog_stmt_flags = 0;
   stmt_accessed_table_flag = 0;
   lock_tables_state = LTS_NOT_LOCKED;

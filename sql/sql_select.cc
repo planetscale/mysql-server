@@ -313,8 +313,8 @@ static bool equal_engines(const LEX_CSTRING &engine1,
 // engine.
 const MYSQL_LEX_CSTRING *get_eligible_secondary_engine_from(const LEX *lex) {
   // Don't use secondary storage engines for statements that call stored
-  // routines.
-  if (lex->uses_stored_routines()) return nullptr;
+  // functions.
+  if (lex->has_stored_functions) return nullptr;
   // Now check if the opened tables are available in a secondary
   // storage engine. Only use the secondary tables if all the tables
   // have a secondary tables, and they are all in the same secondary
@@ -430,11 +430,9 @@ void find_and_set_offload_fail_reason(const LEX *lex) {
   // check known unsupported features and raise a specific offload error.
   std::string err_msg{};
   const Table_ref *tref = nullptr;
-  if (lex->uses_stored_routines() ||
-      (lex->m_sql_cmd != nullptr && lex->m_sql_cmd->is_part_of_sp()) ||
-      lex->thd->sp_runtime_ctx != nullptr) {
+  if (lex->has_stored_functions) {
     // We don't support secondary storage engine execution,
-    // if the query has statements that call stored routines.
+    // if the query has statements that call stored functions.
     err_msg =
         "Statements that reference stored functions are not supported in "
         "secondary engines.";

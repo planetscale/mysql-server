@@ -394,6 +394,12 @@ bool Trigger::execute(THD *thd) {
 
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_TRIGGER);
 
+  Secondary_engine_optimization saved_state =
+      thd->secondary_engine_optimization();
+
+  thd->set_secondary_engine_optimization(
+      Secondary_engine_optimization::PRIMARY_TENTATIVELY);
+
   /*
     Reset current_query_block before call execute_trigger() and
     restore it after return from one. This way error is set
@@ -406,6 +412,8 @@ bool Trigger::execute(THD *thd) {
   thd->lex->set_current_query_block(save_current_query_block);
 
   thd->restore_sub_statement_state(&statement_state);
+
+  thd->set_secondary_engine_optimization(saved_state);
 
   return err_status;
 }

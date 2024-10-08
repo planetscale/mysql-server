@@ -1695,6 +1695,8 @@ bool sp_exist_routines(THD *thd, Table_ref *routines, bool is_proc) {
   @param name_length     Length of the routine name.
   @param belong_to_view  Uppermost view which uses this routine
                          (0 if routine is not used by view)
+  @param type            Routine type (one of FUNCTION/PROCEDURE/
+                                                     TRIGGER ...)
 
   @note
     Will also add element to end of 'Query_tables_list::sroutines_list' list.
@@ -1716,7 +1718,8 @@ static bool sp_add_used_routine(Query_tables_list *prelocking_ctx,
                                 Query_arena *arena, const uchar *key,
                                 size_t key_length, size_t db_length,
                                 const char *name, size_t name_length,
-                                Table_ref *belong_to_view) {
+                                Table_ref *belong_to_view,
+                                Sroutine_hash_entry::entry_type type) {
   if (prelocking_ctx->sroutines == nullptr) {
     prelocking_ctx->sroutines.reset(
         new malloc_unordered_map<std::string, Sroutine_hash_entry *>(
@@ -1746,6 +1749,9 @@ static bool sp_add_used_routine(Query_tables_list *prelocking_ctx,
     prelocking_ctx->sroutines_list.link_in_list(rn, &rn->next);
     rn->belong_to_view = belong_to_view;
     rn->m_cache_version = 0;
+    if (type == Sroutine_hash_entry::entry_type::FUNCTION) {
+      prelocking_ctx->has_stored_functions = true;
+    }
     return true;
   }
   return false;
@@ -1810,8 +1816,9 @@ bool sp_add_used_routine(Query_tables_list *prelocking_ctx, Query_arena *arena,
     */
     key_length +=
         my_casedn_str(system_charset_info, (char *)(key) + key_length) + 1;
-  } else
+  } else {
     key_length += db_length + 1;
+  }
 
   switch (name_normalize_type) {
     case Sp_name_normalize_type::LEAVE_AS_IS:
@@ -1860,7 +1867,7 @@ bool sp_add_used_routine(Query_tables_list *prelocking_ctx, Query_arena *arena,
   }
 
   if (sp_add_used_routine(prelocking_ctx, arena, key, key_length, db_length,
-                          name, name_length, belong_to_view)) {
+                          name, name_length, belong_to_view, type)) {
     if (own_routine) {
       prelocking_ctx->sroutines_list_own_last =
           prelocking_ctx->sroutines_list.next;
@@ -1922,7 +1929,7 @@ void sp_update_stmt_used_routines(
     (void)sp_add_used_routine(prelocking_ctx, thd->stmt_arena,
                               pointer_cast<const uchar *>(rt->m_key),
                               rt->m_key_length, rt->m_db_length, rt->name(),
-                              rt->name_length(), belong_to_view);
+                              rt->name_length(), belong_to_view, rt->type());
   }
 }
 
@@ -1947,7 +1954,7 @@ void sp_update_stmt_used_routines(THD *thd, Query_tables_list *prelocking_ctx,
     (void)sp_add_used_routine(prelocking_ctx, thd->stmt_arena,
                               pointer_cast<const uchar *>(rt->m_key),
                               rt->m_key_length, rt->m_db_length, rt->name(),
-                              rt->name_length(), belong_to_view);
+                              rt->name_length(), belong_to_view, rt->type());
 }
 
 /**
