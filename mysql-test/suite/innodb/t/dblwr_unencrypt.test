@@ -15,7 +15,7 @@
 call mtr.add_suppression("A bad Space ID was found in datafile");
 call mtr.add_suppression("\\[ERROR\\] .* Space ID in fsp header is \\d+, but in the page header it is \\d+");
 call mtr.add_suppression("Header page contains inconsistent data in datafile");
-call mtr.add_suppression("Checksum mismatch in datafile: ./test/t1.ibd");
+call mtr.add_suppression("Checksum mismatch in datafile");
 --enable_query_log
 
 SET GLOBAL innodb_monitor_enable = module_log;
