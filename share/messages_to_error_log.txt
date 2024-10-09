@@ -11996,7 +11996,7 @@ ER_BULK_READER_COMMUNICATION_ERROR_LOG
   eng "Bulk reader got error in communication with source server, check the error log for additional details"
 
 ER_BULK_PARSER_MISSING_ENCLOSED_BY_LOG
-  eng "Missing ENCLOSED BY character at row %ld in file %s. Add OPTIONALLY to the ENCLOSED BY clause to allow this input."
+  eng "Missing ENCLOSED BY character at row %ld in file %s."
 
 ER_BULK_PARSER_ROW_BUFFER_MAX_TOTAL_COLS_EXCEEDED_LOG
   eng "The number of input columns that need to be buffered for parsing exceeded predefined buffer max size for file '%s'."
@@ -12915,6 +12915,9 @@ ER_AUTHENTICATION_OPENID_OPTION_REGISTER
 
 ER_AUTHENTICATION_OPENID_OPTION_DEREGISTER
   eng "Option deregistration failed."
+
+ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER_LOG
+  eng "Unexpected enclosed by character found inside unenclosed string at row %ld in file '%s' resulting in malformed CSV."
 
 ################################################################################
 # Error numbers 50000 to 51999 are reserved. Please do not use them for

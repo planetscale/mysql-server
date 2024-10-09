@@ -9897,7 +9897,7 @@ ER_BULK_LOADER_FILE_CONTAINS_LESS_LINES_THAN_IGNORE_CLAUSE
   eng "The first file being loaded contained less lines than the ignore clause"
 
 ER_BULK_PARSER_MISSING_ENCLOSED_BY
-  eng "Missing ENCLOSED BY character at row %ld in file '%s'. Add OPTIONALLY to the ENCLOSED BY clause to allow this input."
+  eng "Missing ENCLOSED BY character at row %ld in file '%s'."
 
 ER_BULK_PARSER_ROW_BUFFER_MAX_TOTAL_COLS_EXCEEDED
   eng "The number of input columns that need to be buffered for parsing exceeded predefined buffer max size for file '%s'."
@@ -10526,6 +10526,10 @@ ER_LH_UNSTRUCTURED_INVALID_LANGUAGE
 
 ER_LH_VECTOR_TOO_MANY_ENTRIES
   eng "Column %d in %s: Vector has more entries than its dimension: %s"
+
+ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER
+  eng "Unexpected enclosed by character found inside unenclosed string at row %ld in file '%s' resulting in malformed CSV."
+
 #
 #  End of 9.x error messages (server-to-client).
 #
