@@ -503,6 +503,11 @@ static bool row_ins_cascade_ancestor_updates_table(
     for (j = 0; j < parent_update->n_fields; j++) {
       const upd_field_t *parent_ufield = &parent_update->fields[j];
 
+      /* Skip if the updated field is virtual */
+      if (parent_ufield->is_virtual()) {
+        continue;
+      }
+
       if (parent_ufield->field_no == parent_field_no) {
         ulint min_size;
         const dict_col_t *col;
