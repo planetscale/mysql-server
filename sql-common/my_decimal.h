@@ -139,12 +139,9 @@ class my_decimal : public decimal_t {
     foo1 = test_value;
     foo2 = test_value;
 #endif
-    /*
-      Do not initialize more of the base class,
-      we want to catch uninitialized use.
-    */
     len = DECIMAL_BUFF_LENGTH;
     buf = buffer;
+    decimal_make_zero(this);
   }
 
   my_decimal() { init(); }
