@@ -1491,30 +1491,6 @@ static Surrounding_context qt2sc(Query_term_type qtt) {
   return SC_TOP;
 }
 
-/// Append the children of 'lower' to those of 'setop'.  To avoid excessive
-/// space usage of a large number of similar set ops: instead of the "obvious"
-/// method of copying the operands of the child's array to the parent's array,
-/// we may use the (possibly much) larger lower setop's child array as a basis,
-/// inserting setop's childen at the front and then std::move'ing that (now
-/// discarded) array to be setop's child array.  This makes the space
-/// allocation ~= linear instead of O(N*N/2) in the worst case (N: # of set
-/// operations).
-void PT_set_operation::merge_children(Query_term_set_op *setop,
-                                      Query_term_set_op *lower) {
-  if (lower->m_children.size() <= setop->m_children.size()) {
-    for (auto child : lower->m_children) {
-      setop->m_children.push_back(child);
-    }
-  } else {
-    const size_t lim = setop->m_children.size() - 1;
-    for (size_t i = 0; i < setop->m_children.size(); ++i) {
-      lower->m_children.push_front(setop->m_children[lim - i]);
-    }
-    setop->m_children = std::move(lower->m_children);
-    // lower->m_children is now empty.
-  }
-}
-
 /**
   Possibly merge lower syntactic levels of set operations (UNION, INTERSECT and
   EXCEPT) into setop, and set new last DISTINCT index for setop. We only ever
@@ -1677,7 +1653,8 @@ void PT_set_operation::merge_descendants(Parse_context *pc,
         // distinct
         last_distinct = count + lower->m_children.size() - 1;
         count = count + lower->m_children.size();
-        merge_children(setop, lower);
+        // fold in children
+        for (auto child : lower->m_children) setop->m_children.push_back(child);
       } else {
         // similar kind of set operation, but contains limit, so do not merge
         count++;
@@ -1716,7 +1693,8 @@ void PT_set_operation::merge_descendants(Parse_context *pc,
             }
             last_distinct = count + lower->m_last_distinct;
             count = count + lower->m_children.size();
-            merge_children(setop, lower);
+            for (auto child : lower->m_children)
+              setop->m_children.push_back(child);
           }
         } else {
           // upper and lower level are both ALL, so ok to merge, unless we have
@@ -1727,7 +1705,8 @@ void PT_set_operation::merge_descendants(Parse_context *pc,
               first_distinct = count + lower->m_first_distinct;
             }
             count = count + lower->m_children.size();
-            merge_children(setop, lower);
+            for (auto child : lower->m_children)
+              setop->m_children.push_back(child);
           } else {
             // do not merge INTERSECT ALL: the execution time logic can only
             // handle binary INTERSECT ALL.
@@ -1746,7 +1725,7 @@ void PT_set_operation::merge_descendants(Parse_context *pc,
           first_distinct = count + lower->m_first_distinct;
         }
         count = count + lower->m_children.size();
-        merge_children(setop, lower);
+        for (auto child : lower->m_children) setop->m_children.push_back(child);
       } else {
         // do not merge
         count++;
