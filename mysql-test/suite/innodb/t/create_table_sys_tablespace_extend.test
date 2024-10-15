@@ -27,7 +27,7 @@ SELECT @@GLOBAL.innodb_redo_log_capacity;
 SELECT @@GLOBAL.innodb_data_file_path;
 
 --echo # Disable page cleaner to have redo logs for recovery later on
---source suite/innodb/include/log_disable_page_cleaners.inc
+--source suite/innodb/include/stop_dirty_page_flushing_and_background_redo_producers.inc
 
 SET @@GLOBAL.DEBUG='+d,ib_redo_log_system_tablespace_expansion';
 # Force to have only two records per page
