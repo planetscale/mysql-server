@@ -6108,6 +6108,8 @@ sub check_expected_crash_and_restart($$) {
 
         if ($tinfo->{'secondary-engine'}) {
           my $restart_flag = 1;
+          my $pre_config_state = prepare_secondary_engine_plugin_for_config($mysqld, $tinfo);
+          configure_secondary_engine_plugin($mysqld, $tinfo, $pre_config_state);
           # Start secondary engine servers.
           start_secondary_engine_servers($tinfo, $restart_flag);
         }
@@ -7169,9 +7171,6 @@ sub start_servers($) {
   }
 
   if ($tinfo->{'secondary-engine'}) {
-    # Start secondary engine servers.
-    start_secondary_engine_servers($tinfo);
-
     # Set an environment variable to indicate that the test needs
     # secondary engine.
     $ENV{'SECONDARY_ENGINE_TEST'} = 1;
@@ -7180,6 +7179,15 @@ sub start_servers($) {
     foreach my $mysqld (mysqlds()) {
       install_external_engine_plugin($mysqld);
       install_secondary_engine_plugin($mysqld);
+      my $pre_config_state = prepare_secondary_engine_plugin_for_config($mysqld, $tinfo);
+      configure_secondary_engine_plugin($mysqld, $tinfo, $pre_config_state);
+    }
+
+    # Start secondary engine servers.
+    start_secondary_engine_servers($tinfo);
+
+    foreach my $mysqld (mysqlds()) {
+      wait_till_secondary_engine_plugin_active($mysqld);
     }
   }
 
