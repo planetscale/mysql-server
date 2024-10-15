@@ -9416,7 +9416,8 @@ int runTestStallTimeout(NDBT_Context *ctx, NDBT_Step *step) {
 
       /* Prepare an update on the same rows from a different transaction */
       CHECK(hugoOps2.startTransaction(pNdb) == 0, "Start transaction failed");
-      CHECK(hugoOps2.pkUpdateRecord(pNdb, 1, 10) == 0, "Define updates failed");
+      CHECK(hugoOps2.pkUpdateRecord(pNdb, 1, numUpdates) == 0,
+            "Define updates failed");
 
       NdbTransaction *trans2 = hugoOps2.getTransaction();
       CallbackData cbd2;
