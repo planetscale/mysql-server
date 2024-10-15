@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2003, 2023, Oracle and/or its affiliates.
+   Copyright (c) 2003, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -47,6 +47,7 @@ NdbScanOperation::NdbScanOperation(Ndb* aNdb, NdbOperation::Type aType) :
   m_api_receivers = 0;
   m_conf_receivers = 0;
   m_sent_receivers = 0;
+  m_kernel_error_code = 0;
   m_receivers = 0;
   m_array = new Uint32[1]; // skip if on delete in fix_receivers
   theSCAN_TABREQ = 0;
@@ -75,7 +76,7 @@ NdbScanOperation::~NdbScanOperation()
  * and propogated to the 'transConnection' as well, unless they are
  * encountered in the asynchronous signal handling part of the scan
  * processing code, in which case the error should be set on
- * 'theError' member variable only.
+ * 'm_kernel_error_code' member variable only.
  *
  *****************************************************************************/
 void
@@ -134,6 +135,7 @@ NdbScanOperation::init(const NdbTableImpl* tab, NdbTransaction* myConnection)
   m_current_api_receiver = 0;
   m_sent_receivers_count = 0;
   m_conf_receivers_count = 0;
+  m_kernel_error_code = 0;
   assert(m_scan_buffer==NULL);
 
   theNdb->theRemainingStartTransactions++; // will be checked in hupp...
@@ -1632,7 +1634,7 @@ NdbScanOperation::fix_receivers(Uint32 parallel){
  */
 void
 NdbScanOperation::receiver_delivered(NdbReceiver* tRec){
-  if(theError.code == 0){
+  if(m_kernel_error_code == 0){
     if(DEBUG_NEXT_RESULT)
       ndbout_c("receiver_delivered");
 
@@ -1656,7 +1658,7 @@ NdbScanOperation::receiver_delivered(NdbReceiver* tRec){
  */
 void
 NdbScanOperation::receiver_completed(NdbReceiver* tRec){
-  if(theError.code == 0){
+  if(m_kernel_error_code == 0){
     if(DEBUG_NEXT_RESULT)
       ndbout_c("receiver_completed");
 
@@ -1879,6 +1881,12 @@ NdbScanOperation::nextResultNdbRecord(const char * & out_row,
     return 2;
   }
 
+  /* Check if api side error already set */
+  if (theError.code) {
+    /* Scan with error set cannot be scrolled beyond cached results */
+    return -1;
+  }
+
   /* Now we have to wait for more rows (or end-of-file on all receivers). */
   Uint32 nodeId = theNdbCon->theDBnode;
   NdbImpl* theImpl = theNdb->theImpl;
@@ -1893,24 +1901,13 @@ NdbScanOperation::nextResultNdbRecord(const char * & out_row,
 
   const Uint32 seq= theNdbCon->theNodeSequence;
 
-  if(theError.code)
-  {
-    /**
-     * The scan is already complete (Err_scanAlreadyComplete)
-     * or is in some error.
-     *
-     * Either there is a bug in the api application such that
-     * it calls nextResult()/nextResultNdbRecord() again
-     * after getting return value 1 (meaning end of scan) or
-     * -1 (for error).
-     *
-     * Or an SCAN_TABREF-error have been received into the operation
-     * (asynchronously) between calls.
-     *
-     * In any case, keep and propagate as NdbTransaction error and fail.
+  /* Check if kernel side error set */
+  if (m_kernel_error_code != 0) {
+    /* We have received an error from the kernel side
+     * transfer the error to the api visible error code
+     * so that it appears consistently to the user.
      */
-    if (theError.code != Err_scanAlreadyComplete)
-      setErrorCode(theError.code);
+    setErrorCode(m_kernel_error_code);
     return -1;
   }
 
@@ -1921,8 +1918,9 @@ NdbScanOperation::nextResultNdbRecord(const char * & out_row,
     last= m_api_receivers_count;
 
     do {
-      if (theError.code){
-        setErrorCode(theError.code);
+      if (m_kernel_error_code != 0){
+        /* Kernel side error set, transfer to the api visible error code */
+        setErrorCode(m_kernel_error_code);
         return -1;
       }
 
@@ -1961,7 +1959,7 @@ NdbScanOperation::nextResultNdbRecord(const char * & out_row,
          * No completed & no sent -> EndOfData
          * Make sure user gets error if he tries again.
          */
-        theError.code= Err_scanAlreadyComplete;
+        setErrorCode(Err_scanAlreadyComplete);
         return 1;
       }
 
@@ -2161,10 +2159,31 @@ void NdbScanOperation::close(bool forceSend, bool releaseOp)
   DBUG_VOID_RETURN;
 }
 
-void
-NdbScanOperation::execCLOSE_SCAN_REP(){
+
+void NdbScanOperation::execCLOSE_SCAN_REP(Uint32 errorCode,
+                                          bool closeScanNeeded) {
   m_conf_receivers_count = 0;
   m_sent_receivers_count = 0;
+  if (errorCode != 0) {
+    m_kernel_error_code = errorCode;
+
+    /**
+     * closeScanNeeded  Meaning
+     * 0                Scan already closed on kernel side, just
+     *                  need to cleanup API side resources
+     *
+     * 1                Scan state exists on kernel side, we need
+     *                  so send a signal with close flag to cleanup
+     */
+    if (closeScanNeeded) {
+      /**
+       * Create a dummy conf receiver so that close
+       * sends a signal to close */
+      m_conf_receivers_count = 1;
+      m_conf_receivers[0] = m_receivers[0];
+      m_conf_receivers[0]->m_tcPtrI = ~0;
+    }
+  }
 }
 
 void NdbScanOperation::release()
@@ -3895,11 +3914,16 @@ NdbIndexScanOperation::ordered_send_scan_wait_for_all(bool forceSend)
   NdbImpl* impl = theNdb->theImpl;
   Uint32 timeout= impl->get_waitfor_timeout();
 
+  /* Check for api side error, cannot scroll with an error set */
+  if (theError.code != 0) {
+    return -1;
+  }
+
   PollGuard poll_guard(* impl);
-  if(theError.code)
-  {
-    if (theError.code != Err_scanAlreadyComplete)
-      setErrorCode(theError.code);
+  /* Check for kernel side error */
+  if (m_kernel_error_code != 0) {
+    /* Transfer error to user side and return */
+    setErrorCode(m_kernel_error_code);
     return -1;
   }
 
@@ -3909,7 +3933,7 @@ NdbIndexScanOperation::ordered_send_scan_wait_for_all(bool forceSend)
       !send_next_scan_ordered(m_current_api_receiver))
   {
     impl->incClientStat(Ndb::WaitScanResultCount, 1);
-    while (m_sent_receivers_count > 0 && !theError.code)
+    while (m_sent_receivers_count > 0 && (m_kernel_error_code == 0))
     {
       int ret_code= poll_guard.wait_scan(3*timeout, nodeId, forceSend);
       if (ret_code == 0 && seq == impl->getNodeSequence(nodeId))
@@ -3923,8 +3947,9 @@ NdbIndexScanOperation::ordered_send_scan_wait_for_all(bool forceSend)
       return -1;
     }
 
-    if(theError.code){
-      setErrorCode(theError.code);
+    if (m_kernel_error_code != 0) {
+      /* Transfer to user side and return */
+      setErrorCode(m_kernel_error_code);
       return -1;
     }
 
@@ -4030,10 +4055,11 @@ NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard)
   }
 
   /**
-   * Wait for outstanding
+   * Wait for outstanding if we have not already had/
+   * subsequently receive a kernel error.
    */
   impl->incClientStat(Ndb::WaitScanResultCount, 1);
-  while(theError.code == 0 && m_sent_receivers_count)
+  while(m_kernel_error_code == 0 && m_sent_receivers_count)
   {
     int return_code= poll_guard->wait_scan(3*timeout, nodeId, forceSend);
     switch(return_code){
@@ -4052,8 +4078,14 @@ NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard)
     }
   }
 
-  if(theError.code)
+  if(m_kernel_error_code != 0)
   {
+    /**
+     * If kernel error is set then there is no need to
+     * consider api side receivers as part of close.
+     * If kernel close is needed, a receiver will exist
+     * in the conf_receivers list.
+     */
     m_api_receivers_count = 0;
     m_current_api_receiver = m_ordered ? theParallelism : 0;
   }
@@ -4085,7 +4117,7 @@ NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard)
   if(api+conf)
   {
     /**
-     * There's something to close
+     * There's potentially something to close on the kernel
      *   setup m_api_receivers (for send_next_scan)
      */
     memcpy(m_api_receivers+api, m_conf_receivers, conf * sizeof(char*));
@@ -4094,6 +4126,8 @@ NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard)
   }
 
   // Send close scan
+  //   If all api + conf receivers are already closed on the kernel
+  //   side this may be a no-op.
   if(send_next_scan(api+conf, true) == -1)
   {
     theNdbCon->theReleaseOnClose = true;
