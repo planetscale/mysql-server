@@ -96,7 +96,7 @@ ER_LOG_GENERAL_CANNOT_OPEN
 ER_LOG_CANNOT_WRITE
   eng "Failed to write to %s: %s"
 
-ER_RPL_ZOMBIE_ENCOUNTERED
+OBSOLETE_ER_RPL_ZOMBIE_ENCOUNTERED
   eng "While initializing dump thread for replica with %s <%s>, found a zombie dump thread with the same %s. Source is killing the zombie dump thread(%u)."
 
 ER_RPL_GTID_TABLE_CANNOT_OPEN
@@ -12787,6 +12787,9 @@ ER_AUTHENTICATION_OPENID_FAILED_TO_UPDATE_CONFIGURATION
 
 ER_SIMPLE_ERROR_LOG_COMPONENT_STATUS
   eng "%s"
+
+ER_RPL_KILL_OLD_DUMP_THREAD_ENCOUNTERED
+  eng "Upon reconnection with the replica, while initializing the dump thread for %s <%s>, an existing dump thread with the same %s was detected. The source is terminating the previous dump thread (%u), which is normal and expected."
 
 # DO NOT add server-to-client messages here;
 # they go in messages_to_clients.txt
