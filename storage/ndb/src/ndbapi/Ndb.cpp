@@ -1158,20 +1158,6 @@ Ndb::closeTransaction(NdbTransaction* aConnection)
 //-----------------------------------------------------
 // closeTransaction called on non-existing transaction
 //-----------------------------------------------------
-
-	if(aConnection->theError.code == 4008){
-	  /**
-	   * When a SCAN timed-out, returning the NdbTransaction leads
-	   * to reuse. And TC crashes when the API tries to reuse it to
-	   * something else...
-	   */
-#ifdef VM_TRACE
-	  printf("Scan timeout:ed NdbTransaction-> "
-		 "not returning it-> memory leak\n");
-#endif
-	  DBUG_VOID_RETURN;
-	}
-
 #ifdef VM_TRACE
 	printf("Non-existing transaction into closeTransaction\n");
 	abort();
@@ -1188,18 +1174,6 @@ Ndb::closeTransaction(NdbTransaction* aConnection)
   
   theImpl->incClientStat(TransCloseCount, 1);
 
-  if(aConnection->theError.code == 4008){
-    /**
-     * Something timed-out, returning the NdbTransaction leads
-     * to reuse. And TC crashes when the API tries to reuse it to
-     * something else...
-     */
-#ifdef VM_TRACE
-    printf("Con timeout:ed NdbTransaction-> not returning it-> memory leak\n");
-#endif
-    DBUG_VOID_RETURN;
-  }
-  
   /**
    * NOTE: It's ok to call getNodeSequence() here wo/ having mutex,
    */

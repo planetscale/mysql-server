@@ -14153,6 +14153,14 @@ Dblqh::copyNextRange(Uint32 * dst, TcConnectionrec* tcPtrP)
 
     tcPtrP->primKeyLen-= rangeLen;
 
+    if (ERROR_INSERTED(5112)) {
+      jam();
+      /* Scan with infinite results */
+      g_eventLogger->info("LQH %u : Repeating range scan", instance());
+      tcPtrP->primKeyLen += rangeLen;
+      return rangeLen;
+    }
+
     if (rangeLen == totalLen)
     {
       /* All range information has been copied, free the section */

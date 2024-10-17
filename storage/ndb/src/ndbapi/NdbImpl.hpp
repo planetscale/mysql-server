@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2003, 2021, Oracle and/or its affiliates.
+   Copyright (c) 2003, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -238,6 +238,12 @@ public:
   }
 
   Uint32 get_waitfor_timeout() const {
+    DBUG_EXECUTE_IF("ndb_reduced_api_protocol_timeout", {
+      // Value > 1000 millis as check_send_timeout() has coarse
+      // resolution optimisation
+      DBUG_PRINT("info", ("Reducing timeout base to 2000 millis"));
+      return 2000;
+    });
     return m_ndb_cluster_connection.m_config.m_waitfor_timeout;
   }
   const NdbApiConfig& get_ndbapi_config_parameters() const {

@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2003, 2023, Oracle and/or its affiliates.
+   Copyright (c) 2003, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -2463,7 +2463,7 @@ private:
 
   bool validate_filter(Signal*);
   bool match_and_print(Signal*, ApiConnectRecordPtr);
-  bool ndbinfo_write_trans(Ndbinfo::Row&, ApiConnectRecordPtr);
+  bool ndbinfo_write_trans(Ndbinfo::Row&, ApiConnectRecordPtr, bool);
 
 #ifdef ERROR_INSERT
   bool testFragmentDrop(Signal* signal);
@@ -2583,6 +2583,8 @@ private:
   Uint32 m_deferred_enabled;
   Uint32 m_max_writes_per_trans;
 #endif
+
+  bool m_dbinfo_full_apiconnectrecord;
 
 #ifndef DBTC_STATE_EXTRACT
   void dump_trans(ApiConnectRecordPtr transPtr);

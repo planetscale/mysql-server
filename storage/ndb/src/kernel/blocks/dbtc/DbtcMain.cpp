@@ -14248,6 +14248,14 @@ void Dbtc::execSCAN_FRAGCONF(Signal* signal)
   const Uint32 noCompletedOps = conf->completedOps;
   const Uint32 status = conf->fragmentCompleted;
 
+  if (ERROR_INSERTED(8124)) {
+    jam();
+    g_eventLogger->info("TC %u : execSCAN_FRAGCONF delaying 0.5s", instance());
+    sendSignalWithDelay(reference(), GSN_SCAN_FRAGCONF, signal, 500,
+                        signal->getLength());
+    return;
+  }
+
   scanFragptr.i = conf->senderData;
   c_scan_frag_pool.getPtr(scanFragptr);
   
@@ -16783,6 +16791,21 @@ Dbtc::execDUMP_STATE_ORD(Signal* signal)
     sendSignal(reference(), GSN_DUMP_STATE_ORD, signal, 5, JBB);
     return;
   }
+
+  if (arg == DumpStateOrd::TcNdbInfoApiConnectRecFull)
+  {
+    jam();
+    bool newVal = true;
+    if (signal->getLength() == 2)
+    {
+      newVal = (signal->theData[1] != 0);
+    }
+    g_eventLogger->info("TC %u setting DBINFO ApiConnectRecord full from %u to %u",
+                        instance(),
+                        m_dbinfo_full_apiconnectrecord,
+                        newVal);
+    m_dbinfo_full_apiconnectrecord = newVal;
+  }
 }//Dbtc::execDUMP_STATE_ORD()
 
 void Dbtc::execDBINFO_SCANREQ(Signal *signal)
@@ -16973,12 +16996,13 @@ void Dbtc::execDBINFO_SCANREQ(Signal *signal)
   case Ndbinfo::TRANSACTIONS_TABLEID:{
     ApiConnectRecordPtr ptr;
     ptr.i = cursor->data[0];
+    const bool full = m_dbinfo_full_apiconnectrecord;
     const Uint32 maxloop = 256;
     for (Uint32 i = 0; i < maxloop; i++)
     {
       ptrCheckGuard(ptr, capiConnectFilesize, apiConnectRecord);
       Ndbinfo::Row row(signal, req);
-      if (ndbinfo_write_trans(row, ptr))
+      if (ndbinfo_write_trans(row, ptr, full))
       {
         jam();
         ndbinfo_send_row(signal, req, row, rl);
@@ -17006,7 +17030,8 @@ done:
 }
 
 bool
-Dbtc::ndbinfo_write_trans(Ndbinfo::Row & row, ApiConnectRecordPtr transPtr)
+Dbtc::ndbinfo_write_trans(Ndbinfo::Row & row, ApiConnectRecordPtr transPtr,
+                          const bool full)
 {
   Uint32 conState = transPtr.p->apiConnectstate;
 
@@ -17018,10 +17043,9 @@ Dbtc::ndbinfo_write_trans(Ndbinfo::Row & row, ApiConnectRecordPtr transPtr)
     conState = CS_CONNECTED;
   }
 
-  if (conState == CS_CONNECTED ||
-      conState == CS_DISCONNECTED ||
-      conState == CS_RESTART)
-  {
+  if ((conState == CS_CONNECTED || conState == CS_DISCONNECTED ||
+       conState == CS_RESTART) &
+      !full) {
     return false;
   }
 
