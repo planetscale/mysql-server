@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2003, 2022, Oracle and/or its affiliates.
+   Copyright (c) 2003, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -155,6 +155,7 @@ public:
     TcDumpOneTcConnectRec = 2516,
     TcDumpSetOfTcConnectRec = 2517,
     TcDumpPoolLevels = 2555,
+    TcNdbInfoApiConnectRecFull = 2559,
     CmvmiDumpConnections = 2600,
     CmvmiDumpLongSignalMemory = 2601,
     CmvmiSetRestartOnErrorInsert = 2602,
