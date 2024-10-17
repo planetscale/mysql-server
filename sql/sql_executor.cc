@@ -3302,8 +3302,7 @@ AccessPath *JOIN::create_root_access_path_for_join() {
 
       ORDER *order = create_order_from_distinct(
           thd, ref_items[qep_tab->ref_item_slice], desired_order, select_list,
-          /*skip_aggregates=*/false, /*convert_bit_fields_to_long=*/false,
-          &all_order_fields_used);
+          /*skip_aggregates=*/false, &all_order_fields_used);
       if (order == nullptr) {
         // Only const fields.
         limit_1_for_dup_filesort = true;

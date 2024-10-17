@@ -562,23 +562,6 @@ bool Query_block::prepare(THD *thd, mem_root_deque<Item *> *insert_field_list) {
     }
   }
 
-  if (!thd->lex->using_hypergraph_optimizer() && group_list.elements) {
-    /*
-      Because HEAP tables can't index BIT fields we need to use an
-      additional hidden field for grouping because later it will be
-      converted to a LONG field. Original field will remain of the
-      BIT type and will be returned to a client. Hypergraph optimizer
-      uses hash deduplication for bit types so this is not necessary.
-    */
-    for (ORDER *ord = group_list.first; ord; ord = ord->next) {
-      if ((*ord->item)->type() == Item::FIELD_ITEM &&
-          (*ord->item)->data_type() == MYSQL_TYPE_BIT) {
-        Item_field *field = new Item_field(thd, *(Item_field **)ord->item);
-        ord->item = add_hidden_item(field);
-      }
-    }
-  }
-
   // Setup full-text functions after resolving HAVING
   if (has_ft_funcs()) {
     // The full-text search function cannot be called after aggregation, as it

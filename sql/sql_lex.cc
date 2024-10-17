@@ -2586,22 +2586,6 @@ bool Query_block::setup_base_ref_items(THD *thd) {
   // find_order_in_list() may need some extra space, so multiply by two.
   order_group_num *= 2;
 
-  // create_distinct_group() may need some extra space
-  if (is_distinct()) {
-    uint bitcount = 0;
-    for (Item *item : visible_fields()) {
-      /*
-        Same test as in create_distinct_group, when it pushes new items to the
-        end of base_ref_items. An extra test for 'fixed' which, at this
-        stage, will be true only for columns inserted for a '*' wildcard.
-      */
-      if (item->fixed && item->type() == Item::FIELD_ITEM &&
-          item->data_type() == MYSQL_TYPE_BIT)
-        ++bitcount;
-    }
-    order_group_num += bitcount;
-  }
-
   /*
     We have to create array in prepared statement memory if it is
     prepared statement
@@ -2613,10 +2597,9 @@ bool Query_block::setup_base_ref_items(THD *thd) {
 
   /*
     If it is possible that we transform IN(subquery) to a join to a derived
-    table, we will be adding DISTINCT (this possibly has the problem of BIT
-    columns as in the logic above), and we will also be adding one expression to
-    the SELECT list per decorrelated equality in WHERE. So we have to allocate
-    more space.
+    table, we will be adding DISTINCT, and we will also be adding one
+    expression to the SELECT list per decorrelated equality in WHERE. So we
+    have to allocate more space.
 
     The number of decorrelatable equalities is bounded by
     select_n_where_fields. Indeed an equality isn't counted in

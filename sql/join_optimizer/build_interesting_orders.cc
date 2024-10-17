@@ -577,8 +577,7 @@ void BuildInterestingOrders(
     bool all_order_fields_used = false;
     ORDER *order = create_order_from_distinct(
         thd, Ref_item_array(), /*order=*/nullptr, join->fields,
-        /*skip_aggregates=*/false, /*convert_bit_fields_to_long=*/false,
-        &all_order_fields_used);
+        /*skip_aggregates=*/false, &all_order_fields_used);
 
     if (order == nullptr) {
       *distinct_ordering_idx = 0;  // 0 is the empty ordering.

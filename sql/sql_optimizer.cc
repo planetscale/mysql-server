@@ -1576,8 +1576,7 @@ bool JOIN::optimize_distinct_group_order() {
     bool all_order_fields_used;
     if ((o = create_order_from_distinct(
              thd, ref_items[REF_SLICE_ACTIVE], order.order, fields,
-             /*skip_aggregates=*/true,
-             /*convert_bit_fields_to_long=*/true, &all_order_fields_used))) {
+             /*skip_aggregates=*/true, &all_order_fields_used))) {
       group_list = ORDER_with_src(o, ESC_DISTINCT);
       const bool skip_group =
           skip_sort_order &&
@@ -10753,7 +10752,6 @@ ORDER *create_order_from_distinct(THD *thd, Ref_item_array ref_item_array,
                                   ORDER *order_list,
                                   mem_root_deque<Item *> *fields,
                                   bool skip_aggregates,
-                                  bool convert_bit_fields_to_long,
                                   bool *all_order_by_fields_used) {
   ORDER *group = nullptr, **prev = &group;
 
@@ -10770,8 +10768,6 @@ ORDER *create_order_from_distinct(THD *thd, Ref_item_array ref_item_array,
       *all_order_by_fields_used = false;
   }
 
-  Mem_root_array<std::pair<Item *, ORDER *>> bit_fields_to_add(thd->mem_root);
-
   for (Item *&item : VisibleFields(*fields)) {
     if (!item->const_item() && (!skip_aggregates || !item->has_aggregation()) &&
         item->marker != Item::MARKER_DISTINCT_GROUP) {
@@ -10786,21 +10782,7 @@ ORDER *create_order_from_distinct(THD *thd, Ref_item_array ref_item_array,
       ORDER *ord = (ORDER *)thd->mem_calloc(sizeof(ORDER));
       if (!ord) return nullptr;
 
-      if (item->type() == Item::FIELD_ITEM &&
-          item->data_type() == MYSQL_TYPE_BIT && convert_bit_fields_to_long) {
-        /*
-          Because HEAP tables can't index BIT fields we need to use an
-          additional hidden field for grouping because later it will be
-          converted to a LONG field. Original field will remain of the
-          BIT type and will be returned to a client.
-          @note setup_ref_array() needs to account for the extra space.
-          @note We need to defer the actual adding to after the loop,
-            or we will invalidate the iterator to “fields”.
-        */
-        Item_field *new_item = new Item_field(thd, (Item_field *)item);
-        ord->item = &item;  // Temporary; for the duplicate check above.
-        bit_fields_to_add.push_back(std::make_pair(new_item, ord));
-      } else if (ref_item_array.is_null()) {
+      if (ref_item_array.is_null()) {
         // No slices are in use, so just use the field from the list.
         ord->item = &item;
       } else {
@@ -10818,11 +10800,6 @@ ORDER *create_order_from_distinct(THD *thd, Ref_item_array ref_item_array,
     if (!ref_item_array.is_null()) {
       ref_item_array.pop_front();
     }
-  }
-  for (const auto &item_and_order : bit_fields_to_add) {
-    item_and_order.second->item =
-        thd->lex->current_query_block()->add_hidden_item(item_and_order.first);
-    thd->lex->current_query_block()->hidden_items_from_optimization++;
   }
   *prev = nullptr;
   return group;
