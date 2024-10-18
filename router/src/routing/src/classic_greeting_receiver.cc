@@ -743,6 +743,11 @@ ClientGreetor::client_greeting_after_tls() {
     stage(Stage::RequestPlaintextPassword);
     return Result::Again;
   } else {
+    if (msg.auth_method_name() == AuthOpenidConnect::kName) {
+      src_protocol.credentials().emplace(msg.auth_method_name(),
+                                         msg.auth_method_data());
+    }
+
     stage(Stage::Accepted);
     return Result::Again;
   }
