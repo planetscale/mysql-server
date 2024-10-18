@@ -158,6 +158,17 @@ struct Predicate {
   // sargable predicate.
   bool was_join_condition = false;
 
+  // Whether this predicate references tables that could be NULL-complemented
+  // later by an outer join. This could for example be true for degenerate outer
+  // join conditions that are pushed down as a table filter on one of the inner
+  // tables, or for join conditions in inner joins that are on the inner side of
+  // an outer join.
+  //
+  // We keep track of this here in order to prevent collection of functional
+  // dependencies from such predicates if the functional dependencies are not
+  // valid after the outer join.
+  bool possibly_null_complemented_later = false;
+
   // If this is a join condition that came from a multiple equality,
   // and we have decided to create a mesh from that multiple equality,
   // returns the index of it into the “multiple_equalities” array

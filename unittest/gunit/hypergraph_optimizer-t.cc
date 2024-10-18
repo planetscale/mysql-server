@@ -269,6 +269,14 @@ bool ContainsAccessPath(const AccessPath *root, AccessPath::Type type) {
   return found;
 }
 
+vector<string> GetOrderItems(const ORDER *order) {
+  vector<string> items;
+  for (; order != nullptr; order = order->next) {
+    items.push_back(ItemToString(*order->item));
+  }
+  return items;
+}
+
 }  // namespace
 
 using MakeHypergraphTest = HypergraphOptimizerTestBase;
@@ -4460,12 +4468,10 @@ TEST_F(HypergraphOptimizerTest, DistinctWithEquivalence) {
   // join condition, it should suffice to sort on one column.
   ASSERT_EQ(AccessPath::SORT, root->type);
   EXPECT_TRUE(root->sort().remove_duplicates);
-  const ORDER *order = root->sort().order;
   // Sort on exactly one column.
-  ASSERT_NE(nullptr, order);
-  EXPECT_EQ(nullptr, order->next);
   // The result should be sorted on t1.x or on t2.x. We don't care which.
-  EXPECT_THAT(ItemToString(*order->item), AnyOf("t1.x", "t2.x"));
+  EXPECT_THAT(GetOrderItems(root->sort().order),
+              ElementsAre(AnyOf("t1.x", "t2.x")));
 }
 
 TEST_F(HypergraphOptimizerTest, SortAheadSingleTable) {
@@ -4834,6 +4840,27 @@ TEST_F(HypergraphOptimizerTest, ElideSortDueToDelayedFilters) {
   query_block->cleanup(/*full=*/true);
 }
 
+TEST_F(HypergraphOptimizerTest, ElideSortDueToIsNull) {
+  Query_block *query_block = ParseAndResolve(
+      "SELECT t2.y FROM t1 LEFT JOIN t2 ON t1.x = t2.x AND t2.y IS NULL "
+      "ORDER BY t2.y",
+      /*nullable=*/true);
+
+  TraceGuard trace(m_thd);
+  AccessPath *root = FindBestQueryPlan(m_thd, query_block);
+  SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
+  // Prints out the query plan on failure.
+  SCOPED_TRACE(PrintQueryPlan(0, root, query_block->join,
+                              /*is_root_of_join=*/true));
+
+  // There should be no SORT. The ordering on t2.y is always satisfied, because
+  // t2.y always has the same value (NULL). It is either NULL from the base
+  // table (because of the IS NULL predicate), or it is NULL because it was
+  // NULL-complemented by the outer join.
+  EXPECT_EQ(AccessPath::HASH_JOIN, root->type);
+  EXPECT_FALSE(ContainsAccessPath(root, AccessPath::SORT));
+}
+
 TEST_F(HypergraphOptimizerTest, ElideSortDueToIndex) {
   Query_block *query_block =
       ParseAndResolve("SELECT t1.x FROM t1 ORDER BY t1.x DESC",
@@ -4977,17 +5004,36 @@ TEST_F(HypergraphOptimizerTest, ElideRedundantPartsOfSortKey) {
   // redundant because of t1.x and the functional dependency t1.x = t2.x. The
   // constant 'abc' does not contribute to the ordering because it has the same
   // value in all rows, and is also removed.
-  vector<string> order_items;
-  for (const ORDER *order = root->sort().order; order != nullptr;
-       order = order->next) {
-    order_items.push_back(ItemToString(*order->item));
-  }
-  EXPECT_THAT(order_items, ElementsAre("t1.x", "t1.y", "t2.y"));
+  EXPECT_THAT(GetOrderItems(root->sort().order),
+              ElementsAre("t1.x", "t1.y", "t2.y"));
 
   // Expect the redundant elements to be removed from join->order as well.
   EXPECT_EQ(query_block->join->order.order, root->sort().order);
 
   query_block->cleanup(/*full=*/true);
+}
+
+TEST_F(HypergraphOptimizerTest, ElideRedundantPartsOfSortKeyInsideOuterJoin) {
+  Query_block *query_block = ParseAndResolve(
+      "SELECT 1 FROM t1 LEFT JOIN t2 ON t1.x = t2.x AND t2.y = t2.z "
+      "ORDER BY t2.y, t2.z",
+      /*nullable=*/true);
+
+  TraceGuard trace(m_thd);
+  AccessPath *root = FindBestQueryPlan(m_thd, query_block);
+  SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
+  // Prints out the query plan on failure.
+  SCOPED_TRACE(PrintQueryPlan(0, root, query_block->join,
+                              /*is_root_of_join=*/true));
+
+  // The sort key should have a single element; either t2.y or t2.z. Because of
+  // the t2.y = t2.z predicate, the two columns always have the same value when
+  // they're in the same row, so ordering on one of the columns is sufficient.
+  // This is true even when the outer join NULL-complements the row, as both
+  // columns will be NULL in that case, so they still have the same value.
+  ASSERT_EQ(AccessPath::SORT, root->type);
+  EXPECT_THAT(GetOrderItems(root->sort().order),
+              ElementsAre(AnyOf("t2.y", "t2.z")));
 }
 
 TEST_F(HypergraphOptimizerTest, ElideRedundantSortAfterGrouping) {
@@ -7722,12 +7768,10 @@ TEST_F(SecondaryEngineGraphSimplificationTest, RedundantOrderElements) {
   // We don't care which exact plan is chosen. But verify that the sort key does
   // not include a redundant column.
   ASSERT_EQ(AccessPath::SORT, root->type);
-  const ORDER *order = root->sort().order;
   // Sort on exactly one column.
-  ASSERT_NE(nullptr, order);
-  EXPECT_EQ(nullptr, order->next);
   // The result should be sorted on t1.x or on t2.x. We don't care which.
-  EXPECT_THAT(ItemToString(*order->item), AnyOf("t1.x", "t2.x"));
+  EXPECT_THAT(GetOrderItems(root->sort().order),
+              ElementsAre(AnyOf("t1.x", "t2.x")));
 }
 
 TEST_F(SecondaryEngineGraphSimplificationTest, InfiniteRestarts) {

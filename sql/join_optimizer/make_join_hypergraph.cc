@@ -2971,13 +2971,14 @@ void SortPredicates(Predicate *begin, Predicate *end) {
   Add the given predicate to the list of WHERE predicates, doing some
   bookkeeping that such predicates need.
  */
-int AddPredicate(THD *thd, Item *condition, bool was_join_condition,
+int AddPredicate(THD *thd, Item *condition,
+                 const RelationalExpression *was_join_condition_for,
                  int source_multiple_equality_idx,
                  const RelationalExpression *root,
                  const CompanionSetCollection *companion_collection,
                  JoinHypergraph *graph) {
   if (source_multiple_equality_idx != -1) {
-    assert(was_join_condition);
+    assert(was_join_condition_for != nullptr);
   }
 
   Predicate pred;
@@ -2992,7 +2993,7 @@ int AddPredicate(THD *thd, Item *condition, bool was_join_condition,
       Overlaps(used_tables, ~PSEUDO_TABLE_BITS);
 
   table_map total_eligibility_set;
-  if (was_join_condition || !references_regular_tables) {
+  if (was_join_condition_for != nullptr || !references_regular_tables) {
     total_eligibility_set = used_tables;
   } else {
     total_eligibility_set = FindTESForCondition(used_tables, root) &
@@ -3014,7 +3015,11 @@ int AddPredicate(THD *thd, Item *condition, bool was_join_condition,
                          ? EstimateSelectivity(thd, condition, *companion_set)
                          : EstimateSelectivity(thd, condition, CompanionSet());
 
-  pred.was_join_condition = was_join_condition;
+  pred.was_join_condition = was_join_condition_for != nullptr;
+  pred.possibly_null_complemented_later =
+      was_join_condition_for != nullptr &&
+      IsSubset(was_join_condition_for->nodes_in_subtree,
+               graph->nodes_inner_to_outer_join);
   pred.source_multiple_equality_idx = source_multiple_equality_idx;
   pred.functional_dependencies_idx.init(thd->mem_root);
 
@@ -3248,12 +3253,12 @@ void PromoteCycleJoinPredicates(
     RelationalExpression *expr = graph->edges[edge_idx / 2].expr;
     expr->join_predicate_first = graph->predicates.size();
     for (Item *condition : expr->equijoin_conditions) {
-      AddPredicate(thd, condition, /*was_join_condition=*/true,
+      AddPredicate(thd, condition, expr,
                    FindSourceMultipleEquality(condition, multiple_equalities),
                    root, &companion_collection, graph);
     }
     for (Item *condition : expr->join_conditions) {
-      AddPredicate(thd, condition, /*was_join_condition=*/true,
+      AddPredicate(thd, condition, expr,
                    FindSourceMultipleEquality(condition, multiple_equalities),
                    root, &companion_collection, graph);
     }
@@ -3594,7 +3599,7 @@ bool MakeSingleTableHypergraph(THD *thd, const Query_block *query_block,
     }
 
     for (Item *item : where_conditions) {
-      AddPredicate(thd, item, /*was_join_condition=*/false,
+      AddPredicate(thd, item, /*was_join_condition_for=*/nullptr,
                    /*source_multiple_equality_idx=*/-1, root,
                    /*companion_collection=*/nullptr, graph);
     }
@@ -3866,21 +3871,24 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
   // Find TES and selectivity for each WHERE predicate that was not pushed
   // down earlier.
   for (Item *condition : where_conditions) {
-    AddPredicate(thd, condition, /*was_join_condition=*/false,
+    AddPredicate(thd, condition, /*was_join_condition_for=*/nullptr,
                  /*source_multiple_equality_idx=*/-1, root,
                  &companion_collection, graph);
   }
 
   // Table filters should be applied at the bottom, without extending the TES.
   for (Item *condition : table_filters) {
+    const table_map used_tables = condition->used_tables();
     Predicate pred;
     pred.condition = condition;
     pred.used_nodes = pred.total_eligibility_set = GetNodeMapFromTableMap(
-        condition->used_tables() & ~(INNER_TABLE_BIT | OUTER_REF_TABLE_BIT),
+        used_tables & ~(INNER_TABLE_BIT | OUTER_REF_TABLE_BIT),
         graph->table_num_to_node_num);
     assert(has_single_bit(pred.total_eligibility_set));
+    pred.possibly_null_complemented_later =
+        Overlaps(pred.used_nodes, graph->nodes_inner_to_outer_join);
     pred.selectivity = EstimateSelectivity(
-        thd, condition, *companion_collection.Find(condition->used_tables()));
+        thd, condition, *companion_collection.Find(used_tables));
     pred.functional_dependencies_idx.init(thd->mem_root);
     graph->predicates.push_back(std::move(pred));
   }
