@@ -4159,7 +4159,7 @@ NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard)
     case -1:
       /* Timeout */
       g_eventLogger->info(
-                          "NdbScanOperation::close_impl() 4:4008 on connection %d   ",
+                          "NdbScanOperation::close_impl() 4:4008 on connection %d   "
                           "Failed to close scan after timeout.",
                           theNdbCon->ptr2int());
       setErrorCode(4008);
