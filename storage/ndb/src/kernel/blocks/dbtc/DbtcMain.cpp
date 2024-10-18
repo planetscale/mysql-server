@@ -16110,6 +16110,18 @@ void Dbtc::execDUMP_STATE_ORD(Signal *signal) {
     c_trans_error_loglevel = level;
     return;
   }
+
+  if (arg == DumpStateOrd::TcNdbInfoApiConnectRecFull) {
+    jam();
+    bool newVal = true;
+    if (signal->getLength() == 2) {
+      newVal = (signal->theData[1] != 0);
+    }
+    g_eventLogger->info(
+        "TC %u setting DBINFO ApiConnectRecord full from %u to %u", instance(),
+        m_dbinfo_full_apiconnectrecord, newVal);
+    m_dbinfo_full_apiconnectrecord = newVal;
+  }
 }  // Dbtc::execDUMP_STATE_ORD()
 
 void Dbtc::execDBINFO_SCANREQ(Signal *signal) {
@@ -16344,7 +16356,8 @@ void Dbtc::execDBINFO_SCANREQ(Signal *signal) {
     case Ndbinfo::TRANSACTIONS_FULL_TABLEID: {
       Uint32 loop_count = 0;
       Uint32 api_ptr = cursor->data[0];
-      const bool full = (req.tableId == Ndbinfo::TRANSACTIONS_FULL_TABLEID);
+      const bool full = (m_dbinfo_full_apiconnectrecord ||
+                         req.tableId == Ndbinfo::TRANSACTIONS_FULL_TABLEID);
       const Uint32 maxloop = 256;
       bool do_break = false;
       while (!do_break && api_ptr != RNIL && loop_count < maxloop) {
