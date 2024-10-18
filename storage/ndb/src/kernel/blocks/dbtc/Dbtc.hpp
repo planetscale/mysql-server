@@ -2813,6 +2813,8 @@ class Dbtc : public SimulatedBlock {
   Uint32 c_trans_error_loglevel;
   Uint32 m_take_over_operations;
 
+  bool m_dbinfo_full_apiconnectrecord;
+
   void dump_trans(ApiConnectRecordPtr transPtr);
   bool hasOp(ApiConnectRecordPtr transPtr, Uint32 op);
 
