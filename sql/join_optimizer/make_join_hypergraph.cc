@@ -3469,46 +3469,25 @@ void CompleteFullMeshForMultipleEqualities(
 }
 
 /**
-  Returns a map of all tables that are on the inner side of some outer join or
-  antijoin.
- */
-table_map GetTablesInnerToOuterJoinOrAntiJoin(
-    const RelationalExpression *expr) {
-  switch (expr->type) {
-    case RelationalExpression::INNER_JOIN:
-    case RelationalExpression::SEMIJOIN:
-    case RelationalExpression::STRAIGHT_INNER_JOIN:
-      return GetTablesInnerToOuterJoinOrAntiJoin(expr->left) |
-             GetTablesInnerToOuterJoinOrAntiJoin(expr->right);
-    case RelationalExpression::LEFT_JOIN:
-    case RelationalExpression::ANTIJOIN:
-      return GetTablesInnerToOuterJoinOrAntiJoin(expr->left) |
-             expr->right->tables_in_subtree;
-    case RelationalExpression::FULL_OUTER_JOIN:
-      return expr->tables_in_subtree;
-    case RelationalExpression::MULTI_INNER_JOIN:
-      assert(false);  // Should have been unflattened by now.
-      return 0;
-    case RelationalExpression::TABLE:
-      return 0;
-  }
-  assert(false);
-  return 0;
-}
+  Populate the "nodes_inner_to_outer_join", "nodes_inner_to_semijoin" and
+  "nodes_inner_to_antijoin" members of JoinHypergraph.
 
-/**
-  Returns a NodeMap of all tables that are on the inner side of some semijoin or
-  antijoin.
+  @param graph The JoinHypergraph to update.
+  @param root The root of the join tree.
  */
-NodeMap GetNodesInnerToSemijoinOrAntijoin(RelationalExpression *root) {
-  NodeMap nodes = 0;
-  ForEachJoinOperator(root, [&nodes](const RelationalExpression *expr) {
-    if (expr->type == RelationalExpression::SEMIJOIN ||
-        expr->type == RelationalExpression::ANTIJOIN) {
-      nodes |= expr->right->nodes_in_subtree;
+void SetNodesInnerToOuterSemiAnti(JoinHypergraph *graph,
+                                  const RelationalExpression *root) {
+  ForEachJoinOperator(root, [graph](const RelationalExpression *expr) {
+    if (expr->type == RelationalExpression::LEFT_JOIN) {
+      graph->nodes_inner_to_outer_join |= expr->right->nodes_in_subtree;
+    } else if (expr->type == RelationalExpression::FULL_OUTER_JOIN) {
+      graph->nodes_inner_to_outer_join |= expr->nodes_in_subtree;
+    } else if (expr->type == RelationalExpression::SEMIJOIN) {
+      graph->nodes_inner_to_semijoin |= expr->right->nodes_in_subtree;
+    } else if (expr->type == RelationalExpression::ANTIJOIN) {
+      graph->nodes_inner_to_antijoin |= expr->right->nodes_in_subtree;
     }
   });
-  return nodes;
 }
 
 /**
@@ -3818,10 +3797,7 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
   // to remove impossible conditions.
   ClearImpossibleJoinConditions(root);
 
-  graph->tables_inner_to_outer_or_anti =
-      GetTablesInnerToOuterJoinOrAntiJoin(root);
-
-  graph->nodes_inner_to_semi_or_anti = GetNodesInnerToSemijoinOrAntijoin(root);
+  SetNodesInnerToOuterSemiAnti(graph, root);
 
   // Add cycles.
   size_t old_graph_edges = graph->graph.edges.size();

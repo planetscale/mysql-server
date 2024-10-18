@@ -221,13 +221,14 @@ struct JoinHypergraph {
   /// the root cause.
   bool has_reordered_left_joins = false;
 
-  /// The set of tables that are on the inner side of some outer join or
-  /// antijoin. If a table is not part of this set, and it is found to be empty,
-  /// we can assume that the result of the top-level join will also be empty.
-  table_map tables_inner_to_outer_or_anti = 0;
+  /// The set of nodes that are on the inner side of some outer join.
+  hypergraph::NodeMap nodes_inner_to_outer_join = 0;
 
-  /// The set of nodes that are on the inner side of some semijoin or antijoin.
-  hypergraph::NodeMap nodes_inner_to_semi_or_anti = 0;
+  /// The set of nodes that are on the inner side of some semijoin.
+  hypergraph::NodeMap nodes_inner_to_semijoin = 0;
+
+  /// The set of nodes that are on the inner side of some antijoin.
+  hypergraph::NodeMap nodes_inner_to_antijoin = 0;
 
   int FindSargableJoinPredicate(const Item *predicate) const {
     const auto iter = m_sargable_join_predicates.find(predicate);

@@ -1499,7 +1499,8 @@ CostingReceiver::FindRangeScansResult CostingReceiver::FindRangeScans(
   }
 
   const char *const cause = "WHERE condition is always false";
-  if (!IsBitSet(table_ref->tableno(), m_graph->tables_inner_to_outer_or_anti)) {
+  if (!IsBitSet(node_idx, m_graph->nodes_inner_to_outer_join |
+                              m_graph->nodes_inner_to_antijoin)) {
     // The entire top-level join is going to be empty, so we can abort the
     // planning and return a zero rows plan.
     m_query_block->join->zero_result_cause = cause;
@@ -3558,7 +3559,9 @@ AccessPath *CostingReceiver::MakeMaterializePath(const AccessPath &path,
     }
 
     if (always_empty_cause != nullptr &&
-        !IsBitSet(tl->tableno(), m_graph->tables_inner_to_outer_or_anti)) {
+        !IsBitSet(m_graph->table_num_to_node_num[tl->tableno()],
+                  m_graph->nodes_inner_to_outer_join |
+                      m_graph->nodes_inner_to_antijoin)) {
       // The entire query block can be optimized away. Stop planning.
       m_query_block->join->zero_result_cause = always_empty_cause;
       return nullptr;
@@ -4562,7 +4565,8 @@ bool CostingReceiver::FoundSubgraphPair(NodeMap left, NodeMap right,
   if (edge->expr->type == RelationalExpression::SEMIJOIN ||
       edge->expr->type == RelationalExpression::ANTIJOIN) {
     assert(IsSubset(right, m_nodes_under_limit));
-    assert(IsSubset(right, m_graph->nodes_inner_to_semi_or_anti));
+    assert(IsSubset(right, m_graph->nodes_inner_to_semijoin |
+                               m_graph->nodes_inner_to_antijoin));
   }
 
   bool is_commutative = OperatorIsCommutative(*edge->expr);
@@ -7056,7 +7060,7 @@ NodeMap GetNodesUnderLimit(const JoinHypergraph &graph,
     return TablesBetween(0, graph.nodes.size());
   }
 
-  return graph.nodes_inner_to_semi_or_anti;
+  return graph.nodes_inner_to_semijoin | graph.nodes_inner_to_antijoin;
 }
 
 // Inject casts into comparisons of expressions with incompatible types.
