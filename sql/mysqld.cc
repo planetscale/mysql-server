@@ -879,6 +879,7 @@ MySQL clients support the protocol:
 #include "sql/sql_show.h"
 #include "sql/sql_table.h"  // build_table_filename
 #include "sql/sql_udf.h"
+#include "sql/srv_event_plugin_handles.h"
 #include "sql/ssl_acceptor_context_iterator.h"
 #include "sql/ssl_acceptor_context_operator.h"
 #include "sql/ssl_acceptor_context_status.h"
@@ -2012,6 +2013,7 @@ SERVICE_TYPE_NO_CONST(registry_registration) * srv_registry_registration{
                                                    nullptr};
 SERVICE_TYPE_NO_CONST(registry_registration) *
     srv_registry_registration_no_lock{nullptr};
+SERVICE_TYPE_NO_CONST(registry_query) * srv_registry_query{nullptr};
 SERVICE_TYPE(dynamic_loader_scheme_file) * scheme_file_srv;
 using loader_type_t = SERVICE_TYPE_NO_CONST(dynamic_loader);
 using runtime_error_type_t = SERVICE_TYPE_NO_CONST(mysql_runtime_error);
@@ -2067,6 +2069,9 @@ static bool component_infrastructure_init() {
   srv_registry->acquire(
       "registry_registration.mysql_minimal_chassis_no_lock",
       reinterpret_cast<my_h_service *>(&srv_registry_registration_no_lock));
+
+  srv_registry->acquire("registry_query",
+                        reinterpret_cast<my_h_service *>(&srv_registry_query));
 
   // Sets default file scheme loader for MySQL server.
   srv_registry_registration->set_default(
@@ -2198,6 +2203,7 @@ static bool component_infrastructure_deinit(bool print_message) {
       reinterpret_cast<my_h_service>(srv_registry_registration));
   srv_registry->release(
       reinterpret_cast<my_h_service>(srv_registry_registration_no_lock));
+  srv_registry->release(reinterpret_cast<my_h_service>(srv_registry_query));
 
   if (deinitialize_minimal_chassis(srv_registry)) {
     if (print_message)
@@ -2858,7 +2864,7 @@ static void clean_up(bool print_message) {
   deinitialize_manifest_file_components();
   if (g_event_channels != nullptr) delete g_event_channels;
   g_event_channels = nullptr;
-  deinit_srv_event_tracking_handles();
+  srv_event_release_plugin_handles();
   Singleton_event_tracking_service_to_plugin_mapping::remove_instance();
   component_infrastructure_deinit(print_message);
   /*
@@ -7906,7 +7912,6 @@ static int init_server_components() {
     dynamic_loader_srv->load(component_urns, NUMBER_OF_COMPONENTS);
     g_event_channels = Event_reference_caching_channels::create();
   }
-  init_srv_event_tracking_handles();
 
   auto instance =
       Singleton_event_tracking_service_to_plugin_mapping::create_instance();
@@ -8367,6 +8372,14 @@ static int init_server_components() {
 
       if (!opt_validate_config)
         LogErr(ERROR_LEVEL, ER_CANT_INITIALIZE_DYNAMIC_PLUGINS);
+      unireg_abort(MYSQLD_ABORT_EXIT);
+    }
+    /*
+     This call needs to stay after the plugins are initialized but before the
+     components are loaded. The idea is to catch all of the services registered
+     by the server component itself (core and plugins).
+    */
+    if (srv_event_acquire_plugin_handles()) {
       unireg_abort(MYSQLD_ABORT_EXIT);
     }
     if (!opt_initialize)

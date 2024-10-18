@@ -825,8 +825,10 @@ extern SERVICE_TYPE_NO_CONST(registry) * srv_registry_no_lock;
    mysql_server component */
 extern SERVICE_TYPE(dynamic_loader_scheme_file) * scheme_file_srv;
 extern SERVICE_TYPE(dynamic_loader) * dynamic_loader_srv;
-extern SERVICE_TYPE(registry_registration) * registry_registration;
-extern SERVICE_TYPE(registry_registration) * registry_registration_no_lock;
+extern SERVICE_TYPE_NO_CONST(registry_registration) * srv_registry_registration;
+extern SERVICE_TYPE_NO_CONST(registry_registration) *
+    srv_registry_registration_no_lock;
+extern SERVICE_TYPE_NO_CONST(registry_query) * srv_registry_query;
 
 class Deployed_components;
 extern Deployed_components *g_deployed_components;

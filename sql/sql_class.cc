@@ -104,6 +104,7 @@
 #include "sql/sql_prepare.h"  // Prepared_statement
 #include "sql/sql_profile.h"
 #include "sql/sql_timer.h"  // thd_timer_destroy
+#include "sql/srv_event_plugin_handles.h"
 #include "sql/table.h"
 #include "sql/table_cache.h"  // table_cache_manager
 #include "sql/tc_log.h"
@@ -768,8 +769,7 @@ THD::THD(bool enable_plugins)
       bind_parameter_values(nullptr),
       bind_parameter_values_count(0),
       external_store_(),
-      events_cache_(nullptr),
-      audit_plugins_present(false) {
+      events_cache_(nullptr) {
   has_incremented_gtid_automatic_count = false;
   main_lex->reset();
   set_psi(nullptr);
@@ -3341,9 +3341,22 @@ void *THD::fetch_external(unsigned int slot) {
   return external_store_.at(slot) ? external_store_.at(slot) : nullptr;
 }
 
+/**
+  @brief Check if there are event subscribers for the event
+
+  Subscribers can be one of the following:
+     * audit plugins subscribing via the component->plugin bridge
+     * server component (plugins) subscribing to the compoennt API
+     * reference cache registered components
+
+  @param event the class to check for
+  @param subevent the even in the class to check for
+  @param check_audited  true if we should skip non-audited users
+  @retval true : no subscribers present
+  @retval false: subscribers present
+*/
 bool THD::check_event_subscribers(Event_tracking_class event,
                                   unsigned long subevent, bool check_audited) {
-  audit_plugins_present = false;
   if (check_audited && this->m_audited == false) return true;
 
   auto mapping =
@@ -3354,7 +3367,8 @@ bool THD::check_event_subscribers(Event_tracking_class event,
   unsigned long plugin_subevent = mapping->plugin_sub_event(subevent);
 
   if (mysql_audit_acquire_plugins(this, plugin_event, plugin_subevent,
-                                  check_audited)) {
+                                  check_audited) &&
+      !srv_event_have_plugin_handles()) {
     if (events_cache_ == nullptr || !events_cache_->valid()) return true;
     const my_h_service *refs{nullptr};
 
@@ -3362,7 +3376,6 @@ bool THD::check_event_subscribers(Event_tracking_class event,
 
     return !(refs != nullptr && *refs);
   }
-  audit_plugins_present = true;
   return false;
 }
 
@@ -3429,117 +3442,15 @@ bool THD::event_notify(struct st_mysql_event_generic *event_data) {
   auto cleanup_guard =
       create_scope_guard([&] { this->pop_event_tracking_data(); });
 
-  bool retval = false;
+  if (srv_event_call_plugin_handles(event_data)) return true;
 
-  if (audit_plugins_present) {
-    /* Notify all plugins first */
-    switch (event_data->event_class) {
-      case Event_tracking_class::AUTHENTICATION:
-        retval |= (srv_event_tracking_authentication->notify(
-                      reinterpret_cast<
-                          const mysql_event_tracking_authentication_data *>(
-                          event_data->event)))
-                      ? true
-                      : false;
-        break;
-      case Event_tracking_class::COMMAND:
-        retval |=
-            (srv_event_tracking_command->notify(
-                reinterpret_cast<const mysql_event_tracking_command_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::CONNECTION:
-        retval |=
-            (srv_event_tracking_connection->notify(
-                reinterpret_cast<const mysql_event_tracking_connection_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::GENERAL:
-        retval |=
-            (srv_event_tracking_general->notify(
-                reinterpret_cast<const mysql_event_tracking_general_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::GLOBAL_VARIABLE:
-        retval |= (srv_event_tracking_global_variable->notify(
-                      reinterpret_cast<
-                          const mysql_event_tracking_global_variable_data *>(
-                          event_data->event)))
-                      ? true
-                      : false;
-        break;
-      case Event_tracking_class::MESSAGE:
-        retval |=
-            (srv_event_tracking_message->notify(
-                reinterpret_cast<const mysql_event_tracking_message_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::PARSE:
-        retval |= (srv_event_tracking_parse->notify(
-                      reinterpret_cast<mysql_event_tracking_parse_data *>(
-                          const_cast<void *>(event_data->event))))
-                      ? true
-                      : false;
-        break;
-      case Event_tracking_class::QUERY:
-        retval |= (srv_event_tracking_query->notify(
-                      reinterpret_cast<const mysql_event_tracking_query_data *>(
-                          event_data->event)))
-                      ? true
-                      : false;
-        break;
-      case Event_tracking_class::SHUTDOWN:
-        retval |=
-            (srv_event_tracking_lifecycle->notify_shutdown(
-                reinterpret_cast<const mysql_event_tracking_shutdown_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::STARTUP:
-        retval |=
-            (srv_event_tracking_lifecycle->notify_startup(
-                reinterpret_cast<const mysql_event_tracking_startup_data *>(
-                    event_data->event)))
-                ? true
-                : false;
-        break;
-      case Event_tracking_class::STORED_PROGRAM:
-        retval |= (srv_event_tracking_stored_program->notify(
-                      reinterpret_cast<
-                          const mysql_event_tracking_stored_program_data *>(
-                          event_data->event)))
-                      ? true
-                      : false;
-        break;
-      case Event_tracking_class::TABLE_ACCESS:
-        retval |= (srv_event_tracking_table_access->notify(
-                      reinterpret_cast<
-                          const mysql_event_tracking_table_access_data *>(
-                          event_data->event)))
-                      ? true
-                      : false;
-        break;
-      default:
-        assert(false);
-        break;
-    };
-  }
-
-  if (events_cache_ == nullptr || !events_cache_->valid()) return retval;
+  if (events_cache_ == nullptr || !events_cache_->valid()) return false;
 
   const my_h_service *refs{nullptr};
 
-  if (events_cache_->get(event_data->event_class, &refs)) return retval;
+  if (events_cache_->get(event_data->event_class, &refs)) return false;
 
+  bool retval = false;
   switch (event_data->event_class) {
     case Event_tracking_class::AUTHENTICATION: {
       for (const my_h_service *one = refs; *one; ++one) {
