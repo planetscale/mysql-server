@@ -11,8 +11,9 @@ while ($scan_count)
 }
 
 # Count TC ApiConnectRecords not in states
+#   1 (CS_DISCONNCTED)
 #   7 (CS_RESTART)
-select count(1) into @acc_count from ndbinfo.ndb$transactions_full where state != 7;
+select count(1) into @acc_count from ndbinfo.ndb$transactions_full where state != 7 and state != 1;
 
 let $api_conn_count=query_get_value(select @acc_count as acc, acc, 1);
 --enable_result_log
