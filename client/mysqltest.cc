@@ -7333,8 +7333,48 @@ bool match_delimiter(int c, const char *delim, size_t length) {
   return false;
 }
 
+/* This function checks whether the delimiter has already been changed
+   or if the current line changes the delimiter to '$$' */
+bool check_delimiter_change(const char *str) {
+  const char *line = str;
+  const char *delimiter_string = "delimiter";
+  char next = my_getc(cur_file->file);
+  DBUG_TRACE;
+  my_ungetc(next);
+  if (*delimiter != ';' || next != '$') {
+    return true;
+  }
+
+  int space_count = 0;
+  while (std::isspace(*(--line))) {
+    space_count++;
+  }
+  if (space_count == 0) {
+    return false;
+  }
+  delimiter_string += 7;
+  for (int i = 0; i < 9; i++) {
+    if (*delimiter_string-- != std::tolower(*line--)) {
+      return false;
+    }
+  }
+  DBUG_PRINT("Info", ("Change of delimiter detected"));
+  return true;
+}
+
 static bool end_of_query(int c) {
   return match_delimiter(c, delimiter, delimiter_length);
+}
+
+bool check_dollar_quote(int c, const char *str) {
+  if (c != '$') return false;
+  const char *line = str;
+  char next_c = my_getc(cur_file->file);
+  my_ungetc(next_c);
+  if (next_c == ' ' || next_c == '\n' || next_c == '\0') {
+    if (std::isspace(*(--line))) return true;
+  }
+  return false;
 }
 
 /*
@@ -7364,7 +7404,7 @@ static bool end_of_query(int c) {
 static int read_line(char *buf, int size) {
   char c, last_quote = 0, last_char = 0;
   char *p = buf, *buf_end = buf + size - 1;
-  int skip_char = 0;
+  int skip_char = 0, dollar_quoted = 0;
   int query_comment = 0, query_comment_start = 0, query_comment_end = 0;
   bool have_slash = false;
 
@@ -7373,7 +7413,8 @@ static int read_line(char *buf, int size) {
     R_Q,
     R_SLASH_IN_Q,
     R_COMMENT,
-    R_LINE_START
+    R_LINE_START,
+    R_DOLLAR_QUOTED
   } state = R_LINE_START;
   DBUG_TRACE;
 
@@ -7391,9 +7432,7 @@ static int read_line(char *buf, int size) {
       my_free(cur_file->file_name);
       cur_file->file_name = nullptr;
       if (cur_file == file_stack) {
-        /* We're back at the first file, check if
-           all { have matching }
-        */
+        /* We're back at the first file, check if all { have matching } */
         if (cur_block != block_stack) die("Missing end of block");
 
         *p = 0;
@@ -7437,6 +7476,16 @@ static int read_line(char *buf, int size) {
           if (!have_slash) {
             last_quote = c;
             state = R_Q;
+          }
+        } else if (c == '$' && !have_slash && !check_delimiter_change(p)) {
+          /* Check for start of $$ quote */
+          char next = my_getc(cur_file->file);
+          if (check_dollar_quote(next, p)) {
+            dollar_quoted = 1;
+            state = R_DOLLAR_QUOTED;
+            *p++ = next;
+          } else {
+            my_ungetc(next);
           }
         } else if (c == '/') {
           if ((query_comment_start == 0) && (query_comment == 0))
@@ -7505,20 +7554,33 @@ static int read_line(char *buf, int size) {
            */
           *p++ = c;
           *p = 0;
-          DBUG_PRINT("exit", ("Found '}' in begining of a line at line: %d",
+          DBUG_PRINT("exit", ("Found '}' in beginning of a line at line: %d",
                               cur_file->lineno));
           return 0;
         } else if (c == '\'' || c == '"' || c == '`') {
           last_quote = c;
           state = R_Q;
+        } else if (c == '$' && !have_slash && !check_delimiter_change(p)) {
+          /* Check for start of $$ quote */
+          char next = my_getc(cur_file->file);
+          if (check_dollar_quote(next, p)) {
+            dollar_quoted = true;
+            state = R_DOLLAR_QUOTED;
+            *p++ = next;
+          } else {
+            my_ungetc(next);
+          }
         } else
           state = R_NORMAL;
         break;
 
       case R_Q:
-        if (c == last_quote)
-          state = R_NORMAL;
-        else if (c == '\\')
+        if (c == last_quote) {
+          if (dollar_quoted == 1)
+            state = R_DOLLAR_QUOTED;
+          else
+            state = R_NORMAL;
+        } else if (c == '\\')
           state = R_SLASH_IN_Q;
         else if (query_comment)
           state = R_NORMAL;
@@ -7526,6 +7588,24 @@ static int read_line(char *buf, int size) {
 
       case R_SLASH_IN_Q:
         state = R_Q;
+        break;
+
+      case R_DOLLAR_QUOTED:
+        if (c == '\'' || c == '"' || c == '`') {
+          if (!have_slash) {
+            last_quote = c;
+            state = R_Q;
+          }
+        } else if (c == '$') {
+          char next = my_getc(cur_file->file);
+          if (next == '$') {
+            *p++ = next;
+            state = R_NORMAL;
+            dollar_quoted = 0;
+          } else {
+            my_ungetc(next);
+          }
+        }
         break;
     }
 
