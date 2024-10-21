@@ -3604,7 +3604,7 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
             theNdbCon->ptr2int());
         setErrorCode(4008);
         /**
-         * Set theReleaseOnClose so that we do not reuse kernel
+         * Set theForceReleaseOnClose so that we do not reuse kernel
          * side ApiConnectRecord which is in unknown state
          */
         m_api_receivers_count = 0;
