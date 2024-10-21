@@ -3604,13 +3604,20 @@ int NdbScanOperation::close_impl(bool forceSend, PollGuard *poll_guard) {
             theNdbCon->ptr2int());
         setErrorCode(4008);
         /**
-         * Fallthrough will set theReleaseOnClose so that we
-         * do not reuse kernel side ApiConnectRecord which is
-         * in unknown state
+         * Set theReleaseOnClose so that we do not reuse kernel
+         * side ApiConnectRecord which is in unknown state
          */
-        [[fallthrough]];
+        m_api_receivers_count = 0;
+        m_conf_receivers_count = 0;
+        m_sent_receivers_count = 0;
+        theNdbCon->theForceReleaseOnClose = true;
+        return -1;
       case -2:
         /* Node failure */
+        /**
+         * Set theReleaseOnClose as kernel side ApiConnectRecord
+         * is gone
+         */
         m_api_receivers_count = 0;
         m_conf_receivers_count = 0;
         m_sent_receivers_count = 0;

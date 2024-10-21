@@ -2251,12 +2251,12 @@ class Dbtc : public SimulatedBlock {
   // Generated statement blocks
   void warningHandlerLab(Signal *signal, int line);
   [[noreturn]] void systemErrorLab(Signal *signal, int line);
-  void sendSignalErrorRefuseLab(Signal *signal,
-                                ApiConnectRecordPtr apiConnectptr);
+  void handleSignalStateProblem(Signal *signal,
+                                ApiConnectRecordPtr apiConnectptr,
+                                NodeId signalNodeId, Uint32 context);
   void scanTabRefLab(Signal *signal, Uint32 errCode,
                      ApiConnectRecord *regApiPtr);
   void diFcountReqLab(Signal *signal, ScanRecordPtr, ApiConnectRecordPtr);
-  void signalErrorRefuseLab(Signal *signal, ApiConnectRecordPtr apiConnectptr);
   void abort080Lab(Signal *signal);
   void abortScanLab(Signal *signal, ScanRecordPtr, Uint32 errCode,
                     bool not_started, ApiConnectRecordPtr apiConnectptr);
