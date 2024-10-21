@@ -2051,10 +2051,11 @@ private:
   // Generated statement blocks
   void warningHandlerLab(Signal* signal, int line);
   void systemErrorLab(Signal* signal, int line);
-  void sendSignalErrorRefuseLab(Signal* signal);
+  void handleSignalStateProblem(Signal *signal,
+                                ApiConnectRecordPtr apiConnectptr,
+                                NodeId signalNodeId, Uint32 context);
   void scanTabRefLab(Signal* signal, Uint32 errCode);
   void diFcountReqLab(Signal* signal, ScanRecordPtr);
-  void signalErrorRefuseLab(Signal* signal);
   void abort080Lab(Signal* signal);
   void sendKeyInfoTrain(Signal* signal,
                         BlockReference TBRef,

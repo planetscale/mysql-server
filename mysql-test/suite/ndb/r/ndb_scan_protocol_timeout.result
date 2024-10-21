@@ -304,6 +304,70 @@ Leaks
 select count(1) as ops from ndbinfo.cluster_operations;
 ops
 0
+
+-------------------------------
+SPJ request timeout due to load
+-------------------------------
+Standalone
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b where t1.a > 70;
+ERROR HY000: Got error 4008 'Receive from NDB failed' from NDBCLUSTER
+Check pk lookups
+Clear error condition
+Check transaction leaks
+Leaks
+0
+select count(1) as ops from ndbinfo.cluster_operations;
+ops
+0
+
+-------------------------------
+SPJ request timeout due to load
+-------------------------------
+As part of a stateful transaction
+begin;
+insert into test.t1 values (54,54);
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b where t1.a > 70;
+ERROR HY000: Got error 4008 'Receive from NDB failed' from NDBCLUSTER
+Clear error condition
+Check pk lookups
+Check transaction leaks
+Leaks
+0
+select count(1) as ops from ndbinfo.cluster_operations;
+ops
+0
+
+------------------------------
+SPJ request timeout due to bug
+------------------------------
+Standalone
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b;
+ERROR HY000: Got error 4008 'Receive from NDB failed' from NDBCLUSTER
+Check pk lookups
+Clear error condition
+Check transaction leaks
+Leaks
+1
+select count(1) as ops from ndbinfo.cluster_operations;
+ops
+0
+
+-------------------------------
+SPJ request timeout due to bug
+------------------------------
+As part of a stateful transaction
+begin;
+insert into test.t1 values (54,54);
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b;
+ERROR HY000: Got error 4008 'Receive from NDB failed' from NDBCLUSTER
+Check pk lookups
+Clear error condition
+Check transaction leaks
+Leaks
+1
+select count(1) as ops from ndbinfo.cluster_operations;
+ops
+0
 SET SESSION debug=@save_debug;
 Normal requests
 ---------------

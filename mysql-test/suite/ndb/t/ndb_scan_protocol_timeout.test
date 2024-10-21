@@ -2,6 +2,7 @@
 --echo # We are using some debug-only features in this test
 -- source include/have_debug.inc
 -- source have_ndb_error_insert.inc
+-- source include/have_query_cache_disabled.inc
 
 #
 # Test of scan protocol timeout behaviour
@@ -37,6 +38,12 @@
 #                 the ability of scan + transaction
 #                 close() to cleanup a scan
 #
+#                 17123 (SPJ)
+#                 SPJ blocks SCAN_FRAGCONF processing
+#                 This stalls nextResult() and also
+#                 the ability of scan + transaction
+#                 close() to cleanup
+#
 # Timeout is expected to be mostly a result of
 # operations taking too long, and occasionally a
 # result of bugs
@@ -45,9 +52,9 @@
 # 'scan taking too long' and 8124 to represent
 # 'problem closing scan / bugs'.
 #
-# Ordered (e.g. by API) and unordered scans are taken
-# separately as they have separate implementations
-# inside NdbApi
+# Ordered (e.g. by API) and unordered scans and SPJ
+# scans are taken separately as they have separate
+# implementations inside NdbApi
 #
 # A .cnf file is used to avoid TDDT getting in the
 # way of API timeout testing
@@ -441,6 +448,169 @@ eval select $api_conn_count - $start_api_conn_count as Leaks;
 select count(1) as ops from ndbinfo.cluster_operations;
 #select * from ndbinfo.cluster_operations;
 
+--echo
+--echo -------------------------------
+--echo SPJ request timeout due to load
+--echo -------------------------------
+--echo Standalone
+
+# Error insert 5112 causes SPJ request timeout, but close is unaffected
+--exec $NDB_MGM -e "all error 5112" >> $NDB_TOOLS_OUTPUT
+
+--sorted_result
+--error 1296
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b where t1.a > 70;
+
+# Checking pk lookups checks that all usable ApiConnectRecords can
+# be used for a different transaction
+--echo Check pk lookups
+--disable_query_log
+--disable_result_log
+--let $i=0
+while ($i < $keycount)
+{
+  --eval select * from test.t1 where a=$i;
+  --inc $i
+}
+--enable_result_log
+--enable_query_log
+
+--echo Clear error condition
+--exec $NDB_MGM -e "all error 0" >> $NDB_TOOLS_OUTPUT
+--sleep $STABILISATION_SECS
+
+--echo Check transaction leaks
+--source ndb_get_api_connect_count.inc
+--disable_query_log
+eval select $api_conn_count - $start_api_conn_count as Leaks;
+--let $start_api_conn_count = $api_conn_count
+--enable_query_log
+select count(1) as ops from ndbinfo.cluster_operations;
+
+--echo
+--echo -------------------------------
+--echo SPJ request timeout due to load
+--echo -------------------------------
+--echo As part of a stateful transaction
+
+# Error insert 5112 causes SPJ request timeout, but close is unaffected
+--exec $NDB_MGM -e "all error 5112" >> $NDB_TOOLS_OUTPUT
+
+begin;
+insert into test.t1 values (54,54);
+
+--sorted_result
+--error 1296
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b where t1.a > 70;
+
+--echo Clear error condition
+--exec $NDB_MGM -e "all error 0" >> $NDB_TOOLS_OUTPUT
+--sleep $STABILISATION_SECS
+
+# Checking pk lookups checks that all usable ApiConnectRecords can
+# be used for a different transaction
+--echo Check pk lookups
+--disable_query_log
+--disable_result_log
+--let $i=0
+while ($i < $keycount)
+{
+  --eval select * from test.t1 where a=$i;
+  --inc $i
+}
+--enable_result_log
+--enable_query_log
+
+--echo Check transaction leaks
+--source ndb_get_api_connect_count.inc
+--disable_query_log
+eval select $api_conn_count - $start_api_conn_count as Leaks;
+--let $start_api_conn_count = $api_conn_count
+--enable_query_log
+select count(1) as ops from ndbinfo.cluster_operations;
+
+--echo
+--echo ------------------------------
+--echo SPJ request timeout due to bug
+--echo ------------------------------
+--echo Standalone
+
+# Error insert 17123 causes SPJ request and close() to timeout
+--exec $NDB_MGM -e "all error 17123" >> $NDB_TOOLS_OUTPUT
+
+--sorted_result
+--error 1296
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b;
+
+# Checking pk lookups checks that all usable ApiConnectRecords can
+# be used for a different transaction
+--echo Check pk lookups
+--disable_query_log
+--disable_result_log
+--let $i=0
+while ($i < $keycount)
+{
+  --eval select * from test.t1 where a=$i;
+  --inc $i
+}
+--enable_result_log
+--enable_query_log
+
+--echo Clear error condition
+--exec $NDB_MGM -e "all error 0" >> $NDB_TOOLS_OUTPUT
+--sleep $STABILISATION_SECS
+
+--echo Check transaction leaks
+--source ndb_get_api_connect_count.inc
+--disable_query_log
+eval select $api_conn_count - $start_api_conn_count as Leaks;
+--let $start_api_conn_count = $api_conn_count
+--enable_query_log
+select count(1) as ops from ndbinfo.cluster_operations;
+
+
+--echo
+--echo -------------------------------
+--echo SPJ request timeout due to bug
+--echo ------------------------------
+--echo As part of a stateful transaction
+# Error insert 17123 causes SPJ request and close() to timeout
+--exec $NDB_MGM -e "all error 17123" >> $NDB_TOOLS_OUTPUT
+
+begin;
+insert into test.t1 values (54,54);
+--sorted_result
+--error 1296
+select t1.b, t2.b from test.t1 join test.t2 on t2.a = t1.b;
+
+# Checking pk lookups checks that all usable ApiConnectRecords can
+# be used for a different transaction
+--echo Check pk lookups
+--disable_query_log
+--disable_result_log
+--let $i=0
+while ($i < $keycount)
+{
+  --eval select * from test.t1 where a=$i;
+  --inc $i
+}
+--enable_result_log
+--enable_query_log
+
+--echo Clear error condition
+--exec $NDB_MGM -e "all error 0" >> $NDB_TOOLS_OUTPUT
+--sleep $STABILISATION_SECS
+
+--echo Check transaction leaks
+--source ndb_get_api_connect_count.inc
+--disable_query_log
+eval select $api_conn_count - $start_api_conn_count as Leaks;
+--let $start_api_conn_count = $api_conn_count
+--enable_query_log
+select count(1) as ops from ndbinfo.cluster_operations;
+
+
+
 SET SESSION debug=@save_debug;
 
 # Show that after all of the above, with error insertions disabled,
@@ -469,4 +639,3 @@ select count(1) as ops from ndbinfo.cluster_operations;
 drop table test.t1;
 drop table test.t2;
 
---remove_file $NDB_TOOLS_OUTPUT

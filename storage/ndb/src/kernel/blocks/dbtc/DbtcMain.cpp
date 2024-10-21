@@ -1781,34 +1781,55 @@ void Dbtc::execTCRELEASEREQ(Signal* signal)
 /****************************************************************************/
 // Error Handling for TCKEYREQ messages
 /****************************************************************************/
-void Dbtc::signalErrorRefuseLab(Signal* signal) 
-{
+void Dbtc::handleSignalStateProblem(Signal *signal,
+                                    ApiConnectRecordPtr const apiConnectptr,
+                                    NodeId signalNodeId, Uint32 context) {
   ptrGuard(apiConnectptr);
-  if (apiConnectptr.p->apiConnectstate != CS_DISCONNECTED) {
-    jam();
-    apiConnectptr.p->abortState = AS_IDLE;
-    apiConnectptr.p->apiConnectstate = CS_ABORTING;
-  }//if
-  sendSignalErrorRefuseLab(signal);
-}//Dbtc::signalErrorRefuseLab()
+  g_eventLogger->warning(
+      "TC %u : Signal from node %u in context %u finds ApiConnectRecord %u "
+      "in unexpected state %u",
+      instance(), signalNodeId, context, apiConnectptr.i,
+      apiConnectptr.p->apiConnectstate);
 
-void Dbtc::sendSignalErrorRefuseLab(Signal* signal) 
-{
-  ndbassert(false);
-  ptrGuard(apiConnectptr);
+  /* Handle signal sender */
+  /* Data node involved in errors -> crash, API -> disconnect */
+  ndbrequire(getNodeInfo(signalNodeId).getType() == NODE_TYPE_API);
+  g_eventLogger->warning("TC %u : Disconnecting signal sending node %u",
+                         instance(), signalNodeId);
+
+  /* Ask QMGR to eject signal sending API */
+  signal->theData[0] = 900;
+  signal->theData[1] = signalNodeId;
+  sendSignal(QMGR_REF, GSN_DUMP_STATE_ORD, signal, 2, JBA);
+
+  /* Handle record owner */
   if (apiConnectptr.p->apiConnectstate != CS_DISCONNECTED) {
-    jam();
-    /* Force state print */
-    printState(signal, 12, true);
-    ndbrequire(false);
-    signal->theData[0] = apiConnectptr.p->ndbapiConnect;
-    signal->theData[1] = signal->theData[ttransid_ptr];
-    signal->theData[2] = signal->theData[ttransid_ptr + 1];
-    signal->theData[3] = ZSIGNAL_ERROR;
-    sendSignal(apiConnectptr.p->ndbapiBlockref, GSN_TCROLLBACKREP, 
-	       signal, 4, JBB);
+    const NodeId acrOwnerNodeId = refToNode(apiConnectptr.p->ndbapiBlockref);
+    if (acrOwnerNodeId == signalNodeId) {
+      jam();
+      return;
+    }
+
+    g_eventLogger->warning(
+        "TC %u : ApiConnectRecord %u receiving signal in unexpected state %u "
+        "from node %u owned by different node %u",
+        instance(), apiConnectptr.i, apiConnectptr.p->apiConnectstate,
+        signalNodeId, acrOwnerNodeId);
+
+    /* Data node errors -> crash, API -> disconnect */
+    ndbrequire(getNodeInfo(acrOwnerNodeId).getType() == NODE_TYPE_API);
+    g_eventLogger->warning("TC %u : Disconnecting record owning node %u",
+                           instance(), acrOwnerNodeId);
+
+    /* Ask QMGR to eject API */
+    signal->theData[0] = 900;
+    signal->theData[1] = acrOwnerNodeId;
+    sendSignal(QMGR_REF, GSN_DUMP_STATE_ORD, signal, 2, JBA);
   }
-}//Dbtc::sendSignalErrorRefuseLab()
+
+  /* Do nothing more - API disconnection is responsible for cleanup */
+}  // Dbtc::handleSignalStateProblem
+ 
 
 void Dbtc::abortBeginErrorLab(Signal* signal) 
 {
@@ -1832,7 +1853,7 @@ void Dbtc::printState(Signal* signal, int place, bool force_trace)
   if (!force_trace)
     return;
   
-  ndbout << "-- Dbtc::printState -- " << endl;
+  ndbout << "-- Dbtc::printState(" << instance() << ") -- " << endl;
   ndbout << "Received from place = " << place
 	 << " apiConnectptr.i = " << apiConnectptr.i
 	 << " apiConnectstate = " << apiConnectptr.p->apiConnectstate << endl;
@@ -1887,8 +1908,7 @@ Dbtc::TCKEY_abort(Signal* signal, int place)
     return;
   case 1:
     jam();
-    printState(signal, 3);
-    sendSignalErrorRefuseLab(signal);
+    ndbrequire(false); // Not used currently
     return;
   case 2:{
     printState(signal, 6);
@@ -2181,8 +2201,7 @@ Dbtc::TCKEY_abort(Signal* signal, int place)
 
   case 55:
     jam();
-    printState(signal, 5);
-    sendSignalErrorRefuseLab(signal);
+    ndbrequire(false); // Not used currently
     return;
     
   case 56:{
@@ -2346,12 +2365,8 @@ void Dbtc::execKEYINFO(Signal* signal)
     return;     /* IGNORE */
   case CS_CONNECTED:
     jam();
-    /****************************************************************>*/
-    /*       MOST LIKELY CAUSED BY A MISSED SIGNAL. SEND REFUSE AND   */
-    /*       SET STATE TO ABORTING.                                   */
-    /****************************************************************>*/
-    printState(signal, 11);
-    signalErrorRefuseLab(signal);
+    handleSignalStateProblem(signal, apiConnectptr,
+                             refToNode(signal->getSendersBlockRef()), 1);
     return;
   case CS_STARTED:
     jam();
@@ -3150,7 +3165,8 @@ void Dbtc::execTCKEYREQ(Signal* signal)
       compare_transid1 = compare_transid1 | compare_transid2;
       if (compare_transid1 != 0) {
         releaseSections(handle);
-	TCKEY_abort(signal, 1);
+	handleSignalStateProblem(signal, apiConnectptr,
+                                 refToNode(sendersBlockRef), 2);
 	return;
       }//if
     }
@@ -3231,7 +3247,8 @@ void Dbtc::execTCKEYREQ(Signal* signal)
      * THUS THERE IS NO ACTION FROM THE API THAT CAN SPEED UP THIS PROCESS.
      *---------------------------------------------------------------------*/
     releaseSections(handle);
-    TCKEY_abort(signal, 55);
+    handleSignalStateProblem(signal, apiConnectptr,
+                             refToNode(sendersBlockRef), 3);
     return;
   }//switch
   
