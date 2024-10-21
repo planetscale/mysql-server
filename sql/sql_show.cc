@@ -1512,7 +1512,8 @@ void append_identifier_with_backtick(String *packet, const char *name,
 void append_identifier(const THD *thd, String *packet, const char *name,
                        size_t length, const CHARSET_INFO *from_cs,
                        const CHARSET_INFO *to_cs) {
-  assert(thd);
+  if (thd == nullptr)
+    return append_identifier_with_backtick(packet, name, length);
   const char *name_end;
   char quote_char;
   int q;
@@ -1536,8 +1537,7 @@ void append_identifier(const THD *thd, String *packet, const char *name,
     cs_info = to_cs;
   }
 
-  q = thd != nullptr ? get_quote_char_for_identifier(thd, to_name, to_length)
-                     : '`';
+  q = get_quote_char_for_identifier(thd, to_name, to_length);
 
   if (q == EOF) {
     packet->append(to_name, to_length, packet->charset());
