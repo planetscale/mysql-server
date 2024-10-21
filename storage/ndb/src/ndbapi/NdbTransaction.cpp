@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2003, 2021, Oracle and/or its affiliates.
+   Copyright (c) 2003, 2024, Oracle and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -75,6 +75,7 @@ NdbTransaction::NdbTransaction( Ndb* aNdb ) :
   theTransactionIsStarted(false),
   theDBnode(0),
   theReleaseOnClose(false),
+  theForceReleaseOnClose(false),
   // Scan operations
   m_waitForReply(true),
   m_theFirstScanOperation(NULL),
@@ -619,6 +620,8 @@ NdbTransaction::executeNoBlobs(NdbTransaction::ExecType aTypeOfExec,
                              "occur. You have likely hit a NDB Bug. Please "
                              "file a bug.");
         DBUG_PRINT("error",("This timeout should never occure, execute()"));
+        // TODO : Consider removing inline rollback, leave until transaction
+        // release time
         g_eventLogger->error("Forcibly trying to rollback txn (%p"
                              ") to try to clean up data node resources.",
                              this);
@@ -627,6 +630,7 @@ NdbTransaction::executeNoBlobs(NdbTransaction::ExecType aTypeOfExec,
         theError.status= NdbError::PermanentError;
         theError.classification= NdbError::TimeoutExpired;
         setOperationErrorCodeAbort(4012); // ndbd timeout
+        theForceReleaseOnClose = true;
         DBUG_RETURN(-1);
       }//if
 

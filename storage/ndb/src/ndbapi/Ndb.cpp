@@ -1182,6 +1182,19 @@ Ndb::closeTransaction(NdbTransaction* aConnection)
   if (aConnection->theNodeSequence != seq)
   {
     aConnection->theReleaseOnClose = true;
+    aConnection->theForceReleaseOnClose = false;
+  }
+
+  if (aConnection->theForceReleaseOnClose) {
+#ifdef VM_TRACE
+    g_eventLogger->info(
+        "closeTransaction() forcing release of "
+        "kernel state");
+#endif
+    aConnection->theReleaseOnClose = false;
+    aConnection->theForceReleaseOnClose = false;
+    releaseConnectToNdb(aConnection);
+    DBUG_VOID_RETURN;
   }
   
   if (aConnection->theReleaseOnClose == false) 
@@ -1193,6 +1206,10 @@ Ndb::closeTransaction(NdbTransaction* aConnection)
 
     DBUG_VOID_RETURN;
   } else {
+    /**
+     * The kernel side of this transaction has gone
+     * recycle the API object
+     */
     aConnection->theReleaseOnClose = false;
     releaseNdbCon(aConnection);
   }//if

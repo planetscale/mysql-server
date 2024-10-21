@@ -3515,7 +3515,8 @@ NdbQueryImpl::closeTcCursor(bool forceSend)
           g_eventLogger->info(
               "NdbQueryOperation :: closeTcCursor() 4008 scan close failed");
           /* Kernel ApiConnectRecord in unknown state, cannot use it */
-          m_scanTransaction->theReleaseOnClose = true;
+          /* Still connected, so request TC to release */
+          m_scanTransaction->theForceReleaseOnClose = true;
         } else
           setFetchTerminated(Err_NodeFailCausedAbort,false);
       }
