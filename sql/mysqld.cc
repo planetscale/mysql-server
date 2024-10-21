@@ -8418,6 +8418,13 @@ static int init_server_components() {
   }
 #endif
 
+  // Need to call this before bootstrap is started so that EVENT statements
+  // which depend on TZ-init can be run by the bootstrap scripts (including
+  // fixing of sys schema during upgrade).
+  if (my_tz_minimal_init()) {
+    unireg_abort(MYSQLD_ABORT_EXIT);
+  }
+
   bool recreate_non_dd_based_system_view = dd::upgrade::I_S_upgrade_required();
   if (!is_help_or_validate_option() && !opt_initialize &&
       !dd::upgrade::no_server_upgrade_required()) {
@@ -9855,7 +9862,7 @@ int mysqld_main(int argc, char **argv)
   */
   if (opt_initialize) init_acl_memory();
 
-  if (abort || my_tz_init((THD *)nullptr, default_tz_name, opt_initialize) ||
+  if (abort || my_tz_full_init(default_tz_name, opt_initialize) ||
       grant_init(opt_noacl)) {
     set_connection_events_loop_aborted(true);
 

@@ -625,6 +625,13 @@ bool fix_sys_schema(THD *thd) {
              : ER_SERVER_UPGRADE_SYS_SCHEMA);
   for (query_ptr = &mysql_sys_schema[0]; *query_ptr != nullptr; query_ptr++)
     if (ignore_error_and_execute(thd, *query_ptr)) return true;
+  DBUG_EXECUTE_IF(
+      "try_event_in_fix_sys_schema",
+      ignore_error_and_execute(
+          thd,
+          "CREATE DEFINER = 'mysql.sys'@'localhost' EVENT sys_test_event ON "
+          "SCHEDULE EVERY 1 MINUTE ENABLE DO SELECT 1");
+      ignore_error_and_execute(thd, "DROP EVENT sys_test_event"););
   thd->mem_root->Clear();
   return false;
 }
