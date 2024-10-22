@@ -116,6 +116,7 @@ int main() {
   ok1(cstrbuf_copy({buf + 3, 5}, "Mugge vigge") == 1);
   ok1(cstrbuf_format(ndb::span(buf + 19, buf + 27), "Mugge %zu", sizeof(buf)) ==
       1);
+  ok1(cstrbuf_format(buf, "Mugge %zu", sizeof(buf)) == 0);
 
   std::vector<char> vec(10);
   cstrbuf h(vec);
