@@ -103,6 +103,7 @@ WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=10)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
+    -> Index range scan on t3 using PRIMARY over (27 < f1)  (rows=35)
 
 EXPLAIN SELECT /*+ NO_ICP(t3@qb1 f3_idx) */ f2 FROM
 (SELECT /*+ QB_NAME(QB1) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
@@ -110,6 +111,7 @@ WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=10)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
+    -> Index range scan on t3 using PRIMARY over (27 < f1)  (rows=35)
 
 EXPLAIN SELECT /*+ NO_ICP(t3@qb1) */ f2 FROM
 (SELECT /*+ QB_NAME(QB1) */ f2, f3, f1 FROM t3 WHERE f1 > 27 AND f3 = 'poiu') AS TD
@@ -117,6 +119,7 @@ WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=10)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
+    -> Index range scan on t3 using PRIMARY over (27 < f1)  (rows=35)
 
 # Expected warning for f1_idx key, unresolved name.
 EXPLAIN SELECT f2 FROM
@@ -125,6 +128,7 @@ WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=10)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
+    -> Index range scan on t3 using PRIMARY over (27 < f1)  (rows=35)
 
 Warnings:
 Warning	3128	Unresolved name `t3`@`select#2` `f1_idx` for NO_ICP hint
@@ -135,6 +139,7 @@ WHERE TD.f1 > 27 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=10)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 27 < f1)  (rows=10)
+    -> Index range scan on t3 using PRIMARY over (27 < f1)  (rows=35)
 
 Warnings:
 Warning	3128	Unresolved name `t3`@`select#2` `f1_idx` for NO_ICP hint
@@ -545,6 +550,7 @@ WHERE TD.f1 > 2 AND TD.f3 = 'poiu';
 EXPLAIN
 -> Intersect rows sorted by row ID  (rows=16)
     -> Index range scan on t3 using f3_idx over (f3 = 'poiu' AND 2 < f1)  (rows=16)
+    -> Index range scan on t3 using PRIMARY over (2 < f1)  (rows=54)
 
 Warnings:
 Warning	1064	Optimizer hint syntax error near 't3@qb1) */ f2 FROM

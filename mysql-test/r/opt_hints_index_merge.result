@@ -226,6 +226,7 @@ EXPLAIN
     -> Filter: ((t1.f3 = 'c') and (t1.f2 = 3) and (t1.f5 > ''))  (rows=0.167)
         -> Intersect rows sorted by row ID  (rows=1)
             -> Index range scan on t1 using f3 over (f3 = 'c' AND '' < f5)  (rows=1)
+            -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT /*+ INDEX_MERGE(t1 f2, PRIMARY) */ count(*) FROM t1 WHERE f2 = 3 AND f5 > '' AND f3 = 'c';
 EXPLAIN
@@ -233,6 +234,7 @@ EXPLAIN
     -> Filter: ((t1.f3 = 'c') and (t1.f2 = 3) and (t1.f5 > ''))  (rows=14)
         -> Intersect rows sorted by row ID  (rows=56.9)
             -> Index range scan on t1 using f2 over (f2 = 3 AND '' < f5)  (rows=64)
+            -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT /*+ INDEX_MERGE(t1 f2, f4, f5) */ f3 FROM t1 WHERE f4 = 'h' AND f2 = 2 AND f3 = 'b';
 EXPLAIN
@@ -334,6 +336,7 @@ EXPLAIN
     -> Filter: ((t1.f3 = 'c') and (t1.f2 = 3) and (t1.f5 > ''))  (rows=0.167)
         -> Intersect rows sorted by row ID  (rows=1)
             -> Index range scan on t1 using f3 over (f3 = 'c' AND '' < f5)  (rows=1)
+            -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT /*+ NO_INDEX_MERGE(t1 PRIMARY) */ count(*) FROM t1 WHERE f2 = 3 AND f5 > '' AND f3 = 'c';
 EXPLAIN
@@ -347,6 +350,7 @@ EXPLAIN
     -> Filter: ((t1.f3 = 'c') and (t1.f2 = 3) and (t1.f5 > ''))  (rows=0.167)
         -> Intersect rows sorted by row ID  (rows=1)
             -> Index range scan on t1 using f3 over (f3 = 'c' AND '' < f5)  (rows=1)
+            -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT /*+ NO_INDEX_MERGE(t1 f3) */ count(*) FROM t1 WHERE f2 = 3 AND f5 > '' AND f3 = 'c';
 EXPLAIN
@@ -587,12 +591,14 @@ EXPLAIN
 -> Filter: ((t1.f2 = 3) and (t1.f4 = 'f') and (t1.f5 > ''))  (rows=0.167)
     -> Intersect rows sorted by row ID  (rows=1)
         -> Index range scan on t1 using f4 over (f4 = 'f' AND '' < f5)  (rows=1)
+        -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT /*+ INDEX_MERGE(t1) */ f3 FROM t1 WHERE f4 = 'f' AND f2 = 3 AND f5 > '';
 EXPLAIN
 -> Filter: ((t1.f2 = 3) and (t1.f4 = 'f') and (t1.f5 > ''))  (rows=0.167)
     -> Intersect rows sorted by row ID  (rows=1)
         -> Index range scan on t1 using f4 over (f4 = 'f' AND '' < f5)  (rows=1)
+        -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT f3 FROM t1 WHERE f2 = 3 AND f4 = 'g' AND f5 = '';
 EXPLAIN
@@ -618,6 +624,7 @@ EXPLAIN
 -> Filter: ((t1.f4 = '') and (t1.f2 = 3) and (t1.f5 > ''))  (rows=14)
     -> Intersect rows sorted by row ID  (rows=56.9)
         -> Index range scan on t1 using f2 over (f2 = 3 AND '' < f5)  (rows=64)
+        -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
 
 EXPLAIN SELECT f3 FROM t1 WHERE (f2 = 3 AND f4 = '' AND f5 > '') OR (f7 = 'd' AND f6 = 'e');
 EXPLAIN
@@ -639,6 +646,7 @@ EXPLAIN
     -> Deduplicate rows sorted by row ID  (rows=57)
         -> Intersect rows sorted by row ID  (rows=56.9)
             -> Index range scan on t1 using f2 over (f2 = 3 AND '' < f5)  (rows=64)
+            -> Index range scan on t1 using PRIMARY over ('' < f5)  (rows=256)
         -> Index range scan on t1 using f7 over (f7 = 'd')  (rows=1)
 
 EXPLAIN SELECT /*+ INDEX_MERGE(t1) */ f2 FROM t1 WHERE f2 = 2 AND f4 = 'g' AND f5 = '';

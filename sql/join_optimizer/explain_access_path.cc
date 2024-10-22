@@ -1342,6 +1342,10 @@ static unique_ptr<Json_object> SetObjectMembers(
       for (AccessPath *child : *path->rowid_intersection().children) {
         children->push_back({child});
       }
+      if (AccessPath *cpk_child = path->rowid_intersection().cpk_child;
+          cpk_child != nullptr) {
+        children->push_back({cpk_child});
+      }
       break;
     }
     case AccessPath::ROWID_UNION: {
