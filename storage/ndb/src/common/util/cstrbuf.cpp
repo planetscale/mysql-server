@@ -51,7 +51,7 @@ int cstrbuf_vsnprintf_noerr(char str[], size_t size, const char fmt[],
 #include "util/span.h"
 
 int main() {
-  plan(39);
+  plan(40);
 
   char buf[30];
 
