@@ -3913,6 +3913,10 @@ int ha_ndbcluster::full_table_scan(const KEY *key_info,
   options.scan_flags =
       guess_scan_flags(lm, m_table_map, m_table, table->read_set);
   options.parallel = DEFAULT_PARALLELISM;
+  DBUG_EXECUTE_IF("ndb_disk_scan", {
+    if (!(options.scan_flags & NdbScanOperation::SF_DiskScan))
+      return ER_INTERNAL_ERROR;
+  });
 
   if (use_set_part_id) {
     assert(m_user_defined_partitioning);
