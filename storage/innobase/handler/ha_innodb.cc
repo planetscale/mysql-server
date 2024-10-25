@@ -19894,7 +19894,10 @@ int ha_innobase::cmp_ref(
     }
 
     if (result) {
-      return (result);
+      if (key_part->key_part_flag & HA_REVERSE_SORT) {
+        result = -result;
+      }
+      return result;
     }
 
     ref1 += key_part->store_length;
