@@ -373,10 +373,10 @@ static bool WriteRowToChunk(
     THD *thd, Mem_root_array<ChunkPair> *chunks, bool write_to_build_chunk,
     const pack_rows::TableCollection &tables,
     const Prealloced_array<HashJoinCondition, 4> &join_conditions,
-    const uint32 xxhash_seed, bool row_has_match,
-    bool store_row_with_null_in_join_key, String *join_key_and_row_buffer) {
+    bool row_has_match, bool store_row_with_null_in_join_key,
+    String *join_key_and_row_buffer) {
   assert(!thd->is_error());
-  bool null_in_join_key = ConstructJoinKey(
+  const bool null_in_join_key = ConstructJoinKey(
       thd, join_conditions, tables.tables_bitmap(), join_key_and_row_buffer);
   if (thd->is_error()) return true;
 
@@ -391,9 +391,10 @@ static bool WriteRowToChunk(
       join_key_and_row_buffer->length() == 0
           ? kZeroKeyLengthHash
           : MY_XXH64(join_key_and_row_buffer->ptr(),
-                     join_key_and_row_buffer->length(), xxhash_seed);
+                     join_key_and_row_buffer->length(),
+                     HashJoinIterator::kChunkPartitioningHashSeed);
 
-  assert((chunks->size() & (chunks->size() - 1)) == 0);
+  assert(std::has_single_bit(chunks->size()));  // size() is a power of two.
   // Since we know that the number of chunks will be a power of two, do a
   // bitwise AND instead of (join_key_hash % chunks->size()).
   const size_t chunk_index = join_key_hash & (chunks->size() - 1);
@@ -407,20 +408,12 @@ static bool WriteRowToChunk(
   }
 }
 
-// Write all the remaining rows from the given iterator out to chunk files
-// on disk. If the function returns true, an unrecoverable error occurred
-// (IO error etc.).
-static bool WriteRowsToChunks(
-    THD *thd, RowIterator *iterator, const pack_rows::TableCollection &tables,
-    const Prealloced_array<HashJoinCondition, 4> &join_conditions,
-    const uint32 xxhash_seed, Mem_root_array<ChunkPair> *chunks,
-    bool write_to_build_chunk, bool write_rows_with_null_in_join_key,
-    table_map tables_to_get_rowid_for, String *join_key_buffer) {
+bool HashJoinIterator::WriteBuildTableToChunkFiles() {
   for (;;) {  // Termination condition within loop.
-    int res = iterator->Read();
+    int res = m_build_input->Read();
     if (res == 1) {
-      assert(thd->is_error() ||
-             thd->killed);  // my_error should have been called.
+      assert(thd()->is_error() ||
+             thd()->killed);  // my_error should have been called.
       return true;
     }
 
@@ -430,11 +423,14 @@ static bool WriteRowsToChunks(
 
     assert(res == 0);
 
-    RequestRowId(tables.tables(), tables_to_get_rowid_for);
-    if (WriteRowToChunk(thd, chunks, write_to_build_chunk, tables,
-                        join_conditions, xxhash_seed, /*row_has_match=*/false,
-                        write_rows_with_null_in_join_key, join_key_buffer)) {
-      assert(thd->is_error());  // my_error should have been called.
+    RequestRowId(m_build_input_tables.tables(), m_tables_to_get_rowid_for);
+    if (WriteRowToChunk(thd(), &m_chunk_files_on_disk,
+                        /*write_to_build_chunk=*/true, m_build_input_tables,
+                        m_join_conditions,
+                        /*row_has_match=*/false,
+                        /*store_row_with_null_in_join_key=*/false,
+                        &m_temporary_row_and_join_key_buffer)) {
+      assert(thd()->is_error());  // my_error should have been called.
       return true;
     }
   }
@@ -605,13 +601,7 @@ bool HashJoinIterator::BuildHashTable() {
         //
         // We never write out rows with NULL in condition for the build/right
         // input, as these rows will never match in a join condition.
-        if (WriteRowsToChunks(thd(), m_build_input.get(), m_build_input_tables,
-                              m_join_conditions, kChunkPartitioningHashSeed,
-                              &m_chunk_files_on_disk,
-                              true /* write_to_build_chunks */,
-                              false /* write_rows_with_null_in_join_key */,
-                              m_tables_to_get_rowid_for,
-                              &m_temporary_row_and_join_key_buffer)) {
+        if (WriteBuildTableToChunkFiles()) {
           assert(thd()->is_error() ||
                  thd()->killed);  // my_error should have been called.
           return true;
@@ -989,10 +979,9 @@ bool HashJoinIterator::WriteProbeRowToDiskIfApplicable() {
         !found_match) {
       if (on_disk_hash_join() && m_current_chunk == -1) {
         if (WriteRowToChunk(thd(), &m_chunk_files_on_disk,
-                            false /* write_to_build_chunk */,
+                            /*write_to_build_chunk=*/false,
                             m_probe_input_tables, m_join_conditions,
-                            kChunkPartitioningHashSeed, found_match,
-                            write_rows_with_null_in_join_key,
+                            found_match, write_rows_with_null_in_join_key,
                             &m_temporary_row_and_join_key_buffer)) {
           return true;
         }

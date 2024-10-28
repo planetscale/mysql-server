@@ -370,6 +370,12 @@ class HashJoinIterator final : public RowIterator {
   /// @retval true in case of error
   bool BuildHashTable();
 
+  /// Write all the remaining rows from the build table input to chunk files on
+  /// disk.
+  ///
+  /// @return True on error, false on success.
+  bool WriteBuildTableToChunkFiles();
+
   /// Read all rows from the next chunk file into the in-memory hash table.
   /// See the class comment for details.
   ///
