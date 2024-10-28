@@ -17521,6 +17521,8 @@ void Dblqh::execCOPY_FRAGREQ(Signal *signal) {
     regTcPtr->transactionState = TcConnectionrec::SCAN_STATE_USED;
   }
 
+  acquire_frag_scan_access_new(prim_tab_fragptr.p, tcConnectptr.p);
+
   {
     AccScanReq *req = (AccScanReq *)&signal->theData[0];
     Uint32 sig_request_info = 0;
@@ -17576,6 +17578,9 @@ void Dblqh::execCOPY_FRAGREQ(Signal *signal) {
       /* ACC_SCANCONF */
       jamEntry();
   accScanConfCopyLab(signal);
+
+  /* release_frag_access if not already released */
+  release_frag_access(prim_tab_fragptr.p);
   return;
 }  // Dblqh::execCOPY_FRAGREQ()
 
