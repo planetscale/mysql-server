@@ -629,7 +629,9 @@ bool Item_bool_func2::resolve_type(THD *thd) {
   // Both arguments are needed for type resolving
   assert(args[0] && args[1]);
 
-  Item_bool_func::resolve_type(thd);
+  if (Item_bool_func::resolve_type(thd)) {
+    return true;
+  }
   /*
     See agg_item_charsets() in item.cc for comments
     on character set and collation aggregation.
