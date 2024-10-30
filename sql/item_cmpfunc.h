@@ -2191,14 +2191,12 @@ class Item_func_in final : public Item_func_opt_neg {
 
 class cmp_item_row : public cmp_item {
   cmp_item **comparators{nullptr};
-  uint n;
-
-  // Only used for Mem_root_array::resize()
-  cmp_item_row() : n(0) {}
-
-  friend class Mem_root_array_YY<cmp_item_row>;
+  uint n{0};
 
  public:
+  // Only used for Mem_root_array::resize()
+  cmp_item_row() = default;
+
   cmp_item_row(THD *thd, Item *item) : n(item->cols()) {
     allocate_template_comparators(thd, item);
   }
