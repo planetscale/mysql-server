@@ -44,6 +44,7 @@
 #include "sql/field.h"
 #include "sql/item.h"
 #include "sql/item_cmpfunc.h"
+#include "sql/iterators/basic_row_iterators.h"
 #include "sql/iterators/hash_join_iterator.h"
 #include "sql/iterators/row_iterator.h"
 #include "sql/join_type.h"
@@ -597,6 +598,50 @@ static void BM_HashTableIteratorBuild(size_t num_iterations) {
   StopBenchmarkTiming();
 }
 BENCHMARK(BM_HashTableIteratorBuild)
+
+static unique_ptr_destroy_only<RowIterator> CreateDummyIterator(THD *thd) {
+  return unique_ptr_destroy_only<RowIterator>{
+      new (thd->mem_root) ZeroRowsIterator{thd, /*pruned_tables=*/{}}};
+}
+
+// Do a benchmark of HashJoinIterator's constructor. It's not terribly important
+// that it performs well, since its cost can usually be amortized over the time
+// it takes to perform the join. But it used to be unnecessarily expensive, so
+// much that it was noticeable in performance profiles for otherwise small and
+// cheap joins.
+static void BM_HashJoinIteratorConstructor(size_t num_iterations) {
+  StopBenchmarkTiming();
+
+  my_testing::Server_initializer initializer;
+  initializer.SetUp();
+
+  THD *const thd = initializer.thd();
+
+  StartBenchmarkTiming();
+  for (size_t i = 0; i < num_iterations; ++i) {
+    thd->mem_root->ClearForReuse();
+    HashJoinIterator hash_join_iterator{
+        thd,
+        /*build_input=*/CreateDummyIterator(thd),
+        /*build_input_tables=*/{},
+        /*estimated_build_rows=*/0.0,
+        /*probe_input=*/CreateDummyIterator(thd),
+        /*probe_input_tables=*/{},
+        /*store_rowids=*/false,
+        /*tables_to_get_rowid_for=*/0,
+        /*max_memory_available=*/1024UL * 1024,
+        /*join_conditions=*/{},
+        /*allow_spill_to_disk=*/true,
+        JoinType::INNER,
+        /*extra_conditions=*/{},
+        /*single_row_index_lookups=*/{},
+        HashJoinInput::kBuild,
+        /*probe_input_batch_mode=*/false,
+        /*hash_table_generation=*/nullptr};
+  }
+  StopBenchmarkTiming();
+}
+BENCHMARK(BM_HashJoinIteratorConstructor)
 
 // Do a benchmark of HashJoinIterator::Read(). This function will read a row
 // from the right table, and look for a matching row in the hash table. This is
