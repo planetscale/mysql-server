@@ -308,13 +308,12 @@ bool sql_exchange::do_contextualize(Parse_context *pc) {
       if (field.not_enclosed) {
         push_warning_printf(thd, Sql_condition::SL_WARNING, ER_CLAUSE_IGNORED,
                             ER_THD(thd, ER_CLAUSE_IGNORED), "NOT ENCLOSED BY",
-                            "OUTFILE", "exporting results to object storage");
+                            "OUTFILE");
       }
       if (field.enclosed != nullptr) {
         push_warning_printf(thd, Sql_condition::SL_WARNING, ER_CLAUSE_IGNORED,
                             ER_THD(thd, ER_CLAUSE_IGNORED),
-                            "ENCLOSED BY or OPTIONALLY ENCLOSED BY", "OUTFILE",
-                            "exporting results to object storage");
+                            "ENCLOSED BY or OPTIONALLY ENCLOSED BY", "OUTFILE");
       }
       if (field.escaped != nullptr) {
         push_warning_printf(thd, Sql_condition::SL_WARNING, ER_CLAUSE_IGNORED,
