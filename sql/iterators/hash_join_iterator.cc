@@ -84,7 +84,7 @@ HashJoinIterator::HashJoinIterator(
       m_row_buffer(m_build_input_tables, join_conditions, max_memory_available),
       m_join_conditions(PSI_NOT_INSTRUMENTED, join_conditions.data(),
                         join_conditions.data() + join_conditions.size()),
-      m_chunk_files_on_disk(thd->mem_root, kMaxChunks),
+      m_chunk_files_on_disk(thd->mem_root),
       m_estimated_build_rows(estimated_build_rows),
       // For (LEFT)OUTER and ANTI-join we may have to return rows even if the
       // build input is empty. Therefore we check the probe input for emptiness
@@ -449,7 +449,6 @@ bool HashJoinIterator::WriteBuildTableToChunkFiles() {
 // number of open files.
 static bool InitializeChunkFiles(size_t estimated_rows_produced_by_join,
                                  size_t rows_in_hash_table,
-                                 size_t max_chunk_files,
                                  const pack_rows::TableCollection &probe_tables,
                                  const pack_rows::TableCollection &build_tables,
                                  bool include_match_flag_for_probe,
@@ -466,7 +465,8 @@ static bool InitializeChunkFiles(size_t estimated_rows_produced_by_join,
 
   const size_t chunks_needed = std::max<size_t>(
       1, std::ceil(remaining_rows / reduced_rows_in_hash_table));
-  const size_t num_chunks = std::min(max_chunk_files, chunks_needed);
+  const size_t num_chunks =
+      std::min(HashJoinIterator::kMaxChunks, chunks_needed);
 
   // Ensure that the number of chunks is always a power of two. This allows
   // us to do some optimizations when calculating which chunk a row should
@@ -474,7 +474,9 @@ static bool InitializeChunkFiles(size_t estimated_rows_produced_by_join,
   const size_t num_chunks_pow_2 = std::bit_ceil(num_chunks);
 
   assert(chunk_pairs != nullptr && chunk_pairs->empty());
-  chunk_pairs->resize(num_chunks_pow_2);
+  if (chunk_pairs->resize(num_chunks_pow_2)) {
+    return true;
+  }
   for (ChunkPair &chunk_pair : *chunk_pairs) {
     if (chunk_pair.build_chunk.Init(build_tables, /*uses_match_flags=*/false) ||
         chunk_pair.probe_chunk.Init(probe_tables,
@@ -581,7 +583,7 @@ bool HashJoinIterator::BuildHashTable() {
         }
 
         if (InitializeChunkFiles(
-                m_estimated_build_rows, m_row_buffer.size(), kMaxChunks,
+                m_estimated_build_rows, m_row_buffer.size(),
                 m_probe_input_tables, m_build_input_tables,
                 /*include_match_flag_for_probe=*/m_join_type == JoinType::OUTER,
                 &m_chunk_files_on_disk)) {
