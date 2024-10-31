@@ -3150,6 +3150,7 @@ bool mysql_drop_user(THD *thd, List<LEX_USER> &list, bool if_exists,
     /* Rebuild 'acl_check_hosts' since 'acl_users' has been modified */
     rebuild_check_host();
     rebuild_cached_acl_users_for_name();
+    clear_and_init_db_cache(); /* Clear privilege cache */
 
     if (result && !thd->is_error()) {
       String operation_str;
