@@ -597,11 +597,20 @@ static Item *parse_expression(THD *thd, Item *item, Query_block *query_block,
     thd->lex = old_lex;
     return nullptr;  // OOM
   }
+  View_creation_ctx *view_creation_ctx =
+      derived_table != nullptr ? derived_table->view_creation_ctx : nullptr;
+
+  const CHARSET_INFO *charset = view_creation_ctx != nullptr
+                                    ? view_creation_ctx->get_client_cs()
+                                    : thd->charset();
+
   // Take care not to print the variable index for stored procedure variables.
   // Also do not write a cloned stored procedure variable to query logs.
   thd->lex->reparse_derived_table_condition = true;
+
   // Get the printout of the expression
-  StringBuffer<1024> str(thd->charset());
+  StringBuffer<1024> str(charset);
+
   // For printing parameters we need to specify the flag QT_NO_DATA_EXPANSION
   // because for a case when statement gets reprepared during execution, we
   // still need Item_param::print() to print the '?' rather than the actual data
@@ -656,8 +665,6 @@ static Item *parse_expression(THD *thd, Item *item, Query_block *query_block,
 
   // Get a newly created item from parser. Use the view creation
   // context if the item being parsed is part of a view.
-  View_creation_ctx *view_creation_ctx =
-      derived_table != nullptr ? derived_table->view_creation_ctx : nullptr;
   bool result = parse_sql(thd, &parser_state, view_creation_ctx);
 
   thd->lex->reparse_derived_table_condition = false;
