@@ -5474,7 +5474,9 @@ bool Query_block::transform_table_subquery_to_join_with_derived(
   if (subq_pred->subquery_type() == Item_subselect::IN_SUBQUERY) {
     build_sj_exprs(thd, &sj_outer_exprs, &sj_inner_exprs, subq_pred, inner_qb);
     // All these expressions are compared with '=':
-    op_types.resize(sj_outer_exprs.size(), Item_func::EQ_FUNC);
+    if (op_types.resize(sj_outer_exprs.size(), Item_func::EQ_FUNC)) {
+      return true;
+    }
   } else {
     assert(subq_pred->subquery_type() == Item_subselect::EXISTS_SUBQUERY);
 

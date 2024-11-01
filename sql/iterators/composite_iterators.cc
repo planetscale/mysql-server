@@ -3045,12 +3045,17 @@ bool SpillState::compute_chunk_file_sets(const Operand *current_operand) {
     }
   }
 
-  m_chunk_files.resize(std::min(m_num_chunks, HashJoinIterator::kMaxChunks));
+  if (m_chunk_files.resize(
+          std::min(m_num_chunks, HashJoinIterator::kMaxChunks))) {
+    return true;
+  }
 
   /// Set aside space for current generation of chunk row counters. This is
   /// a two dimensional matrix. Each element is allocated in
   /// initialize_first_HF_chunk_files
-  m_row_counts.resize(m_chunk_files.size());
+  if (m_row_counts.resize(m_chunk_files.size())) {
+    return true;
+  }
 
   Opt_trace_context *const trace = &m_thd->opt_trace;
   Opt_trace_object trace_wrapper(trace);
@@ -3075,7 +3080,9 @@ bool SpillState::initialize_first_HF_chunk_files() {
     }
     // Initialize counters matrix
     Mem_root_array<CountPair> ma(m_thd->mem_root, 1);
-    ma.resize(m_no_of_chunk_file_sets);
+    if (ma.resize(m_no_of_chunk_file_sets)) {
+      return true;
+    }
     m_row_counts[i] = std::move(ma);
   }
 

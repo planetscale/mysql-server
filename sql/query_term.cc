@@ -576,7 +576,10 @@ bool Query_term_set_op::prepare_query_term(
         const bool recursive_nullable = top_level && qe->is_recursive();
         column_nullable = column_nullable || recursive_nullable;
         // We can only size this now after left side operand has been resolved
-        columns_nullable.resize(m_children[i]->visible_column_count(), false);
+        if (columns_nullable.resize(m_children[i]->visible_column_count(),
+                                    false)) {
+          return true;
+        }
         columns_nullable[j] = column_nullable;
       } else {
         switch (term_type()) {

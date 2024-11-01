@@ -3358,7 +3358,7 @@ void sp_head::optimize() {
     }
   }
 
-  m_instructions.resize(dst);
+  m_instructions.erase(m_instructions.begin() + dst, m_instructions.end());
   bp.clear();
 }
 

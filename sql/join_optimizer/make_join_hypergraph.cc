@@ -3819,7 +3819,7 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
   ExtractCycleMultipleEqualities(where_conditions, companion_collection,
                                  &multiple_equalities);
   if (multiple_equalities.size() > 64) {
-    multiple_equalities.resize(64);
+    multiple_equalities.chop(64);
   }
   std::sort(multiple_equalities.begin(), multiple_equalities.end());
   multiple_equalities.erase(

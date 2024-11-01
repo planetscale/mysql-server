@@ -41,6 +41,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -15527,10 +15528,10 @@ bool prepare_fields_and_keys(THD *thd, const dd::Table *src_table, TABLE *table,
   }
 
   alter_info->create_list.swap(new_create_list);
-  alter_info->key_list.clear();
-  alter_info->key_list.resize(new_key_list.size());
-  std::copy(new_key_list.begin(), new_key_list.end(),
-            alter_info->key_list.begin());
+  if (alter_info->key_list.resize(new_key_list.size())) {
+    return true;
+  }
+  std::ranges::copy(new_key_list, alter_info->key_list.begin());
 
   return false;
 }
@@ -19892,10 +19893,12 @@ static bool prepare_check_constraints_for_alter(
     }
   }
 
-  alter_info->check_constraint_spec_list.clear();
-  alter_info->check_constraint_spec_list.resize(new_check_cons_list.size());
-  std::move(new_check_cons_list.begin(), new_check_cons_list.end(),
-            alter_info->check_constraint_spec_list.begin());
+  if (alter_info->check_constraint_spec_list.resize(
+          new_check_cons_list.size())) {
+    return true;
+  }
+  std::ranges::move(new_check_cons_list,
+                    alter_info->check_constraint_spec_list.begin());
 
   return false;
 }

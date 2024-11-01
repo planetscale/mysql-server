@@ -278,7 +278,7 @@ class Mem_root_array_YY {
     @param val The value to copy into new elements.
     @return True if out of memory, false otherwise.
    */
-  bool resize(size_t n, const value_type &val) {
+  [[nodiscard]] bool resize(size_t n, const value_type &val) {
     if (n > m_size) {
       if (reserve(n)) {
         return true;
@@ -299,7 +299,7 @@ class Mem_root_array_YY {
     @param n The new size of the container.
     @return True if out of memory, false otherwise.
    */
-  bool resize(size_t n) {
+  [[nodiscard]] bool resize(size_t n) {
     if (n > m_size) {
       if (reserve(n)) {
         return true;
@@ -461,12 +461,12 @@ class Mem_root_array : public Mem_root_array_YY<Element_type> {
 
   Mem_root_array(MEM_ROOT *root, size_t n) {
     super::init(root);
-    super::resize(n);
+    (void)super::resize(n);
   }
 
   Mem_root_array(MEM_ROOT *root, size_t n, const value_type &val) {
     super::init(root);
-    super::resize(n, val);
+    (void)super::resize(n, val);
   }
 
   /**
