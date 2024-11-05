@@ -372,11 +372,18 @@ ACL_USER::ACL_USER() {
   /* Acl_credentials is initialized by its constructor */
 }
 
+void ACL_USER::Password_locked_state::set_temporary_lock_state_parameters(
+    uint remaining_login_attempts, long daynr_locked) {
+  m_remaining_login_attempts = remaining_login_attempts;
+  m_daynr_locked = daynr_locked;
+}
+
 void ACL_USER::Password_locked_state::set_parameters(
-    uint password_lock_time_days, uint failed_login_attempts) {
+    int password_lock_time_days, uint failed_login_attempts) {
   m_password_lock_time_days = password_lock_time_days;
-  m_remaining_login_attempts = m_failed_login_attempts = failed_login_attempts;
-  m_daynr_locked = 0;
+  m_failed_login_attempts = failed_login_attempts;
+  set_temporary_lock_state_parameters(failed_login_attempts, 0);
+  assert(is_default() == true);
 }
 
 /**
@@ -1797,7 +1804,7 @@ bool acl_init(bool dont_read_acl_tables) {
     will be freed there are global static objects and thus are initialized
     by zeros at startup.
   */
-  return_val |= acl_reload(thd, false);
+  return_val |= acl_reload(thd, false, false, nullptr);
   notify_flush_event(thd);
   /*
     Turn ON the system variable '@@partial_revokes' during server
@@ -2141,6 +2148,109 @@ bool is_expected_or_transient_error(THD *thd) {
          thd->get_stmt_da()->mysql_errno() == ER_LOCK_DEADLOCK;
 }
 
+ACL_temporary_lock_state::ACL_temporary_lock_state(
+    const char *host, const char *user, uint remaining_login_attempts,
+    long daynr_locked)
+    : m_host(host ? host : ""),
+      m_user(user ? user : ""),
+      m_remaining_login_attempts(remaining_login_attempts),
+      m_daynr_locked(daynr_locked) {}
+
+bool ACL_temporary_lock_state::is_modified(ACL_USER *acl_user) {
+  assert(acl_user != nullptr);
+  assert(assert_acl_cache_write_lock(current_thd));
+  return (!acl_user->password_locked_state.is_default() &&
+          !acl_user->account_locked);
+}
+
+/**
+  Enables preserving temporary account locking attributes of a user during ACL
+  DDL.
+
+  @ref ACL_temporary_lock_state
+
+  @param [in]  host      Account's hostname.
+  @param [in]  user      Account's username.
+  @param [out] user_list List in which a user's lock state is preserved.
+
+  @returns find_acl_user(host, user, true)
+*/
+ACL_USER *ACL_temporary_lock_state::preserve_user_lock_state(
+    const char *host, const char *user, Lock_state_list &user_list) {
+  assert(assert_acl_cache_write_lock(current_thd));
+  ACL_USER *acl_user;
+  if ((acl_user = find_acl_user(host, user, true))) {
+    if (ACL_temporary_lock_state::is_modified(acl_user)) {
+      user_list.emplace_back(
+          host, user,
+          acl_user->password_locked_state.get_remaining_login_attempts(),
+          acl_user->password_locked_state.get_daynr_locked());
+    }
+  }
+  return acl_user;
+}
+
+/**
+  Enables restoring temporary account locking attributes of a user after ACL
+  reload.
+
+  @ref ACL_temporary_lock_state
+
+  @param [in] host       Account's hostname.
+  @param [in] user       Account's username.
+  @param [in] remaining_login_attempts
+                         Account's remaining login attempts.
+  @param [in] daynr_locked
+                         Account's locked day.
+*/
+void ACL_temporary_lock_state::restore_user_lock_state(
+    const char *host, const char *user, uint remaining_login_attempts,
+    long daynr_locked) {
+  assert(assert_acl_cache_write_lock(current_thd));
+  ACL_USER *acl_user;
+  if ((acl_user = find_acl_user(host, user, true))) {
+    acl_user->password_locked_state.set_temporary_lock_state_parameters(
+        remaining_login_attempts, daynr_locked);
+  }
+}
+
+/**
+  Enables restoring temporary account locking attributes of all users after ACL
+  reload.
+
+  @ref ACL_temporary_lock_state
+
+  @param [in] old_acl_users    List of users in the old ACL cache.
+  @param [in] modified_user_lock_state_list
+                               List of users whose temporary account
+                               locking attributes are likely modified.
+*/
+void ACL_temporary_lock_state::restore_temporary_account_locking(
+    Prealloced_array<ACL_USER, ACL_PREALLOC_SIZE> *old_acl_users,
+    Lock_state_list *modified_user_lock_state_list) {
+  assert(assert_acl_cache_write_lock(current_thd));
+  if (old_acl_users) {
+    for (ACL_USER *old_acl_user = old_acl_users->begin();
+         old_acl_user != old_acl_users->end(); ++old_acl_user) {
+      if (ACL_temporary_lock_state::is_modified(old_acl_user)) {
+        ACL_temporary_lock_state::restore_user_lock_state(
+            old_acl_user->host.get_host(),
+            old_acl_user->user ? old_acl_user->user : "",
+            old_acl_user->password_locked_state.get_remaining_login_attempts(),
+            old_acl_user->password_locked_state.get_daynr_locked());
+      }
+    }
+  }
+  if (modified_user_lock_state_list) {
+    for (auto element = modified_user_lock_state_list->rbegin();
+         element != modified_user_lock_state_list->rend(); ++element) {
+      ACL_temporary_lock_state::restore_user_lock_state(
+          element->m_host, element->m_user, element->m_remaining_login_attempts,
+          element->m_daynr_locked);
+    }
+  }
+}
+
 /*
   Forget current user/db-level privileges and read new privileges
   from the privilege tables.
@@ -2160,7 +2270,10 @@ bool is_expected_or_transient_error(THD *thd) {
     true   Failure
 */
 
-bool acl_reload(THD *thd, bool mdl_locked) {
+bool acl_reload(THD *thd, bool mdl_locked,
+                bool preserve_temporary_account_locking,
+                Lock_state_list *modified_user_lock_state_list) {
+  assert(preserve_temporary_account_locking || !modified_user_lock_state_list);
   MEM_ROOT old_mem;
   bool return_val = true;
   const uint flags = mdl_locked
@@ -2291,8 +2404,18 @@ bool acl_reload(THD *thd, bool mdl_locked) {
     init_check_host();
     delete swap_dynamic_privileges_map(old_dyn_priv_map);
     if (!old_dyn_priv_map) dynamic_privileges_init();
-    if (acl_users) rebuild_cached_acl_users_for_name();
+    if (acl_users) {
+      rebuild_cached_acl_users_for_name();
+      if (preserve_temporary_account_locking) {
+        ACL_temporary_lock_state::restore_temporary_account_locking(
+            nullptr, modified_user_lock_state_list);
+      }
+    }
   } else {
+    if (acl_users && preserve_temporary_account_locking) {
+      ACL_temporary_lock_state::restore_temporary_account_locking(
+          old_acl_users, modified_user_lock_state_list);
+    }
     delete old_acl_users;
     delete old_acl_dbs;
     delete old_acl_proxy_users;
@@ -3656,12 +3779,21 @@ uint32 global_password_reuse_interval = 0;
 
   @param [in] thd              THD handle
   @param [in] mdl_locked       MDL locks are taken
+  @param [in] preserve_temporary_account_locking
+                               Preserve temporary account locking
+                               attributes of all users.
+  @param [in] modified_user_lock_state_list
+                               List of users whose temporary account
+                               locking attributes are likely modified.
+
   @returns Status of reloading ACL caches
     @retval false Success
     @retval true Error
 */
 
-bool reload_acl_caches(THD *thd, bool mdl_locked) {
+bool reload_acl_caches(THD *thd, bool mdl_locked,
+                       bool preserve_temporary_account_locking,
+                       Lock_state_list *modified_user_lock_state_list) {
   DBUG_TRACE;
   bool retval = true;
   const bool save_mdl_locked = mdl_locked;
@@ -3704,7 +3836,9 @@ bool reload_acl_caches(THD *thd, bool mdl_locked) {
   }
 
   if (check_engine_type_for_acl_table(thd, mdl_locked) ||
-      check_acl_tables_intact(thd, mdl_locked) || acl_reload(thd, mdl_locked) ||
+      check_acl_tables_intact(thd, mdl_locked) ||
+      acl_reload(thd, mdl_locked, preserve_temporary_account_locking,
+                 modified_user_lock_state_list) ||
       grant_reload(thd, mdl_locked)) {
     goto end;
   }
