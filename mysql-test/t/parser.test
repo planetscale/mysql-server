@@ -2787,3 +2787,34 @@ DROP TABLE source_tls_ciphersuites;
 DROP TABLE source_tls_version;
 DROP TABLE source_user;
 DROP TABLE source_zstd_compression_level;
+
+--echo #
+--echo # Bug#22574003: Non-reserved "BINLOG" keyword costs 22 shift/reduce
+--echo #               conflicts to MySQL grammar
+--echo #
+
+# "binlog: is allowed as table and column name
+CREATE TABLE binlog(binlog INTEGER);
+DROP TABLE binlog;
+
+# "binlog" is allowed as a role name:
+CREATE ROLE binlog;
+DROP ROLE binlog;
+
+# "binlog" is not allowed as procedure label
+
+DELIMITER //;
+--error ER_PARSE_ERROR
+CREATE PROCEDURE p()
+BEGIN
+  DECLARE x INTEGER DEFAULT 3;
+binlog:
+  LOOP
+    IF x = 0 THEN
+      LEAVE binlog;
+    END IF;
+    SET x = x - 1;
+  END LOOP binlog;
+END;
+//
+DELIMITER ;//

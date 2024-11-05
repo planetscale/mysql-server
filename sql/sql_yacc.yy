@@ -564,7 +564,7 @@ void warn_on_deprecated_user_defined_collation(
   2. We should not introduce new shift/reduce conflicts any more.
 */
 
-%expect 59
+%expect 37
 
 /*
    MAINTAINER:
@@ -15355,6 +15355,7 @@ ident_keywords_ambiguous_1_roles_and_labels:
 ident_keywords_ambiguous_2_labels:
           ASCII_SYM
         | BEGIN_SYM
+        | BINLOG_SYM
         | BYTE_SYM
         | CACHE_SYM
         | CHARSET
@@ -15449,7 +15450,6 @@ ident_keywords_unambiguous:
         | AVG_SYM
         | BACKUP_SYM
         | BERNOULLI_SYM
-        | BINLOG_SYM
         | BIT_SYM %prec KEYWORD_USED_AS_IDENT
         | BLOCK_SYM
         | BOOLEAN_SYM
