@@ -23,15 +23,14 @@
 
 #include "sql/pack_rows.h"
 
-#include <assert.h>
 #include <sys/types.h>
+#include <cassert>
+#include <utility>
 
 #include "mysql_com.h"
 #include "sql/join_optimizer/bit_utils.h"
-#include "sql/join_optimizer/join_optimizer.h"
-#include "sql/sql_executor.h"
-#include "sql/sql_optimizer.h"
 #include "sql_string.h"
+#include "template_utils.h"
 
 namespace pack_rows {
 
@@ -57,10 +56,9 @@ Table::Table(TABLE *table_arg)
 TableCollection::TableCollection(const Prealloced_array<TABLE *, 4> &tables,
                                  bool store_rowids,
                                  table_map tables_to_get_rowid_for)
-    : m_store_rowids(store_rowids),
-      m_tables_to_get_rowid_for(tables_to_get_rowid_for) {
+    : m_store_rowids(store_rowids) {
   if (!store_rowids) {
-    assert(m_tables_to_get_rowid_for == table_map{0});
+    assert(tables_to_get_rowid_for == table_map{0});
   }
   for (TABLE *table : tables) {
     const Table_ref *ref = table->pos_in_table_list;
@@ -69,6 +67,7 @@ TableCollection::TableCollection(const Prealloced_array<TABLE *, 4> &tables,
       m_tables_bitmap |= ref->map();
     }
   }
+  m_tables_to_get_rowid_for = tables_to_get_rowid_for & m_tables_bitmap;
 }
 
 void TableCollection::AddTable(TABLE *tab) {
@@ -287,21 +286,23 @@ const uchar *LoadIntoTableBuffers(const TableCollection &tables,
 }
 
 // Request the row ID for all tables where it should be kept.
-void RequestRowId(const Prealloced_array<Table, 4> &tables,
-                  table_map tables_to_get_rowid_for) {
-  for (const Table &it : tables) {
+void TableCollection::RequestRowIdInner() const {
+  // Assert that it's only called if row IDs are needed.
+  assert(m_tables_to_get_rowid_for != 0);
+  assert(IsSubset(m_tables_to_get_rowid_for, m_tables_bitmap));
+  for (const Table &it : m_tables) {
     const TABLE *table = it.table;
-    if (Overlaps(table->pos_in_table_list->map(), tables_to_get_rowid_for) &&
+    if (Overlaps(table->pos_in_table_list->map(), m_tables_to_get_rowid_for) &&
         can_call_position(table)) {
       table->file->position(table->record[0]);
     }
   }
 }
 
-void PrepareForRequestRowId(const Prealloced_array<Table, 4> &tables,
-                            table_map tables_to_get_rowid_for) {
-  for (const Table &it : tables) {
-    if (Overlaps(it.table->pos_in_table_list->map(), tables_to_get_rowid_for)) {
+void TableCollection::PrepareForRequestRowId() const {
+  for (const Table &it : m_tables) {
+    if (Overlaps(it.table->pos_in_table_list->map(),
+                 m_tables_to_get_rowid_for)) {
       it.table->prepare_for_position();
     }
   }

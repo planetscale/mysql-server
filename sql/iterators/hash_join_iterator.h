@@ -544,7 +544,6 @@ class HashJoinIterator final : public RowIterator {
   // compute the join key when needed.
   pack_rows::TableCollection m_probe_input_tables;
   pack_rows::TableCollection m_build_input_tables;
-  const table_map m_tables_to_get_rowid_for;
 
   // An in-memory hash table that holds rows from the build input (directly from
   // the build input iterator, or from a chunk file). See the class comment for

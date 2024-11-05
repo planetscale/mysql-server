@@ -106,8 +106,7 @@ bool BKAIterator::Init() {
       return true;
     }
   }
-  PrepareForRequestRowId(m_outer_input_tables.tables(),
-                         m_outer_input_tables.tables_to_get_rowid_for());
+  m_outer_input_tables.PrepareForRequestRowId();
 
   BeginNewBatch();
   m_end_of_outer_rows = false;
@@ -155,8 +154,7 @@ int BKAIterator::ReadOuterRows() {
         m_end_of_outer_rows = true;
         break;
       }
-      RequestRowId(m_outer_input_tables.tables(),
-                   m_outer_input_tables.tables_to_get_rowid_for());
+      m_outer_input_tables.RequestRowId();
 
       // Save the contents of all columns marked for reading.
       if (StoreFromTableBuffers(m_outer_input_tables, &m_outer_row_buffer)) {

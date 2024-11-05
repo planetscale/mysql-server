@@ -32,9 +32,9 @@
   hash join, BKA, and streaming aggregation.
  */
 
-#include <assert.h>
-#include <stddef.h>
-#include <string.h>
+#include <cassert>
+#include <cstddef>
+#include <cstring>
 
 #include "field_types.h"
 #include "my_bitmap.h"
@@ -47,9 +47,7 @@
 #include "sql/field.h"
 #include "sql/handler.h"
 #include "sql/table.h"
-#include "template_utils.h"
 
-class JOIN;
 class String;
 
 // Names such as “Column” and “Table” are a tad too generic for the global
@@ -104,8 +102,26 @@ class TableCollection {
     return m_tables_to_get_rowid_for;
   }
 
+  /// For each of the tables that we should get row IDs for, request that the
+  /// row ID is filled in (the equivalent of calling handler::position()) if
+  /// needed.
+  ///
+  /// Since this function is typically called once per row read, the check for
+  /// the common case where no row IDs are required, is inlined to reduce the
+  /// overhead.
+  void RequestRowId() const {
+    if (m_tables_to_get_rowid_for != 0) {
+      RequestRowIdInner();
+    }
+  }
+
+  /// For each of the tables that we should get row IDs for, inform the handler
+  /// than row IDs will be needed.
+  void PrepareForRequestRowId() const;
+
  private:
   void AddTable(TABLE *tab);
+  void RequestRowIdInner() const;
 
   Prealloced_array<Table, 4> m_tables{PSI_NOT_INSTRUMENTED};
 
@@ -176,18 +192,6 @@ bool StoreFromTableBuffers(const TableCollection &tables, String *buffer);
 /// Returns a pointer to where we ended reading.
 const uchar *LoadIntoTableBuffers(const TableCollection &tables,
                                   const uchar *ptr);
-
-/// For each of the given tables, request that the row ID is filled in
-/// (the equivalent of calling file->position()) if needed.
-///
-/// @param tables All tables involved in the operation.
-/// @param tables_to_get_rowid_for A bitmap of which tables to actually
-///     get row IDs for. (A table needs to be in both sets to be processed.)
-void RequestRowId(const Prealloced_array<pack_rows::Table, 4> &tables,
-                  table_map tables_to_get_rowid_for);
-
-void PrepareForRequestRowId(const Prealloced_array<pack_rows::Table, 4> &tables,
-                            table_map tables_to_get_rowid_for);
 
 inline bool ShouldCopyRowId(const TABLE *table) {
   // It is not safe to copy the row ID if we have a NULL-complemented row; the

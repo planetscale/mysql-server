@@ -80,7 +80,6 @@ HashJoinIterator::HashJoinIterator(
                            tables_to_get_rowid_for),
       m_build_input_tables(build_input_tables, store_rowids,
                            tables_to_get_rowid_for),
-      m_tables_to_get_rowid_for(tables_to_get_rowid_for),
       m_row_buffer(m_build_input_tables, join_conditions, max_memory_available),
       m_join_conditions(PSI_NOT_INSTRUMENTED, join_conditions.data(),
                         join_conditions.data() + join_conditions.size()),
@@ -174,8 +173,7 @@ bool HashJoinIterator::ReadFirstProbeRow() {
     assert(result == 0);
     m_probe_row_read = true;
     // Prepare to read the build input into the hash map.
-    PrepareForRequestRowId(m_build_input_tables.tables(),
-                           m_tables_to_get_rowid_for);
+    m_build_input_tables.PrepareForRequestRowId();
 
     return false;
   }
@@ -256,8 +254,7 @@ bool HashJoinIterator::Init() {
 
   if (m_first_input == HashJoinInput::kBuild) {
     // Prepare to read the build input into the hash map.
-    PrepareForRequestRowId(m_build_input_tables.tables(),
-                           m_tables_to_get_rowid_for);
+    m_build_input_tables.PrepareForRequestRowId();
     if (m_build_input->Init()) {
       assert(thd()->is_error() ||
              thd()->killed);  // my_error should have been called.
@@ -311,8 +308,7 @@ bool HashJoinIterator::Init() {
   m_probe_chunk_current_row = 0;
   m_current_chunk = -1;
 
-  PrepareForRequestRowId(m_probe_input_tables.tables(),
-                         m_tables_to_get_rowid_for);
+  m_probe_input_tables.PrepareForRequestRowId();
 
   if (m_first_input == HashJoinInput::kProbe) {
     const bool error = [&]() {
@@ -423,7 +419,7 @@ bool HashJoinIterator::WriteBuildTableToChunkFiles() {
 
     assert(res == 0);
 
-    RequestRowId(m_build_input_tables.tables(), m_tables_to_get_rowid_for);
+    m_build_input_tables.RequestRowId();
     if (WriteRowToChunk(thd(), &m_chunk_files_on_disk,
                         /*write_to_build_chunk=*/true, m_build_input_tables,
                         m_join_conditions,
@@ -555,7 +551,7 @@ bool HashJoinIterator::BuildHashTable() {
       return false;
     }
     assert(res == 0);
-    RequestRowId(m_build_input_tables.tables(), m_tables_to_get_rowid_for);
+    m_build_input_tables.RequestRowId();
 
     const hash_join_buffer::StoreRowResult store_row_result =
         m_row_buffer.StoreRow(thd(), reject_duplicate_keys);
@@ -748,7 +744,7 @@ bool HashJoinIterator::ReadRowFromProbeIterator() {
   }
 
   if (result == 0) {
-    RequestRowId(m_probe_input_tables.tables(), m_tables_to_get_rowid_for);
+    m_probe_input_tables.RequestRowId();
 
     // A row from the probe iterator is ready.
     LookupProbeRowInHashTable();
