@@ -88,6 +88,11 @@ using std::vector;
 
 namespace {
 
+bool IsTableFunction(const RelationalExpression *expr) {
+  return expr->type == RelationalExpression::TABLE &&
+         expr->table->is_table_function();
+}
+
 RelationalExpression *MakeRelationalExpressionFromJoinList(
     THD *thd, const Query_block *query_block,
     const mem_root_deque<Table_ref *> &join_list, bool toplevel = false);
@@ -327,6 +332,10 @@ RelationalExpression *MakeRelationalExpression(THD *thd,
   ie., a join tree with tables at the leaves. If join order hints are
   specified, use the join order specified in the join order hints.
 
+  The join between TABLE_FUNCTION and normal tables will be considered as
+  STRAIGHT INNER JOIN in case of secondary engine. This prevents Hypergraph
+  trying additional combinations around TABLE_FUNCTION.
+
   @param thd           Current thread
   @param query_block   Current query block
   @param join_list_arg List of tables in this join
@@ -383,6 +392,12 @@ RelationalExpression *MakeRelationalExpressionFromJoinList(
                  query_block->opt_hints_qb->check_join_order_hints(
                      join->right, join->left, join_list)) {
         std::swap(join->left, join->right);
+        join->type = RelationalExpression::STRAIGHT_INNER_JOIN;
+      } else if (thd->secondary_engine_optimization() ==
+                     Secondary_engine_optimization::SECONDARY &&
+                 IsTableFunction(join->right) &&
+                 Overlaps(join->left->tables_in_subtree,
+                          join->right->table->table_function->used_tables())) {
         join->type = RelationalExpression::STRAIGHT_INNER_JOIN;
       } else {
         join->type = RelationalExpression::INNER_JOIN;
@@ -3497,6 +3512,22 @@ void SetNodesInnerToOuterSemiAnti(JoinHypergraph *graph,
 }
 
 /**
+  Populate the "nodes_for_table_function" member of
+  JoinHypergraph.
+
+  @param graph The JoinHypergraph to update.
+  @param root The root of the join tree.
+ */
+void SetNodesForTableFunction(JoinHypergraph *graph,
+                              RelationalExpression *root) {
+  ForEachOperator(root, [graph](const RelationalExpression *expr) {
+    if (IsTableFunction(expr)) {
+      graph->nodes_for_table_function |= expr->nodes_in_subtree;
+    }
+  });
+}
+
+/**
   Fully expand a multiple equality for a single table as simple equalities and
   append each equality to the array of conditions. Only expected to be called on
   multiple equalities that do not have an already known value, as such
@@ -3830,6 +3861,13 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
   ClearImpossibleJoinConditions(root);
 
   SetNodesInnerToOuterSemiAnti(graph, root);
+
+  // Secondary engine need to track table function to allow only nested loop
+  // join when table function as its right child.
+  if (thd->secondary_engine_optimization() ==
+      Secondary_engine_optimization::SECONDARY) {
+    SetNodesForTableFunction(graph, root);
+  }
 
   // Add cycles.
   size_t old_graph_edges = graph->graph.edges.size();

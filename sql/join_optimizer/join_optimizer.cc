@@ -5512,7 +5512,13 @@ bool CostingReceiver::AllowNestedLoopJoin(NodeMap left, NodeMap right,
                                           const AccessPath &right_path,
                                           const JoinPredicate &edge) const {
   if (!SupportedEngineFlag(SecondaryEngineFlag::SUPPORTS_NESTED_LOOP_JOIN)) {
-    return false;
+    // Don't propose a nested loop join when using a secondary engine that does
+    // not support nested loop joins. We make one exception to this: If the
+    // right child is a table function, it may not be possible to do a hash
+    // join, and the secondary engine might support nested loop join in this
+    // special case.
+    return IsSubset(right, m_graph->nodes_for_table_function) &&
+           !IsSubset(left, m_graph->nodes_for_table_function);
   }
 
   if (Overlaps(left_path.parameter_tables, right)) {

@@ -265,6 +265,10 @@ struct JoinHypergraph {
   /// The set of nodes that are on the inner side of some antijoin.
   hypergraph::NodeMap nodes_inner_to_antijoin = 0;
 
+  /// The set of nodes that are represented by table_function. This will be set
+  /// only when optimizing for secondary engine.
+  hypergraph::NodeMap nodes_for_table_function = 0;
+
   int FindSargableJoinPredicate(const Item *predicate) const {
     const auto iter = m_sargable_join_predicates.find(predicate);
     return iter == m_sargable_join_predicates.cend() ? -1 : iter->second;
