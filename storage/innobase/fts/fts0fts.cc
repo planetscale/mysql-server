@@ -3212,11 +3212,13 @@ dberr_t fts_create_doc_id(dict_table_t *table, dtuple_t *row,
   ib_rbt_t *rows;
   dberr_t error = DB_SUCCESS;
   fts_cache_t *cache = ftt->table->fts->cache;
-  trx_t *trx = trx_allocate_for_background();
+  trx_t *trx = nullptr;
+  if (!ftt->fts_trx->trx) {
+    trx = trx_allocate_for_background();
+    ftt->fts_trx->trx = trx;
+  }
 
   rows = ftt->rows;
-
-  ftt->fts_trx->trx = trx;
 
   if (cache->get_docs == nullptr) {
     rw_lock_x_lock(&cache->init_lock, UT_LOCATION_HERE);
@@ -3248,9 +3250,14 @@ dberr_t fts_create_doc_id(dict_table_t *table, dtuple_t *row,
     }
   }
 
-  fts_sql_commit(trx);
+  if (trx) {
+    fts_sql_commit(trx);
+    trx_free_for_background(trx);
+    ftt->fts_trx->trx = nullptr;
+  }
 
-  trx_free_for_background(trx);
+  DBUG_EXECUTE_IF("fts_sync_cache_and_crash_after_commit_table",
+                  { DBUG_SUICIDE(); });
 
   return (error);
 }
@@ -3269,11 +3276,17 @@ dberr_t fts_commit(trx_t *trx) /*!< in: transaction */
       static_cast<fts_savepoint_t *>(ib_vector_last(trx->fts_trx->savepoints));
   tables = savepoint->tables;
 
+  trx_t *fts_trx = nullptr;
+  if (trx->state.load(std::memory_order_acquire) == TRX_STATE_ACTIVE) {
+    fts_trx = trx;
+  }
+
   for (node = rbt_first(tables), error = DB_SUCCESS;
        node != nullptr && error == DB_SUCCESS; node = rbt_next(tables, node)) {
     fts_trx_table_t **ftt;
 
     ftt = rbt_value(fts_trx_table_t *, node);
+    (*ftt)->fts_trx->trx = fts_trx;
 
     error = fts_commit_table(*ftt);
   }
