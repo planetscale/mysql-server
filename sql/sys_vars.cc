@@ -7015,7 +7015,7 @@ static Sys_var_bool Sys_enable_secondary_engine_statistics(
     "When this option is enabled, the hypergraph query optimizer may fetch"
     "statistics from the secondary engine, if available",
     HINT_UPDATEABLE SESSION_VAR(enable_secondary_engine_statistics),
-    NO_CMD_LINE, DEFAULT(true), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+    CMD_LINE(OPT_ARG), DEFAULT(true), NO_MUTEX_GUARD, NOT_IN_BINLOG,
     ON_CHECK(nullptr), ON_UPDATE(nullptr));
 
 static Sys_var_session_special Sys_statement_id(
