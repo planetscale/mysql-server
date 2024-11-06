@@ -36,6 +36,7 @@
 #include "mysql/harness/logging/logging.h"
 #include "mysql/harness/plugin.h"
 #include "mysqld_error.h"
+#include "mysqlrouter/cluster_metadata.h"
 #include "mysqlrouter/mysql_client_thread_token.h"
 #include "mysqlrouter/mysql_session.h"
 
@@ -54,7 +55,8 @@ MetadataCache::MetadataCache(
     const mysqlrouter::SSLOptions &ssl_options,
     const mysqlrouter::TargetCluster &target_cluster,
     const metadata_cache::RouterAttributes &router_attributes,
-    size_t thread_stack_size, bool use_cluster_notifications)
+    size_t thread_stack_size, bool use_cluster_notifications,
+    bool close_connection_after_refresh)
     : target_cluster_(target_cluster),
       clusterset_id_(clusterset_id),
       ttl_config_(ttl_config),
@@ -63,6 +65,7 @@ MetadataCache::MetadataCache(
       meta_data_(std::move(cluster_metadata)),
       refresh_thread_(thread_stack_size),
       use_cluster_notifications_(use_cluster_notifications),
+      close_connection_after_refresh_(close_connection_after_refresh),
       router_attributes_(router_attributes) {
   for (const auto &s : metadata_servers) {
     metadata_servers_.emplace_back(s);
@@ -115,7 +118,10 @@ void MetadataCache::refresh_thread() {
       on_refresh_failed(true);
     }
 
-    meta_data_->disconnect();
+    if (!refresh_ok || close_connection_after_refresh_ ||
+        meta_data_->get_cluster_type() != mysqlrouter::ClusterType::GR_V2) {
+      meta_data_->disconnect();
+    }
 
     if (refresh_ok) {
       if (!ready_announced_) {

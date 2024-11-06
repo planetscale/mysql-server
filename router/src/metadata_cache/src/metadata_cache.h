@@ -73,6 +73,8 @@ class METADATA_CACHE_EXPORT MetadataCache
    * @param thread_stack_size The maximum memory allocated for thread's stack
    * @param use_cluster_notifications Flag indicating if the metadata cache
    * should use GR notifications as an additional trigger for metadata refresh
+   * @param close_connection_after_refresh if the connection should be closed
+   * after a refresh.
    */
   MetadataCache(
       const unsigned router_id, const std::string &clusterset_id,
@@ -83,7 +85,8 @@ class METADATA_CACHE_EXPORT MetadataCache
       const mysqlrouter::TargetCluster &target_cluster,
       const metadata_cache::RouterAttributes &router_attributes,
       size_t thread_stack_size = mysql_harness::kDefaultStackSizeInKiloBytes,
-      bool use_cluster_notifications = false);
+      bool use_cluster_notifications = false,
+      bool close_connection_after_refresh = false);
 
   ~MetadataCache() override;
 
@@ -345,6 +348,8 @@ class METADATA_CACHE_EXPORT MetadataCache
   bool refresh_requested_{false};
 
   bool use_cluster_notifications_;
+
+  bool close_connection_after_refresh_;
 
   std::condition_variable refresh_wait_;
   std::mutex refresh_wait_mtx_;

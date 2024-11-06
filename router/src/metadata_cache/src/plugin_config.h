@@ -95,6 +95,10 @@ class METADATA_CACHE_PLUGIN_EXPORT MetadataCachePluginConfig final
   mysqlrouter::ClusterType cluster_type;
   /** @brief  Id of the router in the metadata. */
   unsigned int router_id;
+
+  // close the connection after a refresh.
+  bool close_connection_after_refresh;
+
   /** @brief  SSL settings for metadata cache connection. */
   mysqlrouter::SSLOptions ssl_options;
 

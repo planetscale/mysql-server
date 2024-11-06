@@ -549,7 +549,7 @@ TEST_P(RouterBootstrapOkTest, BootstrapOk) {
 
   // Check if proper UpdateSchema was written on BS
   const std::string public_configuration_defaults_in_md =
-      get_config_defaults_stored_in_md(http_port);
+      get_config_defaults_stored_in_md(http_port) + "\n";
 
   const std::string public_configuration_defaults = get_file_output(
       get_data_dir().join("configuration_defaults_cluster.json").str());
@@ -649,7 +649,7 @@ TEST_P(RouterBootstrapExposeDefaults, BootstrapExposeDefaults) {
 
   // Check if proper UpdateSchema was written on BS
   const std::string public_configuration_defaults_in_md =
-      get_config_defaults_stored_in_md(http_port);
+      get_config_defaults_stored_in_md(http_port) + "\n";
 
   const std::string public_configuration_defaults = get_file_output(
       get_data_dir().join("configuration_defaults_cluster.json").str());

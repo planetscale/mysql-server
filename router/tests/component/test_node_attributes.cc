@@ -110,7 +110,7 @@ class NodeAttributesTest : public RouterComponentMetadataTest {
                     const bool read_only = false) {
     const std::string metadata_cache_section =
         get_metadata_cache_section(cluster_type, ttl);
-    std::string routing_rw_section{""};
+    std::string routing_rw_section;
     if (!read_only) {
       routing_rw_section = get_metadata_cache_routing_section(
           router_rw_port, "PRIMARY", "first-available", "rw");

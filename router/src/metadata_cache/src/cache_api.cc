@@ -78,6 +78,8 @@ MetadataCacheAPIBase *MetadataCacheAPI::instance() {
  *                             GR cluster type)
  * @param view_id last known view_id of the cluster metadata (only relevant
  *                for ReplicaSet cluster)
+ * @param close_connection_after_refresh if the connection should be closed
+ * after a refresh.
  */
 void MetadataCacheAPI::cache_init(
     const mysqlrouter::ClusterType cluster_type, const unsigned router_id,
@@ -89,7 +91,7 @@ void MetadataCacheAPI::cache_init(
     const MetadataCacheMySQLSessionConfig &session_config,
     const metadata_cache::RouterAttributes &router_attributes,
     size_t thread_stack_size, bool use_cluster_notifications,
-    const uint64_t view_id) {
+    const uint64_t view_id, bool close_connection_after_refresh) {
   std::lock_guard<std::mutex> lock(g_metadata_cache_m);
 
   switch (cluster_type) {
@@ -107,7 +109,8 @@ void MetadataCacheAPI::cache_init(
           instance_factory_(cluster_type, session_config, ssl_options,
                             use_cluster_notifications, view_id),
           ttl_config, ssl_options, target_cluster, router_attributes,
-          thread_stack_size, use_cluster_notifications);
+          thread_stack_size, use_cluster_notifications,
+          close_connection_after_refresh);
   }
 
   is_initialized_ = true;

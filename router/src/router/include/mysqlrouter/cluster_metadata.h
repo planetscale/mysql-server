@@ -220,5 +220,8 @@ constexpr const std::chrono::milliseconds kDefaultMetadataTTLClusterSet{
 const bool kDefaultUseGRNotificationsCluster = false;
 const bool kDefaultUseGRNotificationsClusterSet = true;
 
+const bool kDefaultCloseConnectionAfterRefreshCluster = false;
+const bool kDefaultCloseConnectionAfterRefreshClusterSet = true;
+
 }  // namespace mysqlrouter
 #endif

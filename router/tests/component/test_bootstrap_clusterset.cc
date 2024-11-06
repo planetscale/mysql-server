@@ -1161,7 +1161,7 @@ TEST_F(RouterClusterSetBootstrapTest, ConfigExposedInMetadata) {
 
   // Check if proper Configuration Defaults were written on bootstrap
   const std::string public_configuration_defaults_in_md =
-      get_config_defaults_stored_in_md(http_port);
+      get_config_defaults_stored_in_md(http_port) + "\n";
 
   const std::string public_configuration_defaults = get_file_output(
       get_data_dir().join("configuration_defaults_clusterset.json").str());

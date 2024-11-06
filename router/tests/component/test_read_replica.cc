@@ -63,9 +63,13 @@ class ReadReplicaTest : public RouterComponentClusterSetTest {
     auto ttl_str = std::to_string(std::chrono::duration<double>(kTTL).count());
 
     std::map<std::string, std::string> options{
-        {"cluster_type", cluster_type_str}, {"router_id", "1"},
-        {"user", "mysql_router1_user"},     {"metadata_cluster", "test"},
-        {"connect_timeout", "1"},           {"ttl", ttl_str}};
+        {"cluster_type", cluster_type_str},  //
+        {"router_id", "1"},                  //
+        {"user", "mysql_router1_user"},      //
+        {"metadata_cluster", "test"},        //
+        {"connect_timeout", "1"},            //
+        {"ttl", ttl_str},                    //
+    };
 
     return {"metadata_cache:test", options};
   }
@@ -725,7 +729,8 @@ TEST_F(ReadReplicaTest, ReadOnlyTargetsChanges) {
   change_read_only_targets("all");
   EXPECT_TRUE(
       wait_for_transaction_count_increase(cluster_nodes_[0].http_port, 3));
-  check_log_contains(router, "Using read_only_targets='all'", 2);
+  EXPECT_NO_FATAL_FAILURE(
+      check_log_contains(router, "Using read_only_targets='all'", 2));
 
   // make sure Read Replicas were NOT added to the state file as a metadata
   // servers

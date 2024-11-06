@@ -123,6 +123,15 @@ bool ClusterMetadata::do_connect(MySQLSession &connection,
 
 bool ClusterMetadata::connect_and_setup_session(
     const metadata_cache::metadata_server_t &metadata_server) noexcept {
+  if (metadata_connection_ && metadata_connection_->is_connected() &&
+      metadata_connection_->get_address() == metadata_server.str()) {
+    // there still a connection open to that server. Reuse it.
+
+    if (0 == metadata_connection_->ping()) {
+      return true;
+    }
+  }
+
   // Get a clean metadata server connection object
   // (RAII will close the old one if needed).
   try {

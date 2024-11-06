@@ -39,6 +39,7 @@
 #include "mysql/harness/logging/logging.h"
 #include "mysql/harness/section_config_exposer.h"
 #include "mysql/harness/utility/string.h"  // string_format
+#include "mysqlrouter/cluster_metadata.h"
 #include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/supported_metadata_cache_options.h"
 #include "mysqlrouter/uri.h"
@@ -77,6 +78,7 @@ std::string MetadataCachePluginConfig::get_default(
       {"connect_timeout", to_string(metadata_cache::kDefaultConnectTimeout)},
       {"read_timeout", to_string(metadata_cache::kDefaultReadTimeout)},
       {"router_id", "0"},
+      {"close_connection_after_refresh", "0"},
       {"thread_stack_size",
        to_string(mysql_harness::kDefaultStackSizeInKiloBytes)},
       {"use_gr_notifications", "0"},
@@ -259,14 +261,19 @@ MetadataCachePluginConfig::MetadataCachePluginConfig(
   GET_OPTION_CHECKED(cluster_type, section, "cluster_type",
                      ClusterTypeOption{});
   GET_OPTION_CHECKED(router_id, section, "router_id", IntOption<uint32_t>{});
+  GET_OPTION_CHECKED(close_connection_after_refresh, section,
+                     "close_connection_after_refresh",
+                     mysql_harness::BoolOption{});
 
   ssl_options = make_ssl_options(section);
 
-  if (cluster_type == mysqlrouter::ClusterType::RS_V2 &&
-      section->has("use_gr_notifications")) {
-    throw std::invalid_argument(
-        "option 'use_gr_notifications' is not valid for cluster type 'rs'");
+  if (cluster_type == mysqlrouter::ClusterType::RS_V2) {
+    if (section->has("use_gr_notifications")) {
+      throw std::invalid_argument(
+          "option 'use_gr_notifications' is not valid for cluster type 'rs'");
+    }
   }
+
   if (auth_cache_ttl > std::chrono::seconds(-1) &&
       auth_cache_ttl < std::chrono::milliseconds(1)) {
     throw std::invalid_argument(
@@ -319,6 +326,11 @@ class MetadataCacheConfigExposer : public mysql_harness::SectionConfigExposer {
     expose_option("use_gr_notifications", plugin_config_.use_gr_notifications,
                   mysqlrouter::kDefaultUseGRNotificationsCluster,
                   mysqlrouter::kDefaultUseGRNotificationsClusterSet, false);
+    expose_option("close_connection_after_refresh",
+                  plugin_config_.close_connection_after_refresh,
+                  mysqlrouter::kDefaultCloseConnectionAfterRefreshCluster,
+                  mysqlrouter::kDefaultCloseConnectionAfterRefreshClusterSet,
+                  false);
 
     expose_option(
         "thread_stack_size", plugin_config_.thread_stack_size,

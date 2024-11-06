@@ -1475,6 +1475,7 @@ TEST_P(CheckServerCompatibilityTest, Spec) {
   for (size_t i = 0; i < kClusterNodes; ++i) {
     const auto classic_port = port_pool_.get_next_available();
     const auto http_port = port_pool_.get_next_available();
+
     cluster_nodes.push_back((&mock_server_spawner().spawn(  //
         mock_server_cmdline(GetParam().tracefile)
             .port(classic_port)
@@ -1516,19 +1517,29 @@ TEST_P(CheckServerCompatibilityTest, Spec) {
   ASSERT_NO_FATAL_FAILURE(
       verify_port(client_res->get(), md_servers_classic_ports[1]));
 
-  // change the cluster nodes versions
+  const std::string kMockServerConnectionsUri(
+      "/api/v1/mock_server/connections/");
+
+  SCOPED_TRACE("// change the cluster nodes versions to " +
+               GetParam().server_version);
   for (const auto http_port : md_servers_http_ports) {
     set_mock_server_version(http_port, GetParam().server_version);
+
+    // close all connections to ensure the metadata-cache sees the new
+    // server-version.
+    ASSERT_NO_THROW(
+        MockServerRestClient(http_port).send_delete(kMockServerConnectionsUri));
   }
 
   EXPECT_TRUE(
       wait_for_transaction_count_increase(md_servers_http_ports[0], 5, 5s));
 
   if (GetParam().expect_failure) {
-    verify_new_connection_fails(router_rw_port);
-    verify_new_connection_fails(router_ro_port);
+    EXPECT_NO_FATAL_FAILURE(verify_new_connection_fails(router_rw_port));
+    EXPECT_NO_FATAL_FAILURE(verify_new_connection_fails(router_ro_port));
 
-    EXPECT_TRUE(wait_log_contains(router, GetParam().expected_error_msg, 5s));
+    EXPECT_TRUE(wait_log_contains(router, GetParam().expected_error_msg, 5s))
+        << GetParam().expected_error_msg;
   } else {
     auto conn_res = make_new_connection(router_rw_port);
     ASSERT_NO_ERROR(conn_res);

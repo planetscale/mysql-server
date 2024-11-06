@@ -261,6 +261,8 @@ class METADATA_CACHE_EXPORT MetadataCacheAPIBase
    *                                  (only available for GR cluster type)
    * @param view_id last known view_id of the cluster metadata (only relevant
    *                for ReplicaSet cluster)
+   * @param close_connection_after_refresh if the connection should be closed
+   * after a refresh.
    *
    */
   virtual void cache_init(
@@ -273,7 +275,8 @@ class METADATA_CACHE_EXPORT MetadataCacheAPIBase
       const MetadataCacheMySQLSessionConfig &session_config,
       const RouterAttributes &router_attributes,
       size_t thread_stack_size = mysql_harness::kDefaultStackSizeInKiloBytes,
-      bool use_cluster_notifications = false, const uint64_t view_id = 0) = 0;
+      bool use_cluster_notifications = false, const uint64_t view_id = 0,
+      bool close_connection_after_refresh = false) = 0;
 
   virtual void instance_name(const std::string &inst_name) = 0;
   virtual std::string instance_name() const = 0;
@@ -469,7 +472,8 @@ class METADATA_CACHE_EXPORT MetadataCacheAPI : public MetadataCacheAPIBase {
                   const MetadataCacheMySQLSessionConfig &session_config,
                   const RouterAttributes &router_attributes,
                   size_t thread_stack_size, bool use_cluster_notifications,
-                  const uint64_t view_id) override;
+                  const uint64_t view_id,
+                  bool close_connection_after_refresh) override;
 
   mysqlrouter::ClusterType cluster_type() const override;
 

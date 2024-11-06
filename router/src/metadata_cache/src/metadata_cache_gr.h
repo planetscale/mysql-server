@@ -49,6 +49,8 @@ class METADATA_CACHE_EXPORT GRMetadataCache : public MetadataCache {
    * @param use_gr_notifications Flag indicating if the metadata cache should
    *                             use GR notifications as an additional trigger
    *                             for metadata refresh
+   * @param close_connection_after_refresh if the connection should be closed
+   * after a refresh.
    */
   GRMetadataCache(
       const unsigned router_id, const std::string &clusterset_id,
@@ -59,11 +61,12 @@ class METADATA_CACHE_EXPORT GRMetadataCache : public MetadataCache {
       const mysqlrouter::TargetCluster &target_cluster,
       const metadata_cache::RouterAttributes &router_attributes,
       size_t thread_stack_size = mysql_harness::kDefaultStackSizeInKiloBytes,
-      bool use_gr_notifications = false)
+      bool use_gr_notifications = false,
+      bool close_connection_after_refresh = false)
       : MetadataCache(router_id, clusterset_id, metadata_servers,
                       cluster_metadata, ttl_config, ssl_options, target_cluster,
                       router_attributes, thread_stack_size,
-                      use_gr_notifications) {}
+                      use_gr_notifications, close_connection_after_refresh) {}
 
   bool refresh(bool needs_writable_node) override;
 

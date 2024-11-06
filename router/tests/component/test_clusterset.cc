@@ -443,6 +443,199 @@ TEST_F(ClusterSetTest, TargetClusterNoChange) {
   EXPECT_EQ(1, count_str_occurences(log_content, needle));
 }
 
+TEST_F(ClusterSetTest, CloseConnectionAfterRefreshIsDefaultOff) {
+  RecordProperty("Worklog", "16652");
+  RecordProperty("RequirementId", "FR3");
+  RecordProperty("Description",
+                 "close-connection-after-refresh MUST default to 0. "
+                 "But with cluster-set, it has no impact as the connection "
+                 "switches between the servers.");
+  const std::string target_cluster = "primary";
+  const auto target_cluster_id = 0;
+
+  ClusterSetOptions cs_options;
+  cs_options.target_cluster_id = target_cluster_id;
+  cs_options.tracefile = "metadata_clusterset.js";
+  cs_options.router_options =
+      R"({"target_cluster" : ")" + target_cluster + "\" }";
+  create_clusterset(cs_options);
+
+  SCOPED_TRACE("// Launch the Router");
+  auto &router = launch_router(cs_options.topology);
+
+  // keep the Router running for several md refresh rounds
+  EXPECT_TRUE(wait_for_transaction_count_increase(
+      cs_options.topology.clusters[0].nodes[0].http_port, 3));
+
+  // check the new target_cluster was reported only once
+  const std::string needle = "New target cluster assigned in the metadata";
+  const std::string log_content = router.get_logfile_content();
+
+  // 1 is expected, that comes from the initial reading of the metadata
+  EXPECT_EQ(1, count_str_occurences(log_content, needle));
+
+  // should be more than 1 connect-attempt
+  std::string server_globals =
+      MockServerRestClient(cs_options.topology.clusters[0].nodes[0].http_port)
+          .get_globals_as_json_string();
+
+  EXPECT_GE(get_int_field_value(server_globals, "connects"), 2);
+}
+
+TEST_F(ClusterSetTest, CloseConnectionAfterRefreshOnWorks) {
+  RecordProperty("Worklog", "16652");
+  RecordProperty("RequirementId", "FR1");
+  RecordProperty("Description",
+                 "if close-connection-after-refresh is 1, the connection after "
+                 "refresh MUST be closed."
+                 "With cluster-set, it has no impact as the connection is "
+                 "closed anyway as the cache switches between the servers.");
+  const std::string target_cluster = "primary";
+  const auto target_cluster_id = 0;
+
+  ClusterSetOptions cs_options;
+  cs_options.target_cluster_id = target_cluster_id;
+  cs_options.tracefile = "metadata_clusterset.js";
+  cs_options.router_options =
+      R"({"target_cluster" : ")" + target_cluster + "\" }";
+  create_clusterset(cs_options);
+
+  auto cs_topology = cs_options.topology;
+  bool use_gr_notifications = false;
+  auto metadata_ttl = kTTL;
+
+  SCOPED_TRACE("// Prepare the dynamic state file for the Router");
+  const auto clusterset_all_nodes_ports =
+      cs_topology.get_md_servers_classic_ports();
+  router_state_file =
+      create_state_file(temp_test_dir.name(),
+                        create_state_file_content("", cs_topology.uuid,
+                                                  clusterset_all_nodes_ports,
+                                                  /*view_id*/ 1));
+
+  SCOPED_TRACE("// Prepare the config file for the Router");
+  router_port_rw = port_pool_.get_next_available();
+  router_port_ro = port_pool_.get_next_available();
+
+  auto default_section = get_DEFAULT_defaults();
+
+  init_keyring(default_section, temp_test_dir.name());
+
+  default_section["dynamic_state"] = router_state_file;
+
+  const std::string userfile = create_password_file();
+  const std::string rest_sections = mysql_harness::join(
+      get_restapi_config("rest_metadata_cache", userfile, true), "\n");
+
+  router_conf_file = create_config_file(
+      temp_test_dir.name(),
+      metadata_cache_section(metadata_ttl, use_gr_notifications) +
+          "close_connection_after_refresh=1\n" +
+          routing_section(router_port_rw, "PRIMARY", "first-available") +
+          routing_section(router_port_ro, "SECONDARY", "round-robin") +
+          rest_sections,
+      &default_section);
+
+  SCOPED_TRACE("// Launch the Router");
+  auto &router = router_spawner().spawn({"-c", router_conf_file});
+
+  // keep the Router running for several md refresh rounds
+  EXPECT_TRUE(wait_for_transaction_count_increase(
+      cs_options.topology.clusters[0].nodes[0].http_port, 3));
+
+  // check the new target_cluster was repoted only once
+  const std::string needle = "New target cluster assigned in the metadata";
+  const std::string log_content = router.get_logfile_content();
+
+  // 1 is expected, that comes from the initial reading of the metadata
+  EXPECT_EQ(1, count_str_occurences(log_content, needle));
+
+  // should be more than 1 connect-attempt
+  std::string server_globals =
+      MockServerRestClient(cs_options.topology.clusters[0].nodes[0].http_port)
+          .get_globals_as_json_string();
+
+  EXPECT_GE(get_int_field_value(server_globals, "connects"), 2);
+}
+
+TEST_F(ClusterSetTest, CloseConnectionAfterRefreshOffWorks) {
+  RecordProperty("Worklog", "16652");
+  RecordProperty("RequirementId", "FR2.1");
+  RecordProperty(
+      "Description",
+      "If close-connection-after-refresh is 0, the connection after refresh "
+      "can stay open if it is same-server, but with cluster-set, it has "
+      "no impact as the connection switches between the servers.");
+
+  const std::string target_cluster = "primary";
+  const auto target_cluster_id = 0;
+
+  ClusterSetOptions cs_options;
+  cs_options.target_cluster_id = target_cluster_id;
+  cs_options.tracefile = "metadata_clusterset.js";
+  cs_options.router_options =
+      R"({"target_cluster" : ")" + target_cluster + "\" }";
+  create_clusterset(cs_options);
+
+  auto cs_topology = cs_options.topology;
+  bool use_gr_notifications = false;
+  auto metadata_ttl = kTTL;
+
+  SCOPED_TRACE("// Prepare the dynamic state file for the Router");
+  const auto clusterset_all_nodes_ports =
+      cs_topology.get_md_servers_classic_ports();
+  router_state_file =
+      create_state_file(temp_test_dir.name(),
+                        create_state_file_content("", cs_topology.uuid,
+                                                  clusterset_all_nodes_ports,
+                                                  /*view_id*/ 1));
+
+  SCOPED_TRACE("// Prepare the config file for the Router");
+  router_port_rw = port_pool_.get_next_available();
+  router_port_ro = port_pool_.get_next_available();
+
+  auto default_section = get_DEFAULT_defaults();
+
+  init_keyring(default_section, temp_test_dir.name());
+
+  default_section["dynamic_state"] = router_state_file;
+
+  const std::string userfile = create_password_file();
+  const std::string rest_sections = mysql_harness::join(
+      get_restapi_config("rest_metadata_cache", userfile, true), "\n");
+
+  router_conf_file = create_config_file(
+      temp_test_dir.name(),
+      metadata_cache_section(metadata_ttl, use_gr_notifications) +
+          "close_connection_after_refresh=0\n" +
+          routing_section(router_port_rw, "PRIMARY", "first-available") +
+          routing_section(router_port_ro, "SECONDARY", "round-robin") +
+          rest_sections,
+      &default_section);
+
+  SCOPED_TRACE("// Launch the Router");
+  auto &router = router_spawner().spawn({"-c", router_conf_file});
+
+  // keep the Router running for several md refresh rounds
+  EXPECT_TRUE(wait_for_transaction_count_increase(
+      cs_options.topology.clusters[0].nodes[0].http_port, 3));
+
+  // check the new target_cluster was repoted only once
+  const std::string needle = "New target cluster assigned in the metadata";
+  const std::string log_content = router.get_logfile_content();
+
+  // 1 is expected, that comes from the initial reading of the metadata
+  EXPECT_EQ(1, count_str_occurences(log_content, needle));
+
+  // should be more than 1 connect-attempt as the clusterset implementation will
+  // close the connection and go to another node.
+  std::string server_globals =
+      MockServerRestClient(cs_options.topology.clusters[0].nodes[0].http_port)
+          .get_globals_as_json_string();
+
+  EXPECT_GE(get_int_field_value(server_globals, "connects"), 2);
+}
+
 class ClusterChangeTargetClusterInTheMetadataTest
     : public ClusterSetTest,
       public ::testing::WithParamInterface<

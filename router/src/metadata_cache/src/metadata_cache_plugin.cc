@@ -231,7 +231,8 @@ static void start(mysql_harness::PluginFuncEnv *env) {
                          config.metadata_servers_addresses, ttl_config,
                          config.ssl_options, target_cluster, session_config,
                          g_router_attributes, config.thread_stack_size,
-                         config.use_gr_notifications, config.get_view_id());
+                         config.use_gr_notifications, config.get_view_id(),
+                         config.close_connection_after_refresh);
 
     // register callback
     md_cache_dynamic_state = std::move(config.metadata_cache_dynamic_state);
