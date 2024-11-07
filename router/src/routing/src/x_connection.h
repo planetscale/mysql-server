@@ -83,7 +83,9 @@ class MysqlRoutingXConnection
                      context.source_ssl_mode(),
                      ClientSideConnection::protocol_state_type{}},
         server_conn_{nullptr, context.dest_ssl_mode(),
-                     ServerSideConnection::protocol_state_type{}} {}
+                     ServerSideConnection::protocol_state_type{}} {
+    client_address(client_conn_.connection()->endpoint());
+  }
 
  public:
   using connector_type = Connector<std::unique_ptr<ConnectionBase>>;
@@ -116,14 +118,6 @@ class MysqlRoutingXConnection
 
   net::impl::socket::native_handle_type get_client_fd() const override {
     return client_conn().native_handle();
-  }
-
-  std::string get_client_address() const override {
-    return client_conn().endpoint();
-  }
-
-  std::string get_server_address() const override {
-    return server_conn().endpoint();
   }
 
   void disconnect() override;

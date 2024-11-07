@@ -77,7 +77,9 @@ class MysqlRoutingClassicConnectionBase
         read_timer_{client_conn_.connection()->io_ctx()},
         connect_timer_{client_conn_.connection()->io_ctx()},
         wait_for_my_writes_{context.wait_for_my_writes()},
-        wait_for_my_writes_timeout_{context.wait_for_my_writes_timeout()} {}
+        wait_for_my_writes_timeout_{context.wait_for_my_writes_timeout()} {
+    client_address(client_conn_.connection()->endpoint());
+  }
 
  public:
   using ClientSideConnection =
@@ -119,14 +121,6 @@ class MysqlRoutingClassicConnectionBase
 
   net::impl::socket::native_handle_type get_client_fd() const override {
     return client_conn().native_handle();
-  }
-
-  std::string get_client_address() const override {
-    return client_conn().endpoint();
-  }
-
-  std::string get_server_address() const override {
-    return server_conn().endpoint();
   }
 
   void disconnect() override;
