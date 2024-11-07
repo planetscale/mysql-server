@@ -119,6 +119,7 @@ SET(MYSYS_SOURCES
   typelib.cc
   unhex.cc
   keyring_operations_helper.cc
+  stream_cipher.cc
   # From deleted mysys_ssl library
   crypt_genhash_impl.cc
   my_default.cc

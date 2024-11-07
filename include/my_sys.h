@@ -54,6 +54,7 @@
 
 #include <atomic>  // error_handler_hook
 #include <cstring>
+#include <string>
 
 #include "my_compiler.h"
 #include "my_compress.h"
@@ -73,7 +74,6 @@
 #include "mysql/components/services/bits/psi_metric_bits.h"
 #include "mysql/components/services/bits/psi_stage_bits.h"
 #include "mysql/components/services/bits/server_telemetry_logs_client_bits.h"
-#include "sql/stream_cipher.h"
 #include "string_with_len.h"
 
 class MY_CHARSET_LOADER;
@@ -330,6 +330,7 @@ struct IO_CACHE_SHARE {
   int error;           /* Last error. */
 };
 
+class Stream_cipher;
 struct IO_CACHE /* Used when caching files */
 {
   /* Offset in file corresponding to the first byte of uchar* buffer. */

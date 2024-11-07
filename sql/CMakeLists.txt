@@ -1069,7 +1069,6 @@ SET(BINLOG_SOURCE
   rpl_trx_tracking.cc
   rpl_utility.cc
   sql_binlog.cc
-  stream_cipher.cc
   )
 ADD_LIBRARY(binlog STATIC ${BINLOG_SOURCE})
 TARGET_LINK_LIBRARIES(binlog mysql_binlog_event)
