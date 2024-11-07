@@ -1625,3 +1625,9 @@ SET @hadCreateSpatialRefrenceSystem =
   (SELECT COUNT(*) FROM global_grants WHERE priv = 'CREATE_SPATIAL_REFERENCE_SYSTEM');
 INSERT INTO global_grants SELECT user, host, 'CREATE_SPATIAL_REFERENCE_SYSTEM', IF(grant_priv = 'Y', 'Y', 'N')
 FROM mysql.user WHERE super_priv = 'Y' AND @hadCreateSpatialRefrenceSystem = 0 AND user NOT IN ('mysql.infoschema','mysql.session','mysql.sys');
+
+-- Bug#36808636 System accounts are not converted to non legacy auth plugin during upgrade
+-- Convert authentication of 'mysql.sys' and 'mysql.sessioon' users
+-- from mysql_native_password into caching_sha2_password.
+UPDATE mysql.user SET plugin='caching_sha2_password', authentication_string='$A$005$THISISACOMBINATIONOFINVALIDSALTANDPASSWORDTHATMUSTNEVERBRBEUSED' WHERE user='mysql.sys';
+UPDATE mysql.user SET plugin='caching_sha2_password', authentication_string='$A$005$THISISACOMBINATIONOFINVALIDSALTANDPASSWORDTHATMUSTNEVERBRBEUSED' WHERE user='mysql.session';
