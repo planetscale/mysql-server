@@ -335,6 +335,11 @@ The following options may be given as the first argument:
  before storage engine initialization, where each plugin
  is identified as name=library, where name is the plugin
  name and library is the plugin library in plugin_dir.
+ --enable-secondary-engine-statistics 
+ When this option is enabled, the hypergraph query
+ optimizer may fetchstatistics from the secondary engine,
+ if available
+ (Defaults to on; use --skip-enable-secondary-engine-statistics to disable.)
  --end-markers-in-json 
  In JSON output ("EXPLAIN FORMAT=JSON" and optimizer
  trace), if variable is set to 1, repeats the structure's
@@ -1683,6 +1688,7 @@ delayed-queue-size 1000
 disabled-storage-engines 
 disconnect-on-expired-password TRUE
 div-precision-increment 4
+enable-secondary-engine-statistics TRUE
 end-markers-in-json FALSE
 enforce-gtid-consistency FALSE
 eq-range-index-dive-limit 200
