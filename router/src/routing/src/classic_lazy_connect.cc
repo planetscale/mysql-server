@@ -331,6 +331,8 @@ stdx::expected<Processor::Result, std::error_code> LazyConnector::from_stash() {
           // reset the seq-id of the server side as this is a new command.
           connection()->server_protocol().seq_id(0xff);
 
+          connection()->server_address(connection()->server_conn().endpoint());
+
           if (auto &tr = tracer()) {
             tr.trace(Tracer::Event().stage(
                 "connect::from_stash::unstashed::mine: fd=" +
