@@ -44,6 +44,7 @@
 #include <sys/types.h>
 #endif
 #include <limits.h> // SIZE_MAX
+#define HAVE_SIZE_MAX 1 // Do not redefine it below
 
 #if !defined(__attribute__) && (defined(__cplusplus) || !defined(__GNUC__)  || __GNUC__ == 2 && __GNUC_MINOR__ < 8)
 # define __attribute__(A)
