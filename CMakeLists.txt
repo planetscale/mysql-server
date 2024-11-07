@@ -433,20 +433,20 @@ IF(CMAKE_HOST_UNIX AND NOT FORCE_UNSUPPORTED_COMPILER
           "or set CMAKE_C_COMPILER and CMAKE_CXX_COMPILER explicitly.")
       ENDIF()
     ELSEIF(SOLARIS)
-      MESSAGE(STATUS "Looking for GCC 10 on Solaris.")
+      MESSAGE(STATUS "Looking for GCC 11 on Solaris.")
       FIND_PROGRAM(ALTERNATIVE_GCC gcc
         NO_DEFAULT_PATH
-        PATHS "/usr/gcc/10/bin")
+        PATHS "/usr/gcc/11/bin")
       FIND_PROGRAM(ALTERNATIVE_GPP g++
         NO_DEFAULT_PATH
-        PATHS "/usr/gcc/10/bin")
+        PATHS "/usr/gcc/11/bin")
       IF (ALTERNATIVE_GCC AND ALTERNATIVE_GPP)
         SET(CMAKE_C_COMPILER ${ALTERNATIVE_GCC})
         SET(CMAKE_CXX_COMPILER ${ALTERNATIVE_GPP})
         MESSAGE(STATUS "Using ${ALTERNATIVE_GCC}")
         MESSAGE(STATUS "Using ${ALTERNATIVE_GPP}")
       ELSE()
-        MESSAGE(WARNING "Could not find /usr/gcc/10/bin/gcc")
+        MESSAGE(WARNING "Could not find /usr/gcc/11/bin/gcc")
       ENDIF()
     ENDIF()
   ENDIF()
