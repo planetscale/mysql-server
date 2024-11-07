@@ -7404,7 +7404,7 @@ bool check_dollar_quote(int c, const char *str) {
 static int read_line(char *buf, int size) {
   char c, last_quote = 0, last_char = 0;
   char *p = buf, *buf_end = buf + size - 1;
-  int skip_char = 0, dollar_quoted = 0;
+  int skip_char = 0;
   int query_comment = 0, query_comment_start = 0, query_comment_end = 0;
   bool have_slash = false;
 
@@ -7481,7 +7481,6 @@ static int read_line(char *buf, int size) {
           /* Check for start of $$ quote */
           char next = my_getc(cur_file->file);
           if (check_dollar_quote(next, p)) {
-            dollar_quoted = 1;
             state = R_DOLLAR_QUOTED;
             *p++ = next;
           } else {
@@ -7564,7 +7563,6 @@ static int read_line(char *buf, int size) {
           /* Check for start of $$ quote */
           char next = my_getc(cur_file->file);
           if (check_dollar_quote(next, p)) {
-            dollar_quoted = true;
             state = R_DOLLAR_QUOTED;
             *p++ = next;
           } else {
@@ -7576,10 +7574,7 @@ static int read_line(char *buf, int size) {
 
       case R_Q:
         if (c == last_quote) {
-          if (dollar_quoted == 1)
-            state = R_DOLLAR_QUOTED;
-          else
-            state = R_NORMAL;
+          state = R_NORMAL;
         } else if (c == '\\')
           state = R_SLASH_IN_Q;
         else if (query_comment)
@@ -7591,17 +7586,11 @@ static int read_line(char *buf, int size) {
         break;
 
       case R_DOLLAR_QUOTED:
-        if (c == '\'' || c == '"' || c == '`') {
-          if (!have_slash) {
-            last_quote = c;
-            state = R_Q;
-          }
-        } else if (c == '$') {
+        if (c == '$') {
           char next = my_getc(cur_file->file);
           if (next == '$') {
             *p++ = next;
             state = R_NORMAL;
-            dollar_quoted = 0;
           } else {
             my_ungetc(next);
           }
