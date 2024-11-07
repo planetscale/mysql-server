@@ -84,6 +84,16 @@ class Item_subselect : public Item_result_field {
   Query_expression *query_expr() const { return m_query_expr; }
 
   /**
+    For Item_subselect constructor with POS parameter, the contextualized
+    field must be transitioned explicitly.
+  */
+  void set_contextualized() {
+#ifndef NDEBUG
+    assert(!contextualized);
+    contextualized = true;
+#endif  // NDEBUG
+  }
+  /**
      If !=NO_PLAN_IDX: this Item is in the condition attached to the JOIN_TAB
      having this index in the parent JOIN.
   */

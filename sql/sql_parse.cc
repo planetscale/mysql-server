@@ -6672,11 +6672,13 @@ Item *all_any_subquery_creator(THD *thd, const POS &pos, Item *left_expr,
     item = new (thd->mem_root) Item_in_subselect(pos, left_expr, query_block);
     if (item == nullptr) return nullptr;
 
+    down_cast<Item_subselect *>(item)->set_contextualized();
     thd->add_item(item);
   } else if (cmp == &comp_ne_creator && all) {  // <> ALL <=> NOT IN
     item = new Item_in_subselect(pos, left_expr, query_block);
     if (item == nullptr) return nullptr;
 
+    down_cast<Item_subselect *>(item)->set_contextualized();
     thd->add_item(item);
 
     Item *negated = item->truth_transformer(nullptr, Item::BOOL_NEGATED);
@@ -6687,6 +6689,7 @@ Item *all_any_subquery_creator(THD *thd, const POS &pos, Item *left_expr,
         Item_allany_subselect(pos, left_expr, cmp, query_block, all);
     if (it == nullptr) return nullptr;
 
+    it->set_contextualized();
     thd->add_item(it);
 
     if (all) {  // ALL

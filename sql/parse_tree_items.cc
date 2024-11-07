@@ -329,6 +329,7 @@ bool PTI_singlerow_subselect::do_itemize(Parse_context *pc, Item **res) {
   *res = new (pc->mem_root) Item_singlerow_subselect(m_pos, subselect->value());
   if (*res == nullptr) return true;
 
+  down_cast<Item_subselect *>(*res)->set_contextualized();
   pc->thd->add_item(*res);
   pc->select->n_scalar_subqueries++;
 
@@ -340,6 +341,7 @@ bool PTI_exists_subselect::do_itemize(Parse_context *pc, Item **res) {
   *res = new (pc->mem_root) Item_exists_subselect(m_pos, subselect->value());
   if (*res == nullptr) return true;
 
+  down_cast<Item_subselect *>(*res)->set_contextualized();
   pc->thd->add_item(*res);
 
   return false;

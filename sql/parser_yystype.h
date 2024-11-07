@@ -125,7 +125,6 @@ class PT_start_option_value_list_following_option_type;
 class PT_sub_partition;
 class PT_subpartition;
 class PT_subquery;
-class PT_subselect;
 class PT_table_constraint_def;
 class PT_table_element;
 class PT_table_reference;
@@ -426,7 +425,6 @@ union MY_SQL_PARSER_STYPE {
   } trg_characteristics;
   Index_hint *key_usage_element;
   List<Index_hint> *key_usage_list;
-  PT_subselect *subselect;
   PT_item_list *item_list2;
   PT_order_expr *order_expr;
   PT_order_list *order_list;

@@ -597,7 +597,9 @@ bool Item_subselect::fix_fields(THD *thd, Item **) {
 
   assert(!fixed);
   assert(indexsubquery_engine == nullptr);
-
+#ifndef NDEBUG
+  assert(contextualized);
+#endif
   if (check_stack_overrun(thd, STACK_MIN_SIZE, (uchar *)&res)) return true;
 
   if (!query_expr()->is_prepared() &&
