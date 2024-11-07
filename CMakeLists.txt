@@ -55,26 +55,18 @@ IF(WIN32)
     ENDIF()
   ENDIF()
 ELSEIF(APPLE)
-  # Version 3.12.4 is needed because the new build system of Xcode is not
-  # supported by cmake. 3.12.4 will force using the legacy build system.
-  # Version 3.9.2 is needed because INCLUDE_DIRECTORIES(SYSTEM ...) wasn't
-  # handled properly by the cmake Xcode generator.
-  # NOTE:
-  # cmake >= 3.19 will use the new build system by default for Xcode >= 12.x
   IF(CMAKE_GENERATOR STREQUAL "Xcode")
     SET(APPLE_XCODE 1)
-    CMAKE_MINIMUM_REQUIRED(VERSION 3.12.4)
-  ELSE()
-    CMAKE_MINIMUM_REQUIRED(VERSION 3.9.2)
   ENDIF()
-  # If this is macOS 11, we need cmake 3.18
+  # For macOS version >= 11 we need cmake 3.18
   # System libraries like
   #    /usr/lib/libresolv.dylib
   # are no longer present in the file system.
   # cmake >= 3.18 will look for .tbd files in the SDK instead
   # So we end up linking with:
   #    /Applications/Xcode.app/.../usr/lib/libresolv.tbd
-  # We must postpone the version test until we have called 'uname -r' below.
+  # cmake >= 3.19 will use the new build system by default for Xcode >= 12.x
+  CMAKE_MINIMUM_REQUIRED(VERSION 3.19)
 ELSEIF(UNIX)
   # This is currently minimum version on all supported platforms.
   IF(CMAKE_VERSION VERSION_LESS 3.11.2)
