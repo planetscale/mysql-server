@@ -1,0 +1,140 @@
+SET DEBUG_SYNC= 'RESET';
+connect  con1, localhost, root,,;
+##############################################################
+# Bug#36846567 Inplace ALTER TABLE might cause lost rows if concurrent purge
+##############################################################
+
+connection default;
+CREATE TABLE t1 (pk CHAR(5) PRIMARY KEY);
+INSERT INTO t1 VALUES ('aaaaa'), ('bbbbb'), ('bbbcc'), ('ccccc'), ('ddddd'), ('eeeee');
+SET GLOBAL INNODB_PURGE_STOP_NOW=ON;
+DELETE FROM t1 WHERE pk = 'bbbcc';
+connection con1;
+SET DEBUG='+d,ddl_buf_add_two';
+SET DEBUG_SYNC='ddl_bulk_inserter_latches_released SIGNAL latches_released WAIT_FOR go';
+# Send ALTER TABLE INPLACE which rebuilds table.
+ALTER TABLE t1 ENGINE=InnoDB, ALGORITHM=INPLACE;
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR latches_released';
+SET GLOBAL innodb_purge_run_now=ON;
+SET DEBUG_SYNC='now SIGNAL go';
+connection con1;
+# Reap ALTER TABLE
+# Before the fix row 'ddddd' was missing from the table after ALTER.
+SELECT * FROM t1;
+pk
+aaaaa
+bbbbb
+ccccc
+ddddd
+eeeee
+SET DEBUG_SYNC= 'RESET';
+# Test cleanup
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+##############################################################
+# Test#2 Delete the first record
+##############################################################
+
+connection default;
+CREATE TABLE t1 (pk CHAR(5) PRIMARY KEY);
+INSERT INTO t1 VALUES ('aaaaa'), ('bbbbb'), ('bbbcc'), ('ccccc'), ('ddddd'), ('eeeee');
+SET GLOBAL INNODB_PURGE_STOP_NOW=ON;
+DELETE FROM t1 WHERE pk = 'aaaaa';
+connection con1;
+SET DEBUG='+d,ddl_buf_add_two';
+SET DEBUG_SYNC='ddl_bulk_inserter_latches_released SIGNAL latches_released WAIT_FOR go';
+# Send ALTER TABLE INPLACE which rebuilds table.
+ALTER TABLE t1 ENGINE=InnoDB, ALGORITHM=INPLACE;
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR latches_released';
+SET GLOBAL innodb_purge_run_now=ON;
+SET DEBUG_SYNC='now SIGNAL go';
+connection con1;
+# Reap ALTER TABLE
+# Verify intended records are present
+SELECT * FROM t1;
+pk
+bbbbb
+bbbcc
+ccccc
+ddddd
+eeeee
+SET DEBUG_SYNC= 'RESET';
+# Test cleanup
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+##############################################################
+# Test#3 Delete the second record
+##############################################################
+
+connection default;
+CREATE TABLE t1 (pk CHAR(5) PRIMARY KEY);
+INSERT INTO t1 VALUES ('aaaaa'), ('bbbbb'), ('bbbcc'), ('ccccc'), ('ddddd'), ('eeeee');
+SET GLOBAL INNODB_PURGE_STOP_NOW=ON;
+DELETE FROM t1 WHERE pk = 'bbbbb';
+connection con1;
+SET DEBUG='+d,ddl_buf_add_two';
+SET DEBUG_SYNC='ddl_bulk_inserter_latches_released SIGNAL latches_released WAIT_FOR go';
+# Send ALTER TABLE INPLACE which rebuilds table.
+ALTER TABLE t1 ENGINE=InnoDB, ALGORITHM=INPLACE;
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR latches_released';
+SET GLOBAL innodb_purge_run_now=ON;
+SET DEBUG_SYNC='now SIGNAL go';
+connection con1;
+# Reap ALTER TABLE
+# Verify intended records are present
+SELECT * FROM t1;
+pk
+aaaaa
+bbbcc
+ccccc
+ddddd
+eeeee
+SET DEBUG_SYNC= 'RESET';
+# Test cleanup
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+##############################################################
+# Test#4 Delete the fourth record
+##############################################################
+
+connection default;
+CREATE TABLE t1 (pk CHAR(5) PRIMARY KEY);
+INSERT INTO t1 VALUES ('aaaaa'), ('bbbbb'), ('bbbcc'), ('ccccc'), ('ddddd'), ('eeeee');
+SET GLOBAL INNODB_PURGE_STOP_NOW=ON;
+DELETE FROM t1 WHERE pk = 'ccccc';
+connection con1;
+SET DEBUG='+d,ddl_buf_add_two';
+SET DEBUG_SYNC='ddl_bulk_inserter_latches_released SIGNAL latches_released WAIT_FOR go';
+# Send ALTER TABLE INPLACE which rebuilds table.
+ALTER TABLE t1 ENGINE=InnoDB, ALGORITHM=INPLACE;
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR latches_released';
+SET GLOBAL innodb_purge_run_now=ON;
+SET DEBUG_SYNC='now SIGNAL go';
+connection con1;
+# Reap ALTER TABLE
+# Verify intended records are present
+SELECT * FROM t1;
+pk
+aaaaa
+bbbbb
+bbbcc
+ddddd
+eeeee
+SET DEBUG_SYNC= 'RESET';
+# Test cleanup
+connection default;
+SET DEBUG_SYNC= 'RESET';
+DROP TABLE t1;
+#
+# Cleanup.
+DROP TABLE IF EXISTS t1;
+Warnings:
+Note	1051	Unknown table 'test.t1'
+disconnect con1;
