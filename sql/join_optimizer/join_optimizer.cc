@@ -3696,7 +3696,8 @@ bool CostingReceiver::ProposeTableScan(
 bool CostingReceiver::ProposeIndexScan(
     TABLE *table, int node_idx, double force_num_output_rows_after_filter,
     unsigned key_idx, bool reverse, int ordering_idx) {
-  if (table->pos_in_table_list->uses_materialization()) {
+  if (table->pos_in_table_list->uses_materialization() ||
+      (table->key_info[key_idx].flags & HA_FULLTEXT) != 0) {
     // Not yet implemented.
     return false;
   }

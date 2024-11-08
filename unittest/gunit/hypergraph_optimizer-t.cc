@@ -55,6 +55,7 @@
 #include "sql/join_optimizer/access_path.h"
 #include "sql/join_optimizer/bit_utils.h"
 #include "sql/join_optimizer/common_subexpression_elimination.h"
+#include "sql/join_optimizer/cost_model.h"
 #include "sql/join_optimizer/explain_access_path.h"
 #include "sql/join_optimizer/hypergraph.h"
 #include "sql/join_optimizer/join_optimizer.h"
@@ -1975,6 +1976,9 @@ TEST_F(HypergraphOptimizerTest, PredicatePushdownToRef) {
   Fake_TABLE *t1 = m_fake_tables["t1"];
   t1->create_index({t1->field[0], t1->field[1]}, HA_NOSAME);
   m_fake_tables["t1"]->file->stats.records = 100;
+  constexpr uint kBlockSize{16 * 1024};
+  m_fake_tables["t1"]->file->stats.block_size = kBlockSize;
+  m_fake_tables["t1"]->file->stats.data_file_length = kBlockSize * 10;
   TraceGuard trace(m_thd);
   AccessPath *root = FindBestQueryPlanAndFinalize(m_thd, query_block);
   SCOPED_TRACE(trace.contents());  // Prints out the trace on failure.
@@ -5164,6 +5168,9 @@ TEST_F(HypergraphOptimizerTest, IndexTailGetsUsed) {
   Fake_TABLE *t1 = m_fake_tables["t1"];
   CreateOrderedIndex({t1->field[0], t1->field[1]});
   t1->file->stats.records = 100;
+  constexpr uint kBlockSize{16 * 1024};
+  t1->file->stats.block_size = kBlockSize;
+  t1->file->stats.data_file_length = kBlockSize * 10;
 
   TraceGuard trace(m_thd);
   AccessPath *root = FindBestQueryPlanAndFinalize(m_thd, query_block);
@@ -6917,6 +6924,97 @@ TEST_F(HypergraphOptimizerTest, GroupIndexSkipScanDedup) {
 
   ASSERT_EQ(AccessPath::GROUP_INDEX_SKIP_SCAN, root->type);
   query_block->cleanup(/*full=*/true);
+}
+
+// Unit test for EstimateBytesPerRowTable().
+TEST_F(HypergraphOptimizerTest, EstimateBytesPerRowTable1) {
+  // CREATE TABLE t1(i1 INT, b1 LONGBLOB, v1 VARCHAR(2048),
+  // b2 LONGBLOB, i1 INT, v2 VARCHAR(1024)).
+  Mock_field_long i1("i1");
+  Base_mock_field_blob b1("b1", 1024 * 1024);
+  // utf8mb4m, so max size is 4*2*1024=8KB.
+  Mock_field_varstring v1(/*share=*/nullptr, /*name=*/"v1",
+                          /*char_len=*/2 * 1024, /*is_nullable=*/true);
+  Base_mock_field_blob b2("b2", 1024 * 1024);
+  Mock_field_long i2("i2");
+  Mock_field_varstring v2(/*share=*/nullptr, /*name=*/"v1",
+                          /*char_len=*/1024, /*is_nullable=*/true);
+  List<Field> fields;
+  fields.push_back(&i1);
+  fields.push_back(&b1);
+  fields.push_back(&v1);
+  fields.push_back(&b2);
+  fields.push_back(&i2);
+  fields.push_back(&v2);
+  Fake_TABLE *t1 = new (m_thd->mem_root) Fake_TABLE(fields);
+  t1->file->stats.records = 10;
+  t1->file->stats.data_file_length = 10 * 1024 * 1024;
+  t1->file->stats.mean_rec_length =
+      t1->file->stats.data_file_length / t1->file->stats.records;
+  m_fake_tables["t1"] = t1;
+  t1->set_created();
+  bitmap_clear_all(t1->read_set);
+  bitmap_set_bit(t1->read_set, 0);  // i1.
+  bitmap_set_bit(t1->read_set, 4);  // i2.
+  constexpr int64_t kRecordSize{4114};
+  {
+    const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+    EXPECT_EQ(row.record_bytes, kRecordSize);
+    EXPECT_EQ(row.overflow_bytes, 0);
+    EXPECT_EQ(row.overflow_probability, 0.0);
+  }
+  bitmap_set_bit(t1->read_set, 2);  // v1.
+  {
+    const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+    EXPECT_EQ(row.record_bytes, kRecordSize);
+    EXPECT_EQ(row.overflow_bytes, 8194);
+    EXPECT_EQ(row.overflow_probability, 1.0);
+  }
+  bitmap_set_bit(t1->read_set, 3);  // b2.
+  {
+    const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+    EXPECT_EQ(row.record_bytes, kRecordSize);
+    EXPECT_EQ(row.overflow_bytes, 526328);
+    EXPECT_EQ(row.overflow_probability, 1.0);
+  }
+  bitmap_set_bit(t1->read_set, 1);  // b1.
+  {
+    const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+    EXPECT_EQ(row.record_bytes, kRecordSize);
+    EXPECT_EQ(row.overflow_bytes, 1044462);
+    EXPECT_EQ(row.overflow_probability, 1.0);
+  }
+  bitmap_clear_all(t1->read_set);
+  bitmap_set_bit(t1->read_set, 5);  // v2.
+  {
+    const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+    EXPECT_EQ(row.record_bytes, kRecordSize);
+    EXPECT_EQ(row.overflow_bytes, 0);
+    EXPECT_EQ(row.overflow_probability, 0.0);
+  }
+}
+
+// Unit test for EstimateBytesPerRowTable().
+TEST_F(HypergraphOptimizerTest, EstimateBytesPerRowTable2) {
+  // CREATE TABLE t1(v1 VARCHAR(2500)).
+  // utf8mb4m, so max size is 4*2500=10000 bytes.
+  Mock_field_varstring v1(/*share=*/nullptr, /*name=*/"v1",
+                          /*char_len=*/10000, /*is_nullable=*/true);
+  List<Field> fields;
+  fields.push_back(&v1);
+  Fake_TABLE *t1 = new (m_thd->mem_root) Fake_TABLE(fields);
+  t1->file->stats.records = 10;
+  t1->file->stats.data_file_length = 10 * 7500;
+  t1->file->stats.mean_rec_length =
+      t1->file->stats.data_file_length / t1->file->stats.records;
+  m_fake_tables["t1"] = t1;
+  t1->set_created();
+  bitmap_set_all(t1->read_set);
+  const BytesPerTableRow row{EstimateBytesPerRowTable(t1)};
+  EXPECT_EQ(row.record_bytes, 5333);
+  EXPECT_EQ(row.overflow_bytes, 2166);
+  EXPECT_GT(row.overflow_probability, 0.28);
+  EXPECT_LT(row.overflow_probability, 0.29);
 }
 
 /// Test the TraceBuffer class.

@@ -257,6 +257,289 @@ static double TempTableAggregationCost(double output_rows, double input_rows,
 // involving one or two rows.
 constexpr double kTempTableCreationCost = 3;
 
+BytesPerTableRow EstimateBytesPerRowWideTable(const TABLE *table,
+                                              int64_t max_row_size) {
+  /*
+    We have no statistics on the size of the individual variable-sized fields,
+    only on the combined size of all fields. We therefore estimate the field
+    sizes as follows:
+    - We order the fields by their maximal size (field->field_length) in
+      ascending order.
+    - We estimate the size of a field to be the smallest of its maximal size
+      and the remaining number of bytes, divided by the remaining number of
+      fields.
+  */
+
+  // Index of fields, sorted by size in ascending order.
+  Prealloced_array<int16_t, 64> smallest_first(PSI_NOT_INSTRUMENTED);
+
+  for (uint i = 0; i < table->s->fields; i++) {
+    smallest_first.push_back(static_cast<int16_t>(i));
+  }
+
+  std::ranges::sort(smallest_first, [&](int16_t a, int16_t b) {
+    return table->field[a]->field_length < table->field[b]->field_length;
+  });
+
+  const ha_statistics &stats{table->file->stats};
+  // The expected size of the b-tree record.
+  double record_size{0.0};
+  // The expected number of overflow bytes per record.
+  double overflow_size{0.0};
+  // The probability of a row having at least one overflow page .
+  double overflow_probability{0.0};
+  // The maximal size of a b-tree record.
+  const double max_record_size{ClampedBlockSize(table) / 2.0};
+  /*
+    If we have no statistics on actual row size, we assume that the row is
+    no longer than this, even if the combined size of the LOBs it contains
+    could be greater.
+  */
+  constexpr int64_t kDefaultLobRowMaxSize{64 * 1024};
+  int64_t remaining_bytes{stats.records == 0
+                              ? std::min(max_row_size, kDefaultLobRowMaxSize)
+                              : static_cast<int64_t>(stats.mean_rec_length)};
+
+  for (uint i = 0; i < table->s->fields; i++) {
+    const int16_t field_no{smallest_first[i]};
+    const int64_t expected_size{
+        std::min<int64_t>(table->field[field_no]->field_length,
+                          remaining_bytes / (table->s->fields - i))};
+
+    const double field_overflow_probability{[&]() {
+      if (record_size + table->field[field_no]->field_length <
+          max_record_size) {
+        return 0.0;
+      }
+
+      /*
+        Chance of overflow grows gradually from 0% chance at row size
+        80% of kMaxEstimatedBytesPerRow to 100% chance at 120% of
+        kMaxEstimatedBytesPerRow.
+      */
+      return std::clamp(
+          2.5 * (expected_size + record_size) / kMaxEstimatedBytesPerRow - 2.0,
+          0.0, 1.0);
+    }()};
+
+    remaining_bytes -= expected_size;
+    record_size += expected_size * (1 - field_overflow_probability);
+
+    if (bitmap_is_set(table->read_set, field_no)) {
+      overflow_size += expected_size * field_overflow_probability;
+      overflow_probability = field_overflow_probability;
+    }
+  }
+
+  return {.record_bytes = static_cast<int64_t>(record_size),
+          .overflow_bytes = static_cast<int64_t>(overflow_size),
+          .overflow_probability = overflow_probability};
+}
+
+/**
+   Estimate a lower limit for the cache hit ratio when reading from an index
+   (or base table), based on the size of the index relative to that of
+   the buffer pool.
+   @param file The handler to which the index or base table belongs.
+   @param file_size The size of the index or base table, in bytes.
+   @returns A lower limit for the cache hit ratio.
+*/
+static double LowerCacheHitRatio(const handler *file, double file_size) {
+  const longlong handler_size{file->get_memory_buffer_size()};
+  // Assume that the buffer pool is 4GB if we do not know.
+  const double pool_size{handler_size >= 0 ? handler_size : 4.29e9};
+
+  // If the index (or table) is smaller than this, we assume that it is
+  // fully cached.
+  const double fits_entirely{0.05 * pool_size};
+
+  return std::clamp(
+      1.0 - (file_size - fits_entirely) / (pool_size - fits_entirely), 0.0,
+      1.0);
+}
+
+double TableAccessIOCost(const TABLE *table, double num_rows,
+                         BytesPerTableRow row_size) {
+  if (strcmp("InnoDB", ha_resolve_storage_engine_name(table->file->ht)) != 0) {
+    // IO cost not yet implemented for other storage engines.
+    return 0.0;
+  }
+
+  const double block_size{static_cast<double>(ClampedBlockSize(table))};
+
+  // The cost of reading b-tree records.
+  const double record_cost{[&]() {
+    if (num_rows < 1.0) {
+      return num_rows * (kIOStartCost + block_size * kIOByteCost);
+    }
+
+    // May not be accurate, as the row size in the storage engine may be
+    // different.
+    const double rows_per_block{
+        std::max(1.0, (block_size * kBlockFillFactor) / row_size.record_bytes)};
+
+    const double blocks{1 + (num_rows - 1) / rows_per_block};
+
+    return kIOStartCost + blocks * block_size * kIOByteCost;
+  }()};
+
+  // The cost of reading overflow pages (long variable-sized fields).
+  const double overflow_cost{[&]() {
+    if (row_size.overflow_bytes == 0) {
+      return 0.0;
+    }
+
+    // The expected number of overflow blocks, given that there is overflow.
+    const double overflow_blocks{
+        std::ceil(row_size.overflow_bytes / block_size)};
+
+    return num_rows * row_size.overflow_probability *
+           (kIOStartCost + overflow_blocks * block_size * kIOByteCost);
+  }()};
+
+  const double cache_miss_ratio{[&]() {
+    // Do "SET DEBUG='d,in_memory_0'" to simulate zero cache hit rate,
+    // in_memory_50 or in_memory_100 for 50% or 100%  cache hit rate.
+    DBUG_EXECUTE_IF("in_memory_0", { return 1.0; });
+    DBUG_EXECUTE_IF("in_memory_50", { return 0.5; });
+    DBUG_EXECUTE_IF("in_memory_100", { return 0.0; });
+
+    return 1.0 -
+           std::max(table->file->table_in_memory_estimate(),
+                    LowerCacheHitRatio(table->file,
+                                       table->file->stats.data_file_length));
+  }()};
+
+  return cache_miss_ratio * (record_cost + overflow_cost);
+}
+
+double CoveringIndexAccessIOCost(const TABLE *table, unsigned key_idx,
+                                 double num_rows) {
+  assert(!IsClusteredPrimaryKey(table, key_idx));
+  if (strcmp("InnoDB", ha_resolve_storage_engine_name(table->file->ht)) != 0) {
+    // IO cost not yet implemented for other storage engines.
+    return 0.0;
+  }
+
+  const double block_size{static_cast<double>(ClampedBlockSize(table))};
+  // May not be accurate, as the row size in the storage engine may be
+  // different.
+  const double rows_per_block{
+      std::max(1.0, (block_size * kBlockFillFactor) /
+                        EstimateBytesPerRowIndex(table, key_idx))};
+
+  // The IO-cost if there were no caching.
+  const double uncached_cost{[&]() {
+    if (num_rows < 1.0) {
+      return num_rows * (kIOStartCost + block_size * kIOByteCost);
+    }
+
+    // The number of (leaf) blocks that we must read.
+    const double blocks_read{1 + (num_rows - 1) / rows_per_block};
+    return kIOStartCost + blocks_read * block_size * kIOByteCost;
+  }()};
+
+  // The size (in bytes) of the entire index.
+  const double file_length{table->file->stats.records / rows_per_block *
+                           block_size};
+
+  // The fraction of index blocks that will not be found in the buffer pool.
+  const double cache_miss_ratio{[&]() {
+    // Do "SET DEBUG='d,in_memory_0'" to simulate zero cache hit rate,
+    // in_memory_50 or in_memory_100 for 50% or 100%  cache hit rate.
+    DBUG_EXECUTE_IF("in_memory_0", { return 1.0; });
+    DBUG_EXECUTE_IF("in_memory_50", { return 0.5; });
+    DBUG_EXECUTE_IF("in_memory_100", { return 0.0; });
+
+    return 1.0 - std::max(table->file->index_in_memory_estimate(key_idx),
+                          LowerCacheHitRatio(table->file, file_length));
+  }()};
+
+  return uncached_cost * cache_miss_ratio;
+}
+
+double EstimateIndexRangeScanCost(const TABLE *table, unsigned key_idx,
+                                  RangeScanType scan_type, double num_ranges,
+                                  double num_output_rows) {
+  /*
+    The cost of performing num_ranges lookups and reading
+    num_output_rows from the index (including IO cost). If the index
+    is covering we return this cost directly. If it is non-covering we
+    account for the additional cost of performing lookups into the
+    primary index, either using the standard strategy of performing a
+    lookup for each matching record in the secondary index directly,
+    or by using the Multi-Range Read (MRR) optimization, that first
+    collects (batches of) primary key values and then performs the
+    lookups in sorted order to save on IO cost compared to doing
+    random lookups.
+  */
+  const double index_cost{num_ranges * IndexLookupCost(table, key_idx) +
+                          RowReadCostIndex(table, key_idx, num_output_rows)};
+
+  if (IsClusteredPrimaryKey(table, key_idx) ||
+      table->covering_keys.is_set(key_idx)) {
+    return index_cost;
+  }
+
+  // If we are operating on a secondary non-covering index we have to perform
+  // a lookup into the primary index for each matching row. This is the case
+  // for the InnoDB storage engine, but with the MEMORY engine we do not have
+  // a primary key, so we instead assign a default lookup cost.
+  const double lookup_cost{table->s->is_missing_primary_key()
+                               ? kIndexLookupDefaultCost
+                               : IndexLookupCost(table, table->s->primary_key)};
+
+  // When this function is called by e.g. EstimateRefAccessCost() we can have
+  // num_output_rows < 1 and it becomes important that our cost estimate
+  // reflects expected cost, i.e. that it scales linearly with the expected
+  // number of output rows.
+  switch (scan_type) {
+    case RangeScanType::kMultiRange: {
+      /*
+        Since MRR sorts the primary keys from the secondary index before doing
+        lookups on the primary keys, it should not need to read each base table
+        leaf block more than once.
+        Caveats:
+        * data_file_length includes overflow (LOB) blocks. We may or may not
+          need those, depending on the projection.
+        * If the scan of the seconday index return lots of primary keys, we
+          will sort these in batches and do lookups on the base table for each
+          batch. Then we may indeed end up reading the same base table blocks
+          multiple times.
+        * We should add a cost element for sorting the primary keys, so that
+          single-range scans will be cheaper if the base table is fully cached.
+       */
+      const uint fields_read_per_row{bitmap_bits_set(table->read_set)};
+      const BytesPerTableRow bytes_per_row{EstimateBytesPerRowTable(table)};
+
+      // Cost of reading single row from base table, except IO cost.
+      const double row_cost{RowReadCost(
+          1.0, fields_read_per_row,
+          bytes_per_row.record_bytes + bytes_per_row.overflow_bytes)};
+
+      const int64_t blocks{static_cast<int64_t>(
+          table->file->stats.data_file_length / ClampedBlockSize(table))};
+
+      const double disk_reads{std::min<double>(num_output_rows, blocks)};
+
+      const double io_cost{
+          disk_reads *
+          TableAccessIOCost(table, num_output_rows / std::max(1.0, disk_reads),
+                            bytes_per_row)};
+
+      return index_cost + num_output_rows * (lookup_cost + row_cost) + io_cost;
+    }
+
+    case RangeScanType::kSingleRange:
+      return index_cost +
+             num_output_rows * (lookup_cost + RowReadCostTable(table, 1));
+
+    default:
+      assert(false);
+      return index_cost;
+  }
+}
+
 namespace {
 double EstimateAggregateRows(THD *thd, const AccessPath *child,
                              const Query_block *query_block, bool rollup);

@@ -256,7 +256,13 @@ st_plugin_int *remove_hton2plugin(uint slot) {
 }
 
 const char *ha_resolve_storage_engine_name(const handlerton *db_type) {
-  return db_type == nullptr ? "UNKNOWN" : hton2plugin(db_type->slot)->name.str;
+  return db_type == nullptr ||
+                 // May happen in unit tests.
+                 num_hton2plugins() == 0 ||
+                 // May happen in unit tests.
+                 hton2plugin(db_type->slot) == nullptr
+             ? "UNKNOWN"
+             : hton2plugin(db_type->slot)->name.str;
 }
 
 static handlerton *installed_htons[128];
@@ -6447,8 +6453,8 @@ ha_rows handler::multi_range_read_info_const(uint keyno, RANGE_SEQ_IF *seq,
   // Cost computation.
   assert(cost->is_zero());
   if (thd->lex->using_hypergraph_optimizer()) {
-    cost->add_cpu(
-        EstimateIndexRangeScanCost(table, keyno, n_ranges, total_rows));
+    cost->add_cpu(EstimateIndexRangeScanCost(
+        table, keyno, RangeScanType::kMultiRange, n_ranges, total_rows));
   } else {
     const Cost_model_table *const cost_model = table->cost_model();
 
@@ -7243,10 +7249,7 @@ bool DsMrr_impl::get_disk_sweep_mrr_cost(uint keynr, ha_rows rows, uint flags,
 
   assert(cost->is_zero());
 
-  if (n_full_steps) {
-    get_sort_and_sweep_cost(table, max_buff_entries, cost);
-    cost->multiply(n_full_steps);
-  } else {
+  if (n_full_steps == 0) {
     /*
       Adjust buffer size since only parts of the buffer will be used:
       1. Adjust record estimate for the last scan to reduce likelihood
@@ -7259,6 +7262,17 @@ bool DsMrr_impl::get_disk_sweep_mrr_cost(uint keynr, ha_rows rows, uint flags,
         max<ha_rows>(static_cast<ha_rows>(1.2 * rows_in_last_step), 100);
     *buffer_size = min<ulong>(*buffer_size,
                               static_cast<ulong>(keys_in_buffer) * elem_size);
+  }
+
+  if (h->ha_thd()->lex->using_hypergraph_optimizer()) {
+    cost->add_cpu(EstimateIndexRangeScanCost(
+        table, keynr, RangeScanType::kMultiRange, 1, rows));
+    return false;
+  }
+
+  if (n_full_steps > 0) {
+    get_sort_and_sweep_cost(table, max_buff_entries, cost);
+    cost->multiply(n_full_steps);
   }
 
   Cost_estimate last_step_cost;
