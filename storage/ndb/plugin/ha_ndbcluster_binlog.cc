@@ -7284,6 +7284,7 @@ restart_cluster_failure:
   // wait_for_server_started() to ensure that the parts of
   // MySQL Server it uses has been created
   thd->init_query_mem_roots();
+  thd->set_time();
   lex_start(thd);
 
   if (do_reconnect_incident && ndb_binlog_running) {
