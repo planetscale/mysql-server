@@ -2959,7 +2959,8 @@ const NdbOperation *NdbTransaction::readTuple(
   }
 
   /* Setup the record/row for receiving the results. */
-  op->theReceiver.getValues(result_rec, result_row);
+  op->theReceiver.getValues(result_rec, result_row, op->m_row_side_buffer,
+                            op->m_row_side_buffer_size);
 
   return op;
 }
@@ -3035,7 +3036,8 @@ const NdbOperation *NdbTransaction::deleteTuple(
   if (result_row != nullptr)  // readBeforeDelete
   {
     /* Setup the record/row for receiving the results. */
-    op->theReceiver.getValues(result_rec, result_row);
+    op->theReceiver.getValues(result_rec, result_row, op->m_row_side_buffer,
+                              op->m_row_side_buffer_size);
   }
 
   return op;

@@ -350,13 +350,13 @@ int NdbScanOperation::handleScanOptions(const ScanOptions *options) {
  * It is used by table scan and index scan.
  */
 int NdbScanOperation::generatePackedReadAIs(const NdbRecord *result_record,
-                                            bool &haveBlob,
+                                            bool &usesBlobHandles,
                                             const Uint32 *m_read_mask) {
   Bitmask<MAXNROFATTRIBUTESINWORDS> readMask;
   Uint32 columnCount = 0;
   Uint32 maxAttrId = 0;
 
-  haveBlob = false;
+  usesBlobHandles = false;
 
   for (Uint32 i = 0; i < result_record->noOfColumns; i++) {
     const NdbRecord::Attr *col = &result_record->columns[i];
@@ -373,7 +373,7 @@ int NdbScanOperation::generatePackedReadAIs(const NdbRecord *result_record,
     /* Blob reads are handled with a getValue() in NdbBlob.cpp. */
     if (unlikely(col->flags & NdbRecord::UsesBlobHandle)) {
       m_keyInfo = 1;  // Need keyinfo for blob scan
-      haveBlob = true;
+      usesBlobHandles = true;
       continue;
     }
 
@@ -421,10 +421,10 @@ int NdbScanOperation::generatePackedReadAIs(const NdbRecord *result_record,
  */
 inline int NdbScanOperation::scanImpl(
     const NdbScanOperation::ScanOptions *options, const Uint32 *readMask) {
-  bool haveBlob = false;
+  bool usesBlobHandles = false;
 
   /* Add AttrInfos for packed read of cols in result_record */
-  if (generatePackedReadAIs(m_attribute_record, haveBlob, readMask) != 0)
+  if (generatePackedReadAIs(m_attribute_record, usesBlobHandles, readMask) != 0)
     return -1;
 
   theInitialReadSize = theTotalCurrAI_Len - AttrInfo::SectionSizeInfoLength;
@@ -443,7 +443,7 @@ inline int NdbScanOperation::scanImpl(
    * For old Api Scan ops, the Blob handles are already
    * set up by the call to getBlobHandle()
    */
-  if (unlikely(haveBlob) && !m_scanUsingOldApi) {
+  if (unlikely(usesBlobHandles) && !m_scanUsingOldApi) {
     if (getBlobHandlesNdbRecord(m_transConnection, readMask) == -1) return -1;
   }
 
@@ -626,6 +626,7 @@ static int compare_index_row_prefix(const NdbRecord *rec, const char *row1,
 
   for (i = 0; i < prefix_length; i++) {
     const NdbRecord::Attr *col = &rec->columns[rec->key_indexes[i]];
+    require(!(col->flags & NdbRecord::UsesRowSideBuffer));
 
     bool is_null1 = col->is_null(row1);
     bool is_null2 = col->is_null(row2);
@@ -684,6 +685,7 @@ int NdbIndexScanOperation::getDistKeyFromRange(const NdbRecord *key_record,
   for (i = 0; i < key_record->distkey_index_length; i++) {
     const NdbRecord::Attr *col =
         &key_record->columns[key_record->distkey_indexes[i]];
+    require(!(col->flags & NdbRecord::UsesRowSideBuffer));
     if (col->flags & NdbRecord::IsMysqldShrinkVarchar) {
       if (tmplen >= 256) {
         Uint32 len;
@@ -2151,9 +2153,11 @@ int NdbScanOperation::prepareSendScan(Uint32 /*aTC_ConnectPtr*/,
   ScanTabReq::setScanBatch(req->requestInfo, batch_size);
 
   for (Uint32 i = 0; i < theParallelism; i++) {
-    m_receivers[i]->do_setup_ndbrecord(m_attribute_record,
-                                       reinterpret_cast<char *>(buf),
-                                       m_read_range_no, (key_size > 0));
+    m_receivers[i]->do_setup_ndbrecord(
+        m_attribute_record, reinterpret_cast<char *>(buf),
+        reinterpret_cast<char *>(buf) + m_attribute_record->m_row_size,
+        m_attribute_record->m_row_side_buffer_size, m_read_range_no,
+        (key_size > 0));
     buf += full_rowsize / sizeof(Uint32);
 
     NdbReceiverBuffer *recbuf =
@@ -2539,18 +2543,6 @@ NdbOperation *NdbScanOperation::takeOverScanOpNdbRecord(
   AttributeMask readMask;
   record->copyMask(readMask.rep.data, mask);
 
-  if (opType == ReadRequest || opType == ReadExclusive) {
-    op->theLockMode = theLockMode;
-    /*
-     * Apart from taking over the row lock, we also support reading again,
-     * though typical usage will probably use an empty mask to read nothing.
-     */
-    op->theReceiver.getValues(record, row);
-  } else if (opType == DeleteRequest && row != nullptr) {
-    /* Delete with a 'pre-read' - prepare the Receiver */
-    op->theReceiver.getValues(record, row);
-  }
-
   /* Handle any OperationOptions */
   if (opts != nullptr) {
     /* Delegate to static method in NdbOperation */
@@ -2560,6 +2552,20 @@ NdbOperation *NdbScanOperation::takeOverScanOpNdbRecord(
       setErrorCodeAbort(result);
       return nullptr;
     }
+  }
+
+  if (opType == ReadRequest || opType == ReadExclusive) {
+    op->theLockMode = theLockMode;
+    /*
+     * Apart from taking over the row lock, we also support reading again,
+     * though typical usage will probably use an empty mask to read nothing.
+     */
+    op->theReceiver.getValues(record, row, op->m_row_side_buffer,
+                              op->m_row_side_buffer_size);
+  } else if (opType == DeleteRequest && row != nullptr) {
+    /* Delete with a 'pre-read' - prepare the Receiver */
+    op->theReceiver.getValues(record, row, op->m_row_side_buffer,
+                              op->m_row_side_buffer_size);
   }
 
   /* Setup Blob handles... */
@@ -2815,6 +2821,7 @@ int NdbIndexScanOperation::setBound(const NdbColumnImpl *tAttrInfo, int type,
   if (theOperationType == OpenRangeScanRequest && (0 <= type && type <= 4)) {
     const NdbRecord *key_record = m_accessTable->m_ndbrecord;
     const Uint32 maxKeyRecordBytes = key_record->m_row_size;
+    require(key_record->m_row_side_buffer_size == 0);
 
     Uint32 valueLen = 0;
     if (aValue != nullptr)
@@ -2844,6 +2851,7 @@ int NdbIndexScanOperation::setBound(const NdbColumnImpl *tAttrInfo, int type,
     }
 
     NdbRecord::Attr attr = key_record->columns[columnNum];
+    require(!(attr.flags & NdbRecord::UsesRowSideBuffer));
 
     byteOffset = attr.offset;
 
@@ -3022,6 +3030,7 @@ int NdbIndexScanOperation::ndbrecord_insert_bound(const NdbRecord *key_record,
                                                   Uint32 *&firstWordOfBound) {
   char buf[NdbRecord::Attr::SHRINK_VARCHAR_BUFFSIZE];
   const NdbRecord::Attr *column = &key_record->columns[column_index];
+  require(!(column->flags & NdbRecord::UsesRowSideBuffer));
 
   bool is_null = column->is_null(row);
   Uint32 len = 0;
@@ -3218,6 +3227,7 @@ int compare_ndbrecord(const NdbReceiver *r1, const NdbReceiver *r2,
   for (i = 0; i < key_record->key_index_length; i++) {
     const NdbRecord::Attr *key_col =
         &key_record->columns[key_record->key_indexes[i]];
+    require(!(key_col->flags & NdbRecord::UsesRowSideBuffer));
     assert(key_col->attrId < result_record->m_attrId_indexes_length);
     int col_idx = result_record->m_attrId_indexes[key_col->attrId];
     assert(col_idx >= 0);
@@ -3229,6 +3239,7 @@ int compare_ndbrecord(const NdbReceiver *r1, const NdbReceiver *r2,
       return 0;  // Column not present -> done
 
     const NdbRecord::Attr *result_col = &result_record->columns[col_idx];
+    require(!(result_col->flags & NdbRecord::UsesRowSideBuffer));
     bool a_is_null = result_col->is_null(a_row);
     bool b_is_null = result_col->is_null(b_row);
     if (a_is_null) {

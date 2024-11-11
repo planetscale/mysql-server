@@ -105,7 +105,13 @@ class NdbRecord {
       No overflow bits.
       Used only with IsMysqldBitfield.
     */
-    BitFieldMapsNullBitOnly = 0x200
+    BitFieldMapsNullBitOnly = 0x200,
+    /*
+     * Store as MySQL blob value with length in little endian followed by data
+     * pointer. Size of length can be derived from Attr::maxSize.
+     */
+    IsMysqldBlob = 0x400,
+    UsesRowSideBuffer = 0x800
   };
 
   struct Attr {
@@ -129,8 +135,13 @@ class NdbRecord {
       Maximum size of the attribute. This is duplicated here to avoid having
       to dig into Table object for every attribute fetch/store.
       For blob columns (with UsesBlobHandle) size is 8 (sizeof(NdbBlob*)).
+      For columns with UsesRowSideBuffer size is length bytes (4) + pointer (8).
     */
     Uint32 maxSize;
+
+    /* Max value size including length bytes (for flags & UsesRowSideBuffer). */
+    Uint32 maxValueSize;
+
     /* Number of bits in a bitfield (for flags & IsMysqldBitfield). */
     Uint32 bitCount;
 
@@ -148,9 +159,9 @@ class NdbRecord {
       Alignment information for the attribute, duplicated from column info
     */
     Uint32 orgAttrSize;
-    Uint32 unused2;
 
     bool get_var_length(const char *row, Uint32 &len) const {
+      assert(!(flags & UsesBlobHandle));
       if (flags & IsVar1ByteLen)
         len = 1 + *((const Uint8 *)(row + offset));
       else if (flags & IsVar2ByteLen)
@@ -261,6 +272,7 @@ class NdbRecord {
 
   /* Size of row (really end of right-most defined attribute in row). */
   Uint32 m_row_size;
+  Uint32 m_row_side_buffer_size;
 
   struct Attr columns[1];
 

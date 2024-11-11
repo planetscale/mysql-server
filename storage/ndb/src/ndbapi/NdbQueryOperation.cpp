@@ -982,8 +982,12 @@ void NdbResultStream::prepare() {
       reinterpret_cast<char *>(query.getRowBufferAlloc().allocObjMem(rowSize));
   assert(rowBuffer != nullptr);
 
+  auto rec = m_operation.getNdbRecord();
+  char *rowSideBuffer = rowBuffer + rec->m_row_size;
+  Uint32 rowSideBufferSize = rec->m_row_side_buffer_size;
   m_receiver.init(NdbReceiver::NDB_QUERY_OPERATION, &m_operation);
   m_receiver.do_setup_ndbrecord(m_operation.getNdbRecord(), rowBuffer,
+                                rowSideBuffer, rowSideBufferSize,
                                 m_operation.needRangeNo(),
                                 /*read_key_info=*/false);
 }  // NdbResultStream::prepare
@@ -4279,7 +4283,8 @@ int NdbQueryOperationImpl::fetchRow(NdbResultStream &resultStream) {
       assert(m_resultBuffer != nullptr);
       if (unlikely(m_resultBuffer == nullptr)) return -1;
       // Copy result to buffer supplied by application.
-      memcpy(m_resultBuffer, buff, m_ndbRecord->m_row_size);
+      memcpy(m_resultBuffer, buff,
+             m_ndbRecord->m_row_size + m_ndbRecord->m_row_side_buffer_size);
     }
   }
   return 0;

@@ -1346,5 +1346,10 @@ int NdbOperation::handleOperationOptions(const OperationType type,
     op->m_flags |= OF_NOWAIT;
   }
 
+  if (opts->optionsPresent & OperationOptions::OO_ROW_SIDE_BUFFER) {
+    op->m_row_side_buffer = static_cast<char *>(opts->rowSideBuffer);
+    op->m_row_side_buffer_size = opts->rowSideBufferSize;
+  }
+
   return 0;
 }
