@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
 ## Overview
 
-Script script/static_analysis.py is a wrapper around different static
+Script scripts/static_analysis.py is a wrapper around different static
 code analysis tools allowing you to easily check your code for possible
 issues.
 There are two supported modes of work:

@@ -89,7 +89,7 @@ def scan_tree(clang_tidy_binary, repo_root, jobs_count, build_path, scan_root):
 def scan_commit(clang_tidy_diff_script, commit, jobs_count, build_path):
     helpers.verbose_log(f"Scan commit: \'{commit}\'")
 
-    cmd = f"git diff-tree -p {commit} -U0  -- ':!*/extra/*' | python3 {clang_tidy_diff_script} -timeout 600 -path {build_path} -j={jobs_count} -p1 -extra-arg='-ferror-limit=0'"
+    cmd = f"git diff-tree -p {commit} -U0  -- '*.cc' '*.cpp' '*.c++' '*.cxx' '*.c' '*.cl' '*.h' '*.hpp' '*.hh' '*.i' '*.ic' ':!*/extra/*' | python3 {clang_tidy_diff_script} -timeout 600 -path {build_path} -j={jobs_count} -p1 -extra-arg='-ferror-limit=0'"
     out, err, rc = helpers.shell_execute(cmd)
     if rc != 0 and err:
         print(err, file=sys.stderr)
