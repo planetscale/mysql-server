@@ -3997,6 +3997,7 @@ class Field_vector : public Field_blob {
   type_conversion_status store_decimal(const my_decimal *) final;
   type_conversion_status store(const char *from, size_t length,
                                const CHARSET_INFO *cs) final;
+  bool eq_def(const Field *field) const override;
   uint is_equal(const Create_field *new_field) const override;
   String *val_str(String *, String *) const override;
 };

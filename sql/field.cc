@@ -7754,6 +7754,11 @@ uint Field_blob::is_equal(const Create_field *new_field) const {
   return IS_EQUAL_PACK_LENGTH;
 }
 
+bool Field_vector::eq_def(const Field *field) const {
+  return Field::eq_def(field) &&
+         (max_data_length() == field->max_data_length());
+}
+
 uint Field_vector::is_equal(const Create_field *new_field) const {
   if (new_field->sql_type != MYSQL_TYPE_VECTOR ||
       new_field->max_display_width_in_codepoints() != field_length ||
