@@ -738,6 +738,10 @@ class Acl_cache {
   */
   void flush_cache();
   /**
+    Removes all acl map objects when shutdown_acl_cache is called.
+  */
+  void clear_acl_cache();
+  /**
     Return a lower boundary to the current version count.
   */
   uint64 version();
