@@ -5909,6 +5909,15 @@ bool Item_field::fix_fields(THD *thd, Item **reference) {
       return true;
     }
     assert(!(base_field != nullptr && ref_field != nullptr));
+    if (qb->m_window_order_fix_field) {
+      // SQL 2016, section 7.15 window clause, SR 4: " Each <column reference>
+      // contained in the <window partition clause> or <window order clause> of
+      // WDEF shall unambiguously reference a column of the derived table T
+      // that is the result of TE (the <table expression> that immediately
+      // contains the <window clause)
+      my_error(ER_INVALID_OUTER_REFERENCE, MYF(0), full_name());
+      return true;
+    }
     if (complete) {  // TODO verify full semantics of "complete"
       if (ref_field != nullptr) {
         *reference = ref_field;

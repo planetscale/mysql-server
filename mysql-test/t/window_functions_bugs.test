@@ -1646,3 +1646,24 @@ SET optimizer_switch="derived_merge=default";
 DESC t1;
 DESC t2;
 DROP TABLE t0,t1,t2;
+
+--echo #
+--echo # Bug#36921175 Complex Join Predicate with Subquery Not
+--echo #              Possible To Offload to HeatWave
+CREATE TABLE t1(col INT);
+CREATE TABLE t2(col INT);
+INSERT INTO t1 VALUES (0), (1), (2), (NULL);
+INSERT INTO t1 VALUES (0), (1), (2), (NULL);
+ANALYZE TABLE t1;
+
+--error ER_INVALID_OUTER_REFERENCE
+SELECT COUNT(s1.col)
+FROM t1 AS s1 JOIN t1 AS s2
+     ON s2.col IN (WITH RECURSIVE cte1 AS
+                    (SELECT DENSE_RANK() OVER (PARTITION BY s1.col)
+                     FROM t2
+                     WHERE col >= 7
+                    )
+                   SELECT * FROM cte1
+                  );
+DROP TABLE t1, t2;

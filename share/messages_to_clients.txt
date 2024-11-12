@@ -10545,6 +10545,9 @@ ER_INVALID_CLAUSE_COMBINATION
 ER_WARN_REDACTED_PRIVILEGES
   eng "Result of SHOW was redacted due to insufficient privileges for table %s."
 
+ER_INVALID_OUTER_REFERENCE
+  eng "Outer reference %s in window's ORDER BY or PARTITION BY clause not allowed."
+
 #
 #  End of 9.x error messages (server-to-client).
 #

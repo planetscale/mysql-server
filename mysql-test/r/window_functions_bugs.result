@@ -2404,3 +2404,24 @@ DESC t2;
 Field	Type	Null	Key	Default	Extra
 c0	bit(8)	YES		NULL	
 DROP TABLE t0,t1,t2;
+#
+# Bug#36921175 Complex Join Predicate with Subquery Not
+#              Possible To Offload to HeatWave
+CREATE TABLE t1(col INT);
+CREATE TABLE t2(col INT);
+INSERT INTO t1 VALUES (0), (1), (2), (NULL);
+INSERT INTO t1 VALUES (0), (1), (2), (NULL);
+ANALYZE TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	OK
+SELECT COUNT(s1.col)
+FROM t1 AS s1 JOIN t1 AS s2
+ON s2.col IN (WITH RECURSIVE cte1 AS
+(SELECT DENSE_RANK() OVER (PARTITION BY s1.col)
+FROM t2
+WHERE col >= 7
+)
+SELECT * FROM cte1
+);
+ERROR HY000: Outer reference test.s1.col in window's ORDER BY or PARTITION BY clause not allowed.
+DROP TABLE t1, t2;

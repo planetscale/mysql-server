@@ -4348,13 +4348,23 @@ bool find_order_in_list(THD *thd, Ref_item_array ref_item_array,
 
     group_fix_field = true is so that we properly reject GROUP BY on
     subqueries with references to group fields.
+
+    is_window_order is used to signal that we do not accept outer references
   */
-  bool save_group_fix_field = thd->lex->current_query_block()->group_fix_field;
-  if (is_group_field) thd->lex->current_query_block()->group_fix_field = true;
+  const bool save_group_fix_field =
+      thd->lex->current_query_block()->group_fix_field;
+  const bool save_window_order =
+      thd->lex->current_query_block()->m_window_order_fix_field;
+  thd->lex->current_query_block()->group_fix_field = is_group_field;
+  thd->lex->current_query_block()->m_window_order_fix_field = is_window_order;
+
   bool ret =
       (!order_item->fixed && (order_item->fix_fields(thd, order->item) ||
                               (order_item = *order->item)->check_cols(1)));
+
   thd->lex->current_query_block()->group_fix_field = save_group_fix_field;
+  thd->lex->current_query_block()->m_window_order_fix_field = save_window_order;
+
   if (ret) return true; /* Wrong field. */
 
   uint el = fields->size();

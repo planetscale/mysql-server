@@ -2215,6 +2215,9 @@ class Query_block : public Query_term {
   bool having_fix_field{false};
   /// true when GROUP BY fix field called in processing of this query block
   bool group_fix_field{false};
+  /// true when resolving a window's ORDER BY or PARTITION BY, the window
+  /// belonging to this query block.
+  bool m_window_order_fix_field{false};
 
   /**
     True if contains or aggregates set functions.
