@@ -3046,6 +3046,10 @@ bool mysql_drop_user(THD *thd, List<LEX_USER> &list, bool if_exists,
   bool transactional_tables;
   std::set<LEX_USER *> audit_users;
   DBUG_TRACE;
+  DBUG_EXECUTE_IF("test_acl_race_condition", {
+    assert(!debug_sync_set_action(
+        thd, STRING_WITH_LEN("now WAIT_FOR map_inserted NO_CLEAR_EVENT")));
+  });
 
   /* check if DROP user is allowed on this user list or not. */
   if (check_orphaned_definers(thd, list)) return true;
