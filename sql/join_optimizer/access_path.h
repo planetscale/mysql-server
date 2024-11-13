@@ -1582,8 +1582,7 @@ inline AccessPath *NewLimitOffsetAccessPath(THD *thd, AccessPath *child,
   path->limit_offset().count_all_rows = count_all_rows;
   path->limit_offset().reject_multiple_rows = reject_multiple_rows;
   path->limit_offset().send_records_override = send_records_override;
-  path->ordering_state = child->ordering_state;
-  path->has_group_skip_scan = child->has_group_skip_scan;
+  CopyBasicProperties(*child, path);
   EstimateLimitOffsetCost(path);
   return path;
 }
