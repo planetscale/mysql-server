@@ -261,7 +261,7 @@ std::string get_str_field_value(const std::string &json_string,
 
 std::string get_json_in_pretty_format(const std::string &json_string) {
   rapidjson::Document json_doc;
-  json_doc.Parse(json_string.c_str());
+  json_doc.Parse<rapidjson::kParseCommentsFlag>(json_string);
 
   rapidjson::StringBuffer buffer;
   rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);

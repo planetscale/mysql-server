@@ -33,6 +33,7 @@
 #endif
 
 #include <rapidjson/document.h>
+#include <rapidjson/error/en.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/schema.h>
 #include <rapidjson/stringbuffer.h>
@@ -223,8 +224,17 @@ class ConfigurationDefaults {
     const auto update_schema_str =
         std::string(ConfigurationUpdateJsonSchema::data(),
                     ConfigurationUpdateJsonSchema::size());
+
     JsonDocument changes_schema;
-    changes_schema.Parse<0>(update_schema_str);
+    changes_schema.Parse<rapidjson::kParseCommentsFlag>(update_schema_str);
+
+    if (changes_schema.HasParseError()) {
+      throw std::runtime_error("json parse error: " +
+                               std::string(rapidjson::GetParseError_En(
+                                   changes_schema.GetParseError())) +
+                               " at offset " +
+                               std::to_string(changes_schema.GetErrorOffset()));
+    }
 
     version_obj.AddMember("Defaults", defaults, allocator);
     version_obj.AddMember("ConfigurationChangesSchema", changes_schema,
