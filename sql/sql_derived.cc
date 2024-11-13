@@ -1213,9 +1213,11 @@ bool Condition_pushdown::make_cond_for_derived() {
 
 Item *Condition_pushdown::extract_cond_for_table(Item *cond) {
   cond->marker = Item::MARKER_NONE;
-  if ((m_checking_purpose == CHECK_FOR_DERIVED) && cond->const_item()) {
+  if ((m_checking_purpose == CHECK_FOR_DERIVED) &&
+      (cond->const_item() || cond->has_aggregation())) {
     // There is no benefit in pushing a constant condition, we can as well
     // evaluate it at the top query's level.
+    // We do not pushdown conditions with aggregate functions.
     return nullptr;
   }
   // Make a new condition
