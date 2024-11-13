@@ -50,3 +50,4 @@ SELECT user,plugin,authentication_string,account_locked FROM mysql.user WHERE US
 # end of test, no cleanup needed
 --echo
 --echo # End of tests
+# this comment prevents EOL junk pb2 error, do not remove it !
