@@ -703,6 +703,7 @@ stdx::expected<Processor::Result, std::error_code> ConnectProcessor::connect() {
     connection()->connect_error_code(
         make_error_code(std::errc::operation_canceled));
 
+    connection()->completed();
     stage(Stage::Done);
     return Result::Again;
   }
@@ -1036,6 +1037,8 @@ ConnectProcessor::connected() {
   // mark destination as reachable.
   connection()->context().shared_quarantine().update(dest->destination(), true);
 
+  connection()->completed();
+
   // back to the caller.
   stage(Stage::Done);
   return Result::Again;
@@ -1101,6 +1104,7 @@ stdx::expected<Processor::Result, std::error_code> ConnectProcessor::error() {
       ClassicProtocolState::HandshakeState::kConnected);
   connection()->authenticated(false);
 
+  connection()->completed();
   stage(Stage::Done);
 
   on_error_({2003, "Can't connect to remote MySQL server", "HY000"});

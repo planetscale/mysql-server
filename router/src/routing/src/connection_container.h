@@ -35,6 +35,7 @@
 
 #include "connection.h"
 #include "mysqlrouter/routing_component.h"
+#include "routing_guidelines/routing_guidelines.h"
 
 class MySQLRoutingConnectionBase;
 
@@ -224,6 +225,10 @@ class ConnectionContainer {
    * @param connection The connection to remove from container
    */
   void remove_connection(MySQLRoutingConnectionBase *connection);
+
+  void disconnect_on_routing_guidelines_update(
+      const routing_guidelines::Routing_guidelines_engine::RouteChanges
+          &affected_routing_sources);
 
   /** number of active client threads. */
   std::condition_variable connection_removed_cond_;

@@ -45,6 +45,7 @@
 #include "mysqlrouter/connection_pool_component.h"
 #include "mysqlrouter/routing_component.h"
 #include "mysqlrouter/ssl_mode.h"
+#include "scope_guard.h"
 #include "tls_content_type.h"
 
 IMPORT_LOG_FUNCTIONS()
@@ -739,6 +740,7 @@ void MysqlRoutingXConnection::forward_server_to_client(Function this_func,
 }
 
 void MysqlRoutingXConnection::connect() {
+  Scope_guard connect_done_guard([&]() { completed(); });
   auto &connector = this->connector();
 
   auto connect_res = connector.connect();

@@ -331,6 +331,10 @@ class MysqlRoutingClassicConnectionBase
     rw_destination_endpoint_ = ep;
   }
 
+  void set_destination(std::unique_ptr<Destination> destination) {
+    destination_ = std::move(destination);
+  }
+
   /**
    * check if the connection is authenticated.
    *
@@ -430,9 +434,6 @@ class MysqlRoutingClassicConnectionBase
     wait_for_my_writes_timeout_ = timeout;
   }
 
-  RouteDestination *destinations() { return route_destination_; }
-  Destinations &current_destinations() { return destinations_; }
-
   void collation_connection_maybe_dirty(bool val) {
     collation_connection_maybe_dirty_ = val;
   }
@@ -457,10 +458,18 @@ class MysqlRoutingClassicConnectionBase
     return trx_state_;
   }
 
- private:
-  RouteDestination *route_destination_;
-  Destinations destinations_;
+  void wait_until_completed() override {
+    is_completed_.wait([](auto ready) { return ready == true; });
+  }
 
+  void completed() override {
+    is_completed_.serialize_with_cv([](auto &ready, auto &cv) {
+      ready = true;
+      cv.notify_all();
+    });
+  }
+
+ private:
   ClientSideConnection client_conn_;
   ServerSideConnection server_conn_;
 
@@ -501,6 +510,18 @@ class MysqlRoutingClassicConnectionBase
 
  private:
   Tracer tracer_{false};
+
+  std::string get_routing_source() const override {
+    return destination_->route_name();
+  }
+
+  void set_routing_source(std::string name) override {
+    destination_->set_route_name(std::move(name));
+  }
+
+  routing_guidelines::Server_info get_server_info() const override {
+    return destination_->get_server_info();
+  }
 
  public:
   net::steady_timer &read_timer() { return read_timer_; }
@@ -544,6 +565,8 @@ class MysqlRoutingClassicConnectionBase
 
   bool diagnostic_area_changed_{};
 
+  std::unique_ptr<Destination> destination_;
+
   FromEither recv_from_either_{FromEither::None};
 
   // events for router.trace.
@@ -580,6 +603,8 @@ class MysqlRoutingClassicConnectionBase
   std::chrono::seconds wait_for_my_writes_timeout_;
 
   bool has_transient_error_at_connect_{false};
+
+  WaitableMonitor<bool> is_completed_{false};
 };
 
 #endif

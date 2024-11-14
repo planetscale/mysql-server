@@ -1197,6 +1197,11 @@ void MySQLRouting::on_routing_guidelines_update(
   auto md_destination_manager =
       dynamic_cast<DestMetadataCacheManager *>(destination_manager_.get());
   md_destination_manager->clear_internal_state();
+
+  // Some of the existing connections may no longer be valid according to the
+  // new guidelines.
+  connection_container_.disconnect_on_routing_guidelines_update(
+      affected_routing_sources);
 }
 
 routing_guidelines::Routing_guidelines_engine::RouteChanges

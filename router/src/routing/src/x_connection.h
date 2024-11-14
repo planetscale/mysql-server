@@ -746,6 +746,25 @@ class MysqlRoutingXConnection
     return std::nullopt;
   }
 
+  std::string get_routing_source() const override {
+    return connector().routing_source();
+  }
+
+  void set_routing_source(std::string name) override {
+    return connector().set_routing_source(std::move(name));
+  }
+
+  void wait_until_completed() override {
+    is_completed_.wait([](auto ready) { return ready == true; });
+  }
+
+  void completed() override {
+    is_completed_.serialize_with_cv([](auto &ready, auto &cv) {
+      ready = true;
+      cv.notify_all();
+    });
+  }
+
  private:
   int active_work_{0};
 
@@ -765,6 +784,8 @@ class MysqlRoutingXConnection
 
   ClientSideConnection client_conn_;
   ServerSideConnection server_conn_;
+
+  WaitableMonitor<bool> is_completed_{false};
 };
 
 #endif

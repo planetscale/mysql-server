@@ -84,6 +84,13 @@ class MySQLRoutingConnectionBase {
 
   virtual net::impl::socket::native_handle_type get_client_fd() const = 0;
 
+  virtual std::string get_routing_source() const = 0;
+
+  virtual void set_routing_source(std::string name) = 0;
+
+  virtual void wait_until_completed() = 0;
+  virtual void completed() = 0;
+
   /**
    * @brief Returns address of server to which connection is established.
    *
@@ -250,6 +257,11 @@ class ConnectorBase {
     return destination_id_;
   }
 
+  std::string routing_source() const { return destination_->route_name(); }
+  void set_routing_source(std::string name) {
+    destination_->set_route_name(std::move(name));
+  }
+
   void on_connect_failure(
       std::function<void(const mysql_harness::Destination &, std::error_code)>
           func) {
@@ -291,9 +303,7 @@ class ConnectorBase {
       mysql_harness::DestinationSocket::TcpType{io_ctx_}};
   mysql_harness::DestinationEndpoint server_endpoint_;
 
-  RouteDestination *route_destination_;
-  Destinations &destinations_;
-  Destinations::iterator destinations_it_;
+  std::unique_ptr<Destination> destination_{nullptr};
   std::vector<mysql_harness::DestinationEndpoint> endpoints_;
   std::vector<mysql_harness::DestinationEndpoint>::iterator endpoints_it_;
 
