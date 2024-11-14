@@ -256,7 +256,8 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
     return routing_strategy_;
   }
 
-  std::vector<mysql_harness::Destination> get_destinations() const override;
+  std::vector<mysql_harness::Destination> get_destination_candidates()
+      const override;
 
   std::vector<MySQLRoutingAPI::ConnData> get_connections() override;
 

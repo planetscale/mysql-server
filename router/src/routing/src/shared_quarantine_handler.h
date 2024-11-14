@@ -30,7 +30,7 @@
 #include <string>
 #include <utility>  // move
 
-#include "destination.h"  // AllowedNodes
+#include "mysqlrouter/destination_status_types.h"  // AllowedNodes
 
 class SharedQuarantineHandler {
  public:

@@ -129,9 +129,9 @@ class UnreachableDestinationsQuarantine {
    * @param[in] available_destinations List of destination candidates that are
    *            available for the given routing plugin after metadata refresh.
    */
-  void refresh_quarantine(
-      const std::string &instance_name, const bool nodes_changed_on_md_refresh,
-      const std::vector<AvailableDestination> &available_destinations);
+  void refresh_quarantine(const std::string &instance_name,
+                          const bool nodes_changed_on_md_refresh,
+                          const AllowedNodes &available_destinations);
 
   /**
    * Stop all async operations and clear the quarantine list.
@@ -242,8 +242,6 @@ class UnreachableDestinationsQuarantine {
     std::vector<std::string> referencing_routing_instances_;
     std::chrono::seconds quarantine_interval_;
     net::steady_timer timer_;
-
-    using server_protocol_type = net::ip::tcp;
 
     std::vector<mysql_harness::DestinationEndpoint> endpoints_;
     decltype(endpoints_)::iterator endpoints_it_;

@@ -107,7 +107,7 @@ class ROUTING_EXPORT MySQLRoutingAPI {
   int get_active_connections() const;
   int get_total_connections() const;
 
-  std::vector<mysql_harness::Destination> get_destinations() const;
+  std::vector<mysql_harness::Destination> get_destination_candidates() const;
 
   void start_accepting_connections();
   void restart_accepting_connections();

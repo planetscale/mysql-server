@@ -45,8 +45,6 @@ class ConnectProcessor : public Processor {
       TraceEvent *parent_event)
       : Processor(conn),
         io_ctx_{conn->client_conn().connection()->io_ctx()},
-        destinations_{conn->current_destinations()},
-        destinations_it_{destinations_.begin()},
         on_error_(std::move(on_error)),
         parent_event_(parent_event) {}
 
@@ -98,8 +96,7 @@ class ConnectProcessor : public Processor {
   net::ip::tcp::resolver resolver_{io_ctx_};
   mysql_harness::DestinationEndpoint server_endpoint_;
 
-  Destinations &destinations_;
-  Destinations::iterator destinations_it_;
+  std::unique_ptr<Destination> destination_{nullptr};
 
   std::vector<mysql_harness::DestinationEndpoint> endpoints_;
   std::vector<mysql_harness::DestinationEndpoint>::iterator endpoints_it_;

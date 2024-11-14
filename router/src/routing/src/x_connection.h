@@ -778,8 +778,6 @@ class MysqlRoutingXConnection
   connector_type &connector() { return connector_; }
   const connector_type &connector() const { return connector_; }
 
-  RouteDestination *route_destination_;
-  Destinations destinations_;
   connector_type connector_;
 
   ClientSideConnection client_conn_;

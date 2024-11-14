@@ -91,6 +91,8 @@ class MySQLRoutingConnectionBase {
   virtual void wait_until_completed() = 0;
   virtual void completed() = 0;
 
+  virtual routing_guidelines::Server_info get_server_info() const = 0;
+
   /**
    * @brief Returns address of server to which connection is established.
    *
@@ -260,6 +262,10 @@ class ConnectorBase {
   std::string routing_source() const { return destination_->route_name(); }
   void set_routing_source(std::string name) {
     destination_->set_route_name(std::move(name));
+  }
+
+  const routing_guidelines::Server_info &server_info() const {
+    return destination_->get_server_info();
   }
 
   void on_connect_failure(

@@ -49,6 +49,9 @@ stdx::expected<void, std::error_code> ConnectorBase::init_destination() {
     log_warning("%d: no connectable destinations :(", __LINE__);
     return stdx::unexpected(make_error_code(DestinationsErrc::kNoDestinations));
   }
+
+  return is_destination_good(destination_->destination()) ? resolve()
+                                                          : next_destination();
 }
 
 stdx::expected<void, std::error_code> ConnectorBase::resolve() {
@@ -58,8 +61,8 @@ stdx::expected<void, std::error_code> ConnectorBase::resolve() {
     return next_destination();
   }
 
-  if (destination->destination().is_tcp()) {
-    auto tcp_dest = destination->destination().as_tcp();
+  if (destination_->destination().is_tcp()) {
+    auto tcp_dest = destination_->destination().as_tcp();
 
     const auto resolve_res =
         resolver_.resolve(tcp_dest.hostname(), std::to_string(tcp_dest.port()));
@@ -82,7 +85,7 @@ stdx::expected<void, std::error_code> ConnectorBase::resolve() {
     endpoints_.clear();
 
     endpoints_.emplace_back(mysql_harness::DestinationEndpoint::LocalType(
-        destination->destination().as_local().path()));
+        destination_->destination().as_local().path()));
   }
 
 #if 0
@@ -317,4 +320,25 @@ void MySQLRoutingConnectionBase::log_connection_summary() {
             this->context().get_name().c_str(), client_fd_,
             log_id(stats.client_address), log_id(stats.server_address),
             stats.bytes_up, stats.bytes_down);
+}
+
+routing_guidelines::Session_info MySQLRoutingConnectionBase::get_session_info()
+    const {
+  routing_guidelines::Session_info session_info;
+  session_info.target_ip = context_.get_bind_address().hostname();
+  session_info.target_port = context_.get_bind_address().port();
+  const auto &client_address_res =
+      mysql_harness::make_tcp_destination(get_client_address());
+  if (client_address_res) {
+    session_info.source_ip = client_address_res->hostname();
+  } else {
+    log_warning(
+        "[%s] could not set source IP for routing guidelines evaluation: '%s'",
+        this->context().get_name().c_str(), get_client_address().c_str());
+  }
+
+  if (routing_guidelines_session_rand_)
+    session_info.random_value = *routing_guidelines_session_rand_;
+
+  return session_info;
 }

@@ -67,7 +67,7 @@ bool RestRoutingDestinations::on_handle_request(
 
     rapidjson::Value destinations(rapidjson::kArrayType);
 
-    for (const auto &dst : inst.get_destinations()) {
+    for (const auto &dst : inst.get_destination_candidates()) {
       rapidjson::Value el;
 
       if (dst.is_tcp()) {

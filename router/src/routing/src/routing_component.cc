@@ -66,9 +66,9 @@ std::chrono::milliseconds MySQLRoutingAPI::get_destination_connect_timeout()
   return r_->get_context().get_destination_connect_timeout();
 }
 
-std::vector<mysql_harness::Destination> MySQLRoutingAPI::get_destinations()
-    const {
-  return r_->get_destinations();
+std::vector<mysql_harness::Destination>
+MySQLRoutingAPI::get_destination_candidates() const {
+  return r_->get_destination_candidates();
 }
 
 bool MySQLRoutingAPI::is_accepting_connections() const {
@@ -288,7 +288,7 @@ void MySQLRoutingComponent::init(const mysql_harness::Config &config) {
 
   quarantine_callbacks.on_get_destinations = [&](
       const std::string &route_name) -> auto{
-    return this->api(route_name).get_destinations();
+    return this->api(route_name).get_destination_candidates();
   };
 
   quarantine_callbacks.on_start_acceptors =
