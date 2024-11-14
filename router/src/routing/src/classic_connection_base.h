@@ -60,15 +60,11 @@ class MysqlRoutingClassicConnectionBase
   //
   // use ::create() instead.
   MysqlRoutingClassicConnectionBase(
-      MySQLRoutingContext &context, RouteDestination *route_destination,
+      MySQLRoutingContext &context, DestinationManager *destination_manager,
       std::unique_ptr<ConnectionBase> client_connection,
       std::unique_ptr<RoutingConnectionBase> client_routing_connection,
       std::function<void(MySQLRoutingConnectionBase *)> remove_callback)
       : MySQLRoutingConnectionBase{context, std::move(remove_callback)},
-        route_destination_{route_destination},
-        destinations_{route_destination_ != nullptr
-                          ? route_destination_->destinations()
-                          : Destinations{}},
         client_conn_{std::move(client_connection),
                      std::move(client_routing_connection),
                      context.source_ssl_mode(),
@@ -78,7 +74,8 @@ class MysqlRoutingClassicConnectionBase
         read_timer_{client_conn_.connection()->io_ctx()},
         connect_timer_{client_conn_.connection()->io_ctx()},
         wait_for_my_writes_{context.wait_for_my_writes()},
-        wait_for_my_writes_timeout_{context.wait_for_my_writes_timeout()} {
+        wait_for_my_writes_timeout_{context.wait_for_my_writes_timeout()},
+        destination_manager_{destination_manager} {
     client_address(client_conn_.connection()->endpoint());
   }
 
@@ -119,6 +116,12 @@ class MysqlRoutingClassicConnectionBase
   net::impl::socket::native_handle_type get_client_fd() const override {
     return client_conn().native_handle();
   }
+
+  DestinationManager *destination_manager() const {
+    return destination_manager_;
+  }
+
+  routing_guidelines::Session_info get_session_info();
 
   void disconnect() override;
 
@@ -605,6 +608,8 @@ class MysqlRoutingClassicConnectionBase
   bool has_transient_error_at_connect_{false};
 
   WaitableMonitor<bool> is_completed_{false};
+
+  DestinationManager *destination_manager_;
 };
 
 #endif

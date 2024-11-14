@@ -34,7 +34,7 @@
 
 #include "basic_protocol_splicer.h"
 #include "context.h"
-#include "destination.h"  // RouteDestination
+#include "destination.h"  // DestinationManager
 #include "destination_error.h"
 #include "mysql/harness/destination.h"
 #include "mysql/harness/destination_endpoint.h"
@@ -213,6 +213,8 @@ class MySQLRoutingConnectionBase {
     return disconnect_([](auto requested) { return requested; });
   }
 
+  routing_guidelines::Session_info get_session_info() const;
+
  protected:
   /** @brief wrapper for common data used by all routing threads */
   MySQLRoutingContext &context_;
@@ -231,12 +233,11 @@ class MySQLRoutingConnectionBase {
 
 class ConnectorBase {
  public:
-  ConnectorBase(net::io_context &io_ctx, RouteDestination *route_destination,
-                Destinations &destinations)
+  ConnectorBase(net::io_context &io_ctx, MySQLRoutingContext &context,
+                DestinationManager *destination_manager)
       : io_ctx_{io_ctx},
-        route_destination_{route_destination},
-        destinations_{destinations},
-        destinations_it_{destinations_.begin()} {}
+        context_{context},
+        destination_manager_{destination_manager} {}
 
   enum class Function {
     kInitDestination,
@@ -292,7 +293,8 @@ class ConnectorBase {
 
  protected:
   stdx::expected<void, std::error_code> resolve();
-  stdx::expected<void, std::error_code> init_destination();
+  stdx::expected<void, std::error_code> init_destination(
+      routing_guidelines::Session_info session_info);
   stdx::expected<void, std::error_code> init_endpoint();
   stdx::expected<void, std::error_code> next_endpoint();
   stdx::expected<void, std::error_code> next_destination();
@@ -303,12 +305,16 @@ class ConnectorBase {
   stdx::expected<void, std::error_code> connect_failed(std::error_code ec);
 
   net::io_context &io_ctx_;
+  MySQLRoutingContext &context_;
 
   net::ip::tcp::resolver resolver_{io_ctx_};
   mysql_harness::DestinationSocket server_sock_{
       mysql_harness::DestinationSocket::TcpType{io_ctx_}};
   mysql_harness::DestinationEndpoint server_endpoint_;
 
+  routing_guidelines::Session_info session_info_;
+
+  DestinationManager *destination_manager_;
   std::unique_ptr<Destination> destination_{nullptr};
   std::vector<mysql_harness::DestinationEndpoint> endpoints_;
   std::vector<mysql_harness::DestinationEndpoint>::iterator endpoints_it_;
@@ -334,10 +340,11 @@ class Connector : public ConnectorBase {
  public:
   using ConnectorBase::ConnectorBase;
 
-  stdx::expected<ConnectionType, std::error_code> connect() {
+  stdx::expected<ConnectionType, std::error_code> connect(
+      routing_guidelines::Session_info session_info) {
     switch (func_) {
       case Function::kInitDestination: {
-        auto init_res = init_destination();
+        auto init_res = init_destination(std::move(session_info));
         if (!init_res) return stdx::unexpected(init_res.error());
 
       } break;

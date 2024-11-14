@@ -33,9 +33,10 @@
 #include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/routing_export.h"
 #include "mysqlrouter/uri.h"
+#include "routing_guidelines/routing_guidelines.h"
 
-class DestMetadataCacheGroup final
-    : public RouteDestination,
+class DestMetadataCacheManager final
+    : public DestinationManager,
       public metadata_cache::ClusterStateListenerInterface,
       public metadata_cache::MetadataRefreshListenerInterface,
       public metadata_cache::AcceptorUpdateHandlerInterface {
@@ -43,53 +44,37 @@ class DestMetadataCacheGroup final
   enum ServerRole { Primary, Secondary, PrimaryAndSecondary };
 
   /** @brief Constructor */
-  DestMetadataCacheGroup(net::io_context &io_ctx_,
-                         const std::string &metadata_cache,
-                         const routing::RoutingStrategy routing_strategy,
-                         const mysqlrouter::URIQuery &query,
-                         const Protocol::Type protocol,
-                         metadata_cache::MetadataCacheAPIBase *cache_api =
-                             metadata_cache::MetadataCacheAPI::instance());
+  DestMetadataCacheManager(net::io_context &io_ctx,
+                           MySQLRoutingContext &routing_ctx,
+                           const std::string &metadata_cache,
+                           const mysqlrouter::URIQuery &query,
+                           const ServerRole role,
+                           metadata_cache::MetadataCacheAPIBase *cache_api =
+                               metadata_cache::MetadataCacheAPI::instance());
 
   /** @brief Copy constructor */
-  DestMetadataCacheGroup(const DestMetadataCacheGroup &other) = delete;
+  DestMetadataCacheManager(const DestMetadataCacheManager &other) = delete;
 
   /** @brief Move constructor */
-  DestMetadataCacheGroup(DestMetadataCacheGroup &&) = delete;
+  DestMetadataCacheManager(DestMetadataCacheManager &&) = delete;
 
   /** @brief Copy assignment */
-  DestMetadataCacheGroup &operator=(const DestMetadataCacheGroup &) = delete;
+  DestMetadataCacheManager &operator=(const DestMetadataCacheManager &) =
+      delete;
 
   /** @brief Move assignment */
-  DestMetadataCacheGroup &operator=(DestMetadataCacheGroup &&) = delete;
+  DestMetadataCacheManager &operator=(DestMetadataCacheManager &&) = delete;
 
-  ~DestMetadataCacheGroup() override;
-
-  void add(const mysql_harness::Destination &) override {}
-
-  AddrVector get_destinations() const override;
-
-  /** @brief Returns whether there are destination servers
-   *
-   * The empty() method always returns false for Metadata Cache.
-   *
-   * Checking whether the Metadata Cache is empty for given destination
-   * might be to expensive. We leave this to the get_server() method.
-   *
-   * @return Always returns False for Metadata Cache destination.
-   */
-  bool empty() const noexcept override { return false; }
+  ~DestMetadataCacheManager() override;
 
   /** @brief Start the destination
    *
-   * It also overwrites parent class' RouteDestination::start(), which launches
-   * Quarantine. For Metadata Cache routing, we don't need it.
+   * It also overwrites parent class' DestinationManager::start(), which
+   * launches Quarantine. For Metadata Cache routing, we don't need it.
    *
    * @param env pointer to the PluginFuncEnv object
    */
   void start(const mysql_harness::PluginFuncEnv *env) override;
-
-  Destinations destinations() override;
 
   mysqlrouter::ServerMode purpose() const override {
     return server_role_ == ServerRole::Primary
@@ -97,24 +82,29 @@ class DestMetadataCacheGroup final
                : mysqlrouter::ServerMode::ReadOnly;
   }
 
-  ServerRole server_role() const { return server_role_; }
+  stdx::expected<void, std::error_code> init_destinations(
+      const routing_guidelines::Session_info &session_info) override;
 
   // get cache-api
   metadata_cache::MetadataCacheAPIBase *cache_api() { return cache_api_; }
 
-  std::optional<Destinations> refresh_destinations(
-      const Destinations &dests) override;
-
-  Destinations primary_destinations();
-
-  /**
-   * advance the current position in the destination by n.
-   */
-  void advance(size_t n);
+  bool refresh_destinations(
+      const routing_guidelines::Session_info &session_info) override;
 
   void handle_sockets_acceptors() override {
     cache_api()->handle_sockets_acceptors_on_md_refresh();
   }
+
+  std::unique_ptr<Destination> get_next_destination(
+      const routing_guidelines::Session_info &session_info) override;
+
+  std::vector<mysql_harness::Destination> get_destination_candidates()
+      const override;
+
+  void connect_status(std::error_code ec) override;
+
+  bool has_read_write() const override { return has_read_write_; }
+  bool has_read_only() const override { return has_read_only_; }
 
   /**
    * Update routing guidelines engine with a new routing guideline.
@@ -171,19 +161,30 @@ class DestMetadataCacheGroup final
    * primaries after the fallback (true), regular primaries (false) or
    * secondaries (false).
    *
+   * @return list of destination candidates
    */
-  std::pair<metadata_cache::cluster_nodes_list_t, bool> get_available(
-      const metadata_cache::cluster_nodes_list_t &instances,
-      bool for_new_connections = true) const;
+  virtual std::vector<routing_guidelines::Server_info> get_nodes_from_topology(
+      const metadata_cache::ClusterTopology &cluster_topology,
+      const bool drop_all_hidden) const;
 
-  metadata_cache::cluster_nodes_list_t get_available_primaries(
-      const metadata_cache::cluster_nodes_list_t &managed_servers) const;
+  /**
+   * Get information about nodes available for new connections.
+   */
+  std::vector<routing_guidelines::Server_info> get_new_connection_nodes() const;
 
-  Destinations balance(
-      const metadata_cache::cluster_nodes_list_t &all_replicaset_nodes,
-      bool primary_fallback);
+  /**
+   * Get information about nodes available for existing connections.
+   */
+  std::vector<routing_guidelines::Server_info> get_old_connection_nodes() const;
 
-  routing::RoutingStrategy routing_strategy_;
+  /**
+   * Get a destination candidate that was already selected by the Destination
+   * Manager, this will not balance destinations or change the Destination
+   * Manager internal state.
+   */
+  std::unique_ptr<Destination> get_last_used_destination() const override {
+    return std::make_unique<Destination>(destination_);
+  }
 
   ServerRole server_role_;
 
@@ -194,9 +195,7 @@ class DestMetadataCacheGroup final
   bool disconnect_on_promoted_to_primary_{false};
   bool disconnect_on_metadata_unavailable_{false};
 
-  void on_instances_change(
-      const metadata_cache::ClusterTopology &cluster_topology,
-      const bool md_servers_reachable);
+  void on_instances_change(const bool md_servers_reachable);
   void subscribe_for_metadata_cache_changes();
   void subscribe_for_acceptor_handler();
   void subscribe_for_md_refresh_handler();
@@ -211,9 +210,12 @@ class DestMetadataCacheGroup final
   /** Routing guideline engine. */
   std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
       routing_guidelines_{nullptr};
+
+  /** Destination thats used for the connection. */
+  Destination destination_;
 };
 
-ROUTING_EXPORT DestMetadataCacheGroup::ServerRole get_server_role_from_uri(
+ROUTING_EXPORT DestMetadataCacheManager::ServerRole get_server_role_from_uri(
     const mysqlrouter::URIQuery &uri);
 
 #endif  // ROUTING_DEST_METADATA_CACHE_INCLUDED

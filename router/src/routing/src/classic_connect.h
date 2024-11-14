@@ -28,7 +28,7 @@
 
 #include <chrono>
 #include "classic_connection_base.h"
-#include "destination.h"  // RouteDestination
+#include "destination.h"  // DestinationManager
 #include "mysql/harness/destination.h"
 #include "mysql/harness/destination_endpoint.h"
 #include "mysql/harness/net_ts/io_context.h"

@@ -523,7 +523,7 @@ RoutingPluginConfig::RoutingPluginConfig(
 
     auto server_role = get_server_role_from_uri(uri.query);
     if (server_role !=
-        DestMetadataCacheGroup::ServerRole::PrimaryAndSecondary) {
+        DestMetadataCacheManager::ServerRole::PrimaryAndSecondary) {
       throw std::invalid_argument(
           "'access_mode=auto' requires that "
           "the 'role' in 'destinations=metadata-cache:...?role=...' is "

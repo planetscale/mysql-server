@@ -38,7 +38,7 @@
 /**
  * Destination to forward client connections to.
  *
- * It is used between the RouteDestination implementations and MySQLRouting
+ * It is used between the DestinationManager implementations and MySQLRouting
  */
 class Destination {
  public:

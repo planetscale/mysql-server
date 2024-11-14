@@ -745,7 +745,7 @@ std::string get_accepting_endpoints_list(
 
 stdx::expected<void, std::string> MySQLRouting::run_acceptor(
     mysql_harness::PluginFuncEnv *env) {
-  destination_->start(env);
+  destination_manager_->start(env);
 
   if (!mysql_harness::is_running(env)) {
     // if a shutdown-request is received while waiting for the destination to
@@ -756,20 +756,18 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
     return {};
   }
 
-  destination_->register_start_router_socket_acceptor(
-      [this]() { return start_accepting_connections(); });
-  destination_->register_stop_router_socket_acceptor(
-      [this]() { stop_socket_acceptors(); });
-  destination_->register_query_quarantined_destinations(
-      [this](const mysql_harness::Destination &dest) -> bool {
-        return get_context().shared_quarantine().is_quarantined(dest);
-      });
-  destination_->register_md_refresh_callback(
-      [this](const bool nodes_changed_on_md_refresh,
-             const AllowedNodes &nodes) {
-        get_context().shared_quarantine().refresh(
-            get_context().get_id(), nodes_changed_on_md_refresh, nodes);
-      });
+  if (!is_destination_standalone_) {
+    destination_manager_->register_start_router_socket_acceptor(
+        [this]() { return start_accepting_connections(); });
+    destination_manager_->register_stop_router_socket_acceptor(
+        [this]() { stop_socket_acceptors(/*shutting_down*/ false); });
+    destination_manager_->register_md_refresh_callback(
+        [this](const bool nodes_changed_on_md_refresh,
+               const AllowedNodes &nodes) {
+          get_context().shared_quarantine().refresh(
+              get_context().get_id(), nodes_changed_on_md_refresh, nodes);
+        });
+  }
 
   auto allowed_nodes_changed =
       [&](const AllowedNodes &existing_connections_nodes,
@@ -807,44 +805,44 @@ stdx::expected<void, std::string> MySQLRouting::run_acceptor(
             // We could not start at least one of the acceptors. (e.g. the port
             // is used by other app). In that case we should retry on the next
             // md refresh with the latest instance information.
-            destination_->handle_sockets_acceptors();
+            destination_manager_->handle_sockets_acceptors();
           }
         }
       };
 
   allowed_nodes_list_iterator_ =
-      destination_->register_allowed_nodes_change_callback(
+      destination_manager_->register_allowed_nodes_change_callback(
           allowed_nodes_changed);
 
   // make sure to stop the acceptors in case of possible exceptions, otherwise
   // we can deadlock the process
-  Scope_guard stop_acceptors_guard([&]() { stop_socket_acceptors(); });
+  Scope_guard stop_acceptors_guard(
+      [&]() { stop_socket_acceptors(/*shutting_down*/ true); });
 
-  if (!destinations()->empty() ||
-      (routing_strategy_ == RoutingStrategy::kFirstAvailable &&
-       is_destination_standalone_)) {
-    // For standalone destination with first-available strategy we always try
-    // to open a listening socket, even if there are no destinations.
-    auto res = start_accepting_connections();
-    // If the routing started at the exact moment as when the metadata had it
-    // initial refresh then it may start the acceptors even if metadata do not
-    // allow for it to happen, in that case we pass that information to the
-    // destination, socket acceptor state should be handled basend on the
-    // destination type.
-    if (!is_destination_standalone_) destination_->handle_sockets_acceptors();
-    // If we failed to start accepting connections on startup then router
-    // should fail.
-    if (!res) return stdx::unexpected(res.error());
-  }
+  // For standalone destination with first-available strategy we always try
+  // to open a listening socket, even if there are no destinations.
+  auto res = start_accepting_connections();
+  // If the routing started at the exact moment as when the metadata had it
+  // initial refresh then it may start the acceptors even if metadata do not
+  // allow for it to happen, in that case we pass that information to the
+  // destination, socket acceptor state should be handled basend on the
+  // destination type.
+  if (!is_destination_standalone_)
+    destination_manager_->handle_sockets_acceptors();
+  // If we failed to start accepting connections on startup then router
+  // should fail.
+  if (!res) return stdx::unexpected(res.error());
+
   mysql_harness::on_service_ready(env);
 
   Scope_guard exit_guard([&]() {
-    destination_->unregister_allowed_nodes_change_callback(
-        allowed_nodes_list_iterator_);
-    destination_->unregister_start_router_socket_acceptor();
-    destination_->unregister_stop_router_socket_acceptor();
-    destination_->unregister_query_quarantined_destinations();
-    destination_->unregister_md_refresh_callback();
+    if (!is_destination_standalone_) {
+      destination_manager_->unregister_allowed_nodes_change_callback(
+          allowed_nodes_list_iterator_);
+      destination_manager_->unregister_start_router_socket_acceptor();
+      destination_manager_->unregister_stop_router_socket_acceptor();
+      destination_manager_->unregister_md_refresh_callback();
+    }
   });
 
   // wait for the signal to shutdown.
@@ -999,7 +997,7 @@ void MySQLRouting::create_connection(
   switch (context_.get_protocol()) {
     case BaseProtocol::Type::kClassicProtocol: {
       auto new_connection = MysqlRoutingClassicConnection::create(
-          context_, destinations(),
+          context_, destination_manager(),
           std::make_unique<BasicConnection<ClientProtocol>>(
               std::move(client_socket), client_endpoint),
           std::make_unique<RoutingConnection<ClientProtocol>>(client_endpoint),
@@ -1015,7 +1013,7 @@ void MySQLRouting::create_connection(
     } break;
     case BaseProtocol::Type::kXProtocol: {
       auto new_connection = MysqlRoutingXConnection::create(
-          context_, destinations(),
+          context_, destination_manager(),
           std::make_unique<BasicConnection<ClientProtocol>>(
               std::move(client_socket), client_endpoint),
           std::make_unique<RoutingConnection<ClientProtocol>>(client_endpoint),
@@ -1098,6 +1096,9 @@ void MySQLRouting::set_destinations_from_uri(const mysqlrouter::URI &uri) {
             "routing");
       }
     }
+
+    destination_manager_ = std::make_unique<DestMetadataCacheManager>(
+        io_ctx_, context_, uri.host, uri.query, role);
   } else {
     throw std::runtime_error(string_format(
         "Invalid URI scheme; expecting: 'metadata-cache' is: '%s'",
@@ -1125,7 +1126,7 @@ void MySQLRouting::set_destinations_from_dests(
 
   for (const auto &dest : dests) {
     if (dest.is_local()) {
-      destination_->add(dest);
+      destination_manager->add(dest);
     } else {
       auto addr = dest.as_tcp();
 
@@ -1134,22 +1135,23 @@ void MySQLRouting::set_destinations_from_dests(
           addr.port(Protocol::get_default_port(context_.get_protocol()));
         }
 
-        destination_->add(
+        destination_manager->add(
             mysql_harness::TcpDestination(addr.hostname(), addr.port()));
       }
     }
   }
 
   // Check whether bind address is part of list of destinations
-  for (const auto &it : *(destination_)) {
+  for (auto &it : destination_manager->get_destination_candidates()) {
     if (it == context_.get_bind_address()) {
       throw std::runtime_error("Bind Address can not be part of destinations");
     }
   }
 
-  if (destination_->empty()) {
+  if (destination_manager->get_destination_candidates().empty()) {
     throw std::runtime_error("No destinations available");
   }
+  destination_manager_ = std::move(destination_manager);
 }
 
 void MySQLRouting::validate_destination_connect_timeout(
@@ -1176,7 +1178,7 @@ int MySQLRouting::set_max_connections(int maximum) {
 
 std::vector<mysql_harness::Destination>
 MySQLRouting::get_destination_candidates() const {
-  return destination_manager_->get_new_connection_nodes();
+  return destination_manager_->get_destination_candidates();
 }
 
 std::vector<MySQLRoutingAPI::ConnData> MySQLRouting::get_connections() {
@@ -1195,7 +1197,7 @@ mysqlrouter::ServerMode MySQLRouting::purpose() const {
     return mysqlrouter::ServerMode::Unavailable;
   }
 
-  return destination_->purpose();
+  return destination_manager_->purpose();
 }
 
 void MySQLRouting::on_routing_guidelines_update(

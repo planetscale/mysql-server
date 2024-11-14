@@ -125,21 +125,40 @@ static bool skip_destination(MysqlRoutingClassicConnectionBase *conn,
 
 stdx::expected<Processor::Result, std::error_code>
 ConnectProcessor::init_destination() {
-  std::vector<std::string> dests;
-  for (const auto &dest : destinations_) {
-    dests.push_back(dest->destination().str());
-  }
-
   if (auto &tr = tracer()) {
-    tr.trace(Tracer::Event().stage("connect::init_destination: " +
-                                   mysql_harness::join(dests, ",")));
+    tr.trace(Tracer::Event().stage("connect::init_destination"));
   }
 
   trace_event_connect_ =
       trace_span(parent_event_, "mysql/from_pool_or_connect");
-  if (auto *ev = trace_event_connect_) {
-    ev->attrs.emplace_back("mysql.remote.candidates",
-                           mysql_harness::join(dests, ","));
+
+  const auto &destination_manager = connection()->destination_manager();
+  bool dest_manager_started{true};
+
+  if (!connection()->has_transient_error_at_connect()) {
+    const auto &session_info = connection()->get_session_info();
+
+    dest_manager_started =
+        destination_manager->init_destinations(session_info).has_value();
+
+    if (dest_manager_started) {
+      destination_ = destination_manager->get_next_destination(session_info);
+    }
+  } else {
+    destination_ = destination_manager->get_last_used_destination();
+  }
+
+  if (!dest_manager_started || !destination_) {
+    if (connect_errors_.empty()) {
+      // no backends
+      log_debug("init_destination(): the destinations list is empty");
+
+      connect_errors_.emplace_back(
+          "no destinations",
+          make_error_code(DestinationsErrc::kNoDestinations));
+    }
+    stage(Stage::Error);
+    return Result::Again;
   }
 
   // reset the error-code for this destination.
@@ -153,17 +172,8 @@ ConnectProcessor::init_destination() {
   // - only RW (multi-primary)
   // - only RO (replica of replicaset)
   if (connection()->context().access_mode() == routing::AccessMode::kAuto) {
-    bool has_read_only{false};
-    bool has_read_write{false};
-
-    for (auto const &dest : destinations_) {
-      if (dest->server_mode() == mysqlrouter::ServerMode::ReadOnly) {
-        has_read_only = true;
-      }
-      if (dest->server_mode() == mysqlrouter::ServerMode::ReadWrite) {
-        has_read_write = true;
-      }
-    }
+    const bool has_read_only = destination_manager->has_read_only();
+    const bool has_read_write = destination_manager->has_read_write();
 
     if (has_read_only && !has_read_write) {
       connection()->current_server_mode(mysqlrouter::ServerMode::ReadOnly);
@@ -172,25 +182,13 @@ ConnectProcessor::init_destination() {
     }
   }
 
-  destinations_it_ = destinations_.begin();
-  if (destinations_it_ == destinations_.end()) {
-    if (connect_errors_.empty()) {
-      // no backends
-      log_debug("init_destination(): the destinations list is empty");
-
-      connect_errors_.emplace_back(
-          "no destinations",
-          make_error_code(DestinationsErrc::kNoDestinations));
-    }
-
-    stage(Stage::Error);
-    return Result::Again;
-  }
-
   if (connection()->context().access_mode() == routing::AccessMode::kAuto) {
     if (skip_destination(connection(), destination_.get())) {
       connect_errors_.emplace_back(
           "connect(/* " + destination_->destination().str() + " */)",
+          make_error_code(DestinationsErrc::kIgnored));
+
+      destination_manager->connect_status(
           make_error_code(DestinationsErrc::kIgnored));
 
       stage(Stage::NextDestination);
@@ -894,12 +892,8 @@ ConnectProcessor::next_endpoint() {
     return Result::Again;
   }
 
-  // no more endpoints for this destination.
-
-  auto &destination = *destinations_it_;
-
   // report back the connect status to the destination
-  destination->connect_status(destination_ec_);
+  connection()->destination_manager()->connect_status(destination_ec_);
 
   if (destination_ec_) {
     auto &ctx = connection()->context();
@@ -940,46 +934,53 @@ ConnectProcessor::next_destination() {
   if (auto &tr = tracer()) {
     tr.trace(Tracer::Event().stage("connect::next_destination"));
   }
+
+  bool is_quarantined{false};
+  bool is_skipped{false};
+  const auto &session_info = connection()->get_session_info();
+  const auto &destination_manager = connection()->destination_manager();
   do {
-    std::advance(destinations_it_, 1);
+    destination_ = destination_manager->get_next_destination(session_info);
+    if (destination_) {
+      // for read-only connections, skip the writable destinations,
+      // for read-write connections, skip the read-only destinations.
+      is_skipped = skip_destination(connection(), destination_.get());
+      if (is_skipped) {
+        connect_errors_.emplace_back(
+            "connect(/* " + destination_->destination().str() + " */)",
+            make_error_code(DestinationsErrc::kIgnored));
 
-    if (destinations_it_ == std::end(destinations_)) break;
+        destination_manager->connect_status(
+            make_error_code(DestinationsErrc::kIgnored));
+      }
 
-    const auto &destination = *destinations_it_;
+      is_quarantined = !is_destination_good(destination_->destination());
+      if (is_quarantined) {
+        connect_errors_.emplace_back(
+            "connect(/* " + destination_->destination().str() + " */)",
+            make_error_code(DestinationsErrc::kQuarantined));
 
-    // for read-only connections, skip the writable destinations,
-    // for read-write connections, skip the read-only destinations.
-    if (skip_destination(connection(), destination.get())) {
-      connect_errors_.emplace_back(
-          "connect(/* " + (*destinations_it_)->destination().str() + " */)",
-          make_error_code(DestinationsErrc::kIgnored));
-
-      continue;
+        destination_manager->connect_status(
+            make_error_code(DestinationsErrc::kQuarantined));
+      }
     }
+  } while (destination_ && (is_quarantined || is_skipped));
 
-    if (is_destination_good(destination->destination())) {
-      break;
-    }
-
-    connect_errors_.emplace_back(
-        "connect(/* " + destination->destination().str() + " */)",
-        make_error_code(DestinationsErrc::kQuarantined));
-  } while (true);
-
-  if (destinations_it_ != destinations_.end()) {
+  if (destination_) {
     // next destination
     stage(Stage::Resolve);
     return Result::Again;
-  }
-
-  // no more destinations.
-
-  if (auto refresh_res =
-          connection()->destinations()->refresh_destinations(destinations_)) {
-    destinations_ = std::move(refresh_res.value());
-
-    stage(Stage::InitDestination);
-    return Result::Again;
+  } else if (destination_ec_ != make_error_condition(std::errc::timed_out) &&
+             destination_ec_ !=
+                 make_error_condition(std::errc::no_such_file_or_directory) &&
+             destination_manager->refresh_destinations(session_info)) {
+    // On member failure (connection refused, ...) wait for failover and use
+    // the new primary.
+    destination_ = destination_manager->get_next_destination(session_info);
+    if (destination_) {
+      stage(Stage::Resolve);
+      return Result::Again;
+    }
   }
 
   if (connection()->context().access_mode() == routing::AccessMode::kAuto &&
@@ -987,7 +988,8 @@ ConnectProcessor::next_destination() {
           mysqlrouter::ServerMode::ReadOnly &&
       connection()->current_server_mode() ==
           mysqlrouter::ServerMode::ReadOnly) {
-    // if we want a RO connections but there are only primaries, take a primary.
+    // if we want a RO connections but there are only primaries, take a
+    // primary.
     connection()->current_server_mode(mysqlrouter::ServerMode::ReadWrite);
     stage(Stage::InitDestination);
     return Result::Again;
@@ -1034,6 +1036,8 @@ ConnectProcessor::connected() {
   connection()->set_destination(std::move(destination_));
 
   connection()->completed();
+  // We are done, destination manager should know about that
+  connection()->destination_manager()->connect_status({});
 
   // back to the caller.
   stage(Stage::Done);
@@ -1068,6 +1072,10 @@ stdx::expected<Processor::Result, std::error_code> ConnectProcessor::error() {
               connection()->client_conn().endpoint().c_str(), msg.c_str());
   }
 
+  // We are done for this connection, lets reset the connect status for new
+  // incoming connections.
+  connection()->destination_manager()->connect_status({});
+
   if (auto *ev = trace_event_connect_) {
     ev->attrs.emplace_back("mysql.error_message", last_ec.message());
     trace_span_end(ev);
@@ -1090,10 +1098,6 @@ stdx::expected<Processor::Result, std::error_code> ConnectProcessor::error() {
     if (auto &tr = tracer()) {
       tr.trace(Tracer::Event().stage("connect::error::all_down"));
     }
-    // all backends are down.
-    MySQLRoutingComponent::get_instance()
-        .api(connection()->context().get_id())
-        .stop_socket_acceptors();
   }
 
   connection()->server_conn().protocol().handshake_state(

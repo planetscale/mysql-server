@@ -36,17 +36,16 @@
 
 IMPORT_LOG_FUNCTIONS()
 
-stdx::expected<void, std::error_code> ConnectorBase::init_destination() {
-  destinations_it_ = destinations_.begin();
+stdx::expected<void, std::error_code> ConnectorBase::init_destination(
+    routing_guidelines::Session_info session_info) {
+  session_info_ = std::move(session_info);
 
-  if (destinations_it_ != destinations_.end()) {
-    const auto &destination = *destinations_it_;
+  if (!destination_manager_->init_destinations(session_info_)) {
+    return stdx::unexpected(make_error_code(DestinationsErrc::kNoDestinations));
+  }
 
-    return is_destination_good(destination->destination()) ? resolve()
-                                                           : next_destination();
-  } else {
-    // no backends
-    log_warning("%d: no connectable destinations :(", __LINE__);
+  destination_ = destination_manager_->get_next_destination(session_info_);
+  if (!destination_) {
     return stdx::unexpected(make_error_code(DestinationsErrc::kNoDestinations));
   }
 
@@ -55,12 +54,6 @@ stdx::expected<void, std::error_code> ConnectorBase::init_destination() {
 }
 
 stdx::expected<void, std::error_code> ConnectorBase::resolve() {
-  const auto &destination = *destinations_it_;
-
-  if (!destination->good()) {
-    return next_destination();
-  }
-
   if (destination_->destination().is_tcp()) {
     auto tcp_dest = destination_->destination().as_tcp();
 
@@ -68,7 +61,7 @@ stdx::expected<void, std::error_code> ConnectorBase::resolve() {
         resolver_.resolve(tcp_dest.hostname(), std::to_string(tcp_dest.port()));
 
     if (!resolve_res) {
-      destination->connect_status(resolve_res.error());
+      destination_manager_->connect_status(resolve_res.error());
 
       log_warning("%d: resolve() failed: %s", __LINE__,
                   resolve_res.error().message().c_str());
@@ -87,13 +80,6 @@ stdx::expected<void, std::error_code> ConnectorBase::resolve() {
     endpoints_.emplace_back(mysql_harness::DestinationEndpoint::LocalType(
         destination_->destination().as_local().path()));
   }
-
-#if 0
-  std::cerr << __LINE__ << ": " << destination->hostname() << "\n";
-  for (auto const &ep : endpoints_) {
-    std::cerr << __LINE__ << ": .. " << ep.endpoint() << "\n";
-  }
-#endif
 
   return init_endpoint();
 }
@@ -233,7 +219,8 @@ stdx::expected<void, std::error_code> ConnectorBase::connect_finish() {
 }
 
 stdx::expected<void, std::error_code> ConnectorBase::connected() {
-  destination_id_ = destinations_it_->get()->destination();
+  destination_id_ = destination_->destination();
+  destination_manager_->connect_status({});
 
   if (on_connect_success_) on_connect_success_(*destination_id_);
 
@@ -245,45 +232,52 @@ stdx::expected<void, std::error_code> ConnectorBase::next_endpoint() {
 
   if (endpoints_it_ != endpoints_.end()) {
     return connect_init();
-  } else {
-    auto &destination = *destinations_it_;
-
-    // report back the connect status to the destination
-    destination->connect_status(last_ec_);
-
-    if (last_ec_ && on_connect_failure_) {
-      on_connect_failure_(destination->destination(), last_ec_);
-    }
-
-    return next_destination();
   }
+
+  // report back the connect status to the destination
+  destination_manager_->connect_status(last_ec_);
+
+  if (last_ec_ && on_connect_failure_) {
+    on_connect_failure_(destination_->destination(), last_ec_);
+  }
+
+  return next_destination();
 }
 
 stdx::expected<void, std::error_code> ConnectorBase::next_destination() {
+  bool is_quarantined{false};
   do {
-    std::advance(destinations_it_, 1);
-
-    if (destinations_it_ == std::end(destinations_)) break;
-
-    const auto &destination = *destinations_it_;
-    if (is_destination_good(destination->destination())) {
-      break;
+    destination_ = destination_manager_->get_next_destination(session_info_);
+    if (destination_) {
+      is_quarantined = !is_destination_good(destination_->destination());
+      if (is_quarantined) {
+        destination_manager_->connect_status(
+            make_error_code(DestinationsErrc::kQuarantined));
+      }
     }
-  } while (true);
+  } while (destination_ && is_quarantined);
 
-  if (destinations_it_ != destinations_.end()) {
+  if (destination_) {
     // next destination
     return resolve();
-  } else {
-    auto refresh_res = route_destination_->refresh_destinations(destinations_);
-    if (refresh_res) {
-      destinations_ = std::move(refresh_res.value());
-      return init_destination();
+  } else if (last_ec_ != make_error_condition(std::errc::timed_out) &&
+             last_ec_ !=
+                 make_error_condition(std::errc::no_such_file_or_directory) &&
+             destination_manager_->refresh_destinations(session_info_)) {
+    // On member failure (connection refused, ...) wait for failover and use
+    // the new primary.
+    destination_ = destination_manager_->get_next_destination(session_info_);
+    if (destination_) {
+      return resolve();
     } else {
+      // We are done, destination manager should know about that
+      destination_manager_->connect_status({});
+
       // we couldn't connect to any of the destinations. Give up.
       return stdx::unexpected(last_ec_);
     }
   }
+  return stdx::unexpected(last_ec_);
 }
 
 void MySQLRoutingConnectionBase::accepted() {
@@ -333,7 +327,8 @@ routing_guidelines::Session_info MySQLRoutingConnectionBase::get_session_info()
     session_info.source_ip = client_address_res->hostname();
   } else {
     log_warning(
-        "[%s] could not set source IP for routing guidelines evaluation: '%s'",
+        "[%s] could not set source IP for routing guidelines evaluation: "
+        "'%s'",
         this->context().get_name().c_str(), get_client_address().c_str());
   }
 

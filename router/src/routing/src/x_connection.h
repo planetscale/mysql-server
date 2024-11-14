@@ -70,15 +70,12 @@ class MysqlRoutingXConnection
   //
   // use ::create() instead.
   MysqlRoutingXConnection(
-      MySQLRoutingContext &context, RouteDestination *route_destination,
+      MySQLRoutingContext &context, DestinationManager *destination_manager,
       std::unique_ptr<ConnectionBase> client_connection,
       std::unique_ptr<RoutingConnectionBase> client_routing_connection,
       std::function<void(MySQLRoutingConnectionBase *)> remove_callback)
       : MySQLRoutingConnectionBase{context, std::move(remove_callback)},
-        route_destination_{route_destination},
-        destinations_{route_destination_->destinations()},
-        connector_{client_connection->io_ctx(), route_destination,
-                   destinations_},
+        connector_{client_connection->io_ctx(), context, destination_manager},
         client_conn_{std::move(client_connection),
                      std::move(client_routing_connection),
                      context.source_ssl_mode(),
@@ -763,6 +760,10 @@ class MysqlRoutingXConnection
       ready = true;
       cv.notify_all();
     });
+  }
+
+  routing_guidelines::Server_info get_server_info() const override {
+    return connector().server_info();
   }
 
  private:

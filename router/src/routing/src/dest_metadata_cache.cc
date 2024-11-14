@@ -39,8 +39,13 @@
 #include "mysql/harness/destination.h"
 #include "mysql/harness/logging/logging.h"
 #include "mysql/harness/plugin.h"
+#include "mysql/harness/utility/string.h"  // join
+#include "mysqlrouter/connection_pool.h"
+#include "mysqlrouter/connection_pool_component.h"
 #include "mysqlrouter/destination.h"
+#include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/routing.h"
+#include "routing_guidelines/routing_guidelines.h"
 
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
@@ -61,16 +66,16 @@ static constexpr std::array supported_params{
 namespace {
 
 const constexpr auto known_roles = std::to_array<
-    std::pair<std::string_view, DestMetadataCacheGroup::ServerRole>>({
-    {"PRIMARY", DestMetadataCacheGroup::ServerRole::Primary},
-    {"SECONDARY", DestMetadataCacheGroup::ServerRole::Secondary},
+    std::pair<std::string_view, DestMetadataCacheManager::ServerRole>>({
+    {"PRIMARY", DestMetadataCacheManager::ServerRole::Primary},
+    {"SECONDARY", DestMetadataCacheManager::ServerRole::Secondary},
     {"PRIMARY_AND_SECONDARY",
-     DestMetadataCacheGroup::ServerRole::PrimaryAndSecondary},
+     DestMetadataCacheManager::ServerRole::PrimaryAndSecondary},
 });
 
 }  // namespace
 
-DestMetadataCacheGroup::ServerRole get_server_role_from_uri(
+DestMetadataCacheManager::ServerRole get_server_role_from_uri(
     const mysqlrouter::URIQuery &uri) {
   const auto it = uri.find("role");
   if (it == uri.end()) {
@@ -137,10 +142,10 @@ bool get_yes_no_option(const mysqlrouter::URIQuery &uri,
 // given configuration
 bool get_disconnect_on_promoted_to_primary(
     const mysqlrouter::URIQuery &uri,
-    const DestMetadataCacheGroup::ServerRole &role) {
+    const DestMetadataCacheManager::ServerRole &role) {
   const std::string kOptionName = "disconnect_on_promoted_to_primary";
   auto check_option_allowed = [&]() {
-    if (role != DestMetadataCacheGroup::ServerRole::Secondary) {
+    if (role != DestMetadataCacheManager::ServerRole::Secondary) {
       throw std::runtime_error("Option '" + kOptionName +
                                "' is valid only for role=SECONDARY");
     }
@@ -160,118 +165,235 @@ bool get_disconnect_on_metadata_unavailable(const mysqlrouter::URIQuery &uri) {
                            check_option_allowed);
 }
 
+mysql_harness::TcpDestinatio addr_from_instance(
+    const routing_guidelines::Server_info &instance,
+    const Protocol::Type protocol) {
+  const auto port = protocol == Protocol::Type::kClassicProtocol
+                        ? instance.port
+                        : instance.port_x;
+  return mysql_harness::Destination(instance.address, port);
+}
+
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 // doxygen confuses 'const mysqlrouter::URIQuery &query' with
 // 'std::map<std::string, std::string>'
-DestMetadataCacheGroup::DestMetadataCacheGroup(
-    net::io_context &io_ctx, const std::string &metadata_cache,
-    const routing::RoutingStrategy routing_strategy,
-    const mysqlrouter::URIQuery &query, const Protocol::Type protocol,
-    metadata_cache::MetadataCacheAPIBase *cache_api)
-    : RouteDestination(io_ctx, protocol),
+DestMetadataCacheManager::DestMetadataCacheManager(
+    net::io_context &io_ctx, MySQLRoutingContext &routing_ctx,
+    const std::string &metadata_cache, const mysqlrouter::URIQuery &query,
+    const ServerRole role, metadata_cache::MetadataCacheAPIBase *cache_api)
+    : DestinationManager(io_ctx, routing_ctx),
       cache_name_(metadata_cache),
       uri_query_(query),
-      routing_strategy_(routing_strategy),
-      server_role_(get_server_role_from_uri(query)),
+      server_role_(role),
       cache_api_(cache_api),
       disconnect_on_promoted_to_primary_(
           get_disconnect_on_promoted_to_primary(query, server_role_)),
       disconnect_on_metadata_unavailable_(
-          get_disconnect_on_metadata_unavailable(query)) {
+          get_disconnect_on_metadata_unavailable(query)),
+      routing_guidelines_{routing_ctx.get_routing_guidelines()},
+      protocol_{routing_ctx.get_protocol()} {
   init();
 }
 #endif
 
-std::pair<metadata_cache::cluster_nodes_list_t, bool>
-DestMetadataCacheGroup::get_available(
-    const metadata_cache::cluster_nodes_list_t &instances,
-    bool for_new_connections) const {
-  metadata_cache::cluster_nodes_list_t result;
+std::vector<routing_guidelines::Server_info>
+DestMetadataCacheManager::get_nodes_from_topology(
+    const metadata_cache::ClusterTopology &cluster_topology,
+    const bool drop_all_hidden) const {
+  std::vector<routing_guidelines::Server_info> result;
+  const auto &clusterset_name = cluster_topology.name;
 
-  bool primary_fallback{false};
-  if (routing_strategy_ == routing::RoutingStrategy::kRoundRobinWithFallback) {
-    // if there are no secondaries available we fall-back to primaries
-    std::lock_guard<std::mutex> lock(
-        query_quarantined_destinations_callback_mtx_);
-    auto secondary = std::find_if(
-        instances.begin(), instances.end(),
-        [&](const metadata_cache::ManagedInstance &i) {
-          if (for_new_connections && query_quarantined_destinations_callback_) {
-            return i.mode == metadata_cache::ServerMode::ReadOnly &&
-                   !i.hidden && !i.ignore &&
-                   !query_quarantined_destinations_callback_(
-                       mysql_harness::Destination(i));
-          } else {
-            return i.mode == metadata_cache::ServerMode::ReadOnly &&
-                   !i.hidden && !i.ignore;
-          }
-        });
+  for (const auto &cluster : cluster_topology.clusters_data) {
+    const auto cluster_name = cluster.name;
 
-    primary_fallback = secondary == instances.end();
-  }
-  // if we are gathering the nodes for the decision about keeping existing
-  // connections we look also at the disconnect_on_promoted_to_primary_ setting
-  // if set to 'no' we need to allow primaries for role=SECONDARY
-  if (!for_new_connections && server_role_ == ServerRole::Secondary &&
-      !disconnect_on_promoted_to_primary_) {
-    primary_fallback = true;
-  }
-
-  for (const auto &it : instances) {
-    if (it.ignore) continue;
-    if (for_new_connections) {
-      // for new connections skip (do not include) the node if it is hidden - it
-      // is not allowed
-      if (it.hidden) continue;
+    // In case of standalone Cluster cluster_topology name is empty
+    std::string cluster_role{""};
+    if (!cluster_topology.name.empty()) {
+      cluster_role = cluster.is_primary ? "PRIMARY" : "REPLICA";
     } else {
-      // for the existing connections skip (do not include) the node if it is
-      // hidden and disconnect_existing_sessions_when_hidden is true
-      if (it.hidden && it.disconnect_existing_sessions_when_hidden) continue;
+      cluster_role = routing_guidelines::kUndefinedRole;
     }
 
-    // role=PRIMARY_AND_SECONDARY
-    if ((server_role_ == ServerRole::PrimaryAndSecondary) &&
-        (it.mode == metadata_cache::ServerMode::ReadWrite ||
-         it.mode == metadata_cache::ServerMode::ReadOnly)) {
-      result.emplace_back(it);
-      continue;
-    }
+    for (const auto &cluster_member : cluster.members) {
+      if (cluster_member.ignore ||
+          cluster_member.mode == metadata_cache::ServerMode::Unavailable) {
+        continue;
+      }
 
-    // role=SECONDARY
-    if (server_role_ == ServerRole::Secondary &&
-        it.mode == metadata_cache::ServerMode::ReadOnly) {
-      result.emplace_back(it);
-      continue;
-    }
+      if (cluster_member.hidden &&
+          (drop_all_hidden ||
+           cluster_member.disconnect_existing_sessions_when_hidden)) {
+        continue;
+      }
 
-    // role=PRIMARY
-    if ((server_role_ == ServerRole::Primary || primary_fallback) &&
-        it.mode == metadata_cache::ServerMode::ReadWrite) {
-      result.emplace_back(it);
-      continue;
-    }
-  }
+      routing_guidelines::Server_info instance_info;
+      instance_info.address = cluster_member.host;
+      instance_info.port = cluster_member.port;
+      instance_info.port_x = cluster_member.xport;
+      instance_info.uuid = cluster_member.mysql_server_uuid;
 
-  return {result, primary_fallback};
-}
+      if (cluster_member.mode == metadata_cache::ServerMode::ReadWrite) {
+        instance_info.member_role = "PRIMARY";
+      } else {
+        instance_info.member_role =
+            cluster_member.type == mysqlrouter::InstanceType::ReadReplica
+                ? "READ_REPLICA"
+                : "SECONDARY";
+      }
 
-metadata_cache::cluster_nodes_list_t
-DestMetadataCacheGroup::get_available_primaries(
-    const metadata_cache::cluster_nodes_list_t &managed_servers) const {
-  metadata_cache::cluster_nodes_list_t result;
+      instance_info.tags = cluster_member.tags;
+      instance_info.cluster_set_name = clusterset_name;
+      instance_info.cluster_role = cluster_role;
+      instance_info.cluster_name = cluster_name;
+      const auto label_port =
+          cluster_member.port == 0 ? cluster_member.xport : cluster_member.port;
+      instance_info.label =
+          cluster_member.host + ":" + std::to_string(label_port);
+      instance_info.cluster_is_invalidated = cluster.is_invalidated;
+      instance_info.version = cluster_member.version;
 
-  for (const auto &it : managed_servers) {
-    if (it.hidden || it.ignore) continue;
-
-    if (it.mode == metadata_cache::ServerMode::ReadWrite) {
-      result.emplace_back(it);
+      result.push_back(instance_info);
     }
   }
 
   return result;
 }
 
-void DestMetadataCacheGroup::init() {
+std::vector<routing_guidelines::Server_info>
+DestMetadataCacheManager::get_old_connection_nodes() const {
+  if (!cache_api_->is_initialized()) return {};
+
+  std::vector<routing_guidelines::Server_info> result;
+  const auto &cluster_topology = cache_api_->get_cluster_topology();
+  auto instances =
+      get_nodes_from_topology(cluster_topology, /*drop_all_hidden*/ false);
+
+  bool primary_fallback{false};
+  // if we are gathering the nodes for the decision about keeping existing
+  // connections we look also at the disconnect_on_promoted_to_primary_ setting
+  // if set to 'no' we need to allow primaries for role=SECONDARY
+  if (server_role_ == ServerRole::Secondary &&
+      !disconnect_on_promoted_to_primary_) {
+    primary_fallback = true;
+  }
+  for (const auto &it : instances) {
+    if ((server_role_ == ServerRole::PrimaryAndSecondary) &&
+        (it.member_role == "PRIMARY" || it.member_role == "SECONDARY")) {
+      result.push_back(it);
+      continue;
+    }
+
+    if (server_role_ == ServerRole::Secondary &&
+        (it.member_role == "SECONDARY" || it.member_role == "READ_REPLICA")) {
+      result.push_back(it);
+      continue;
+    }
+
+    if ((server_role_ == ServerRole::Primary || primary_fallback) &&
+        it.member_role == "PRIMARY") {
+      result.push_back(it);
+      continue;
+    }
+  }
+  return result;
+}
+
+std::vector<routing_guidelines::Server_info>
+DestMetadataCacheManager::get_nodes_allowed_by_routing_guidelines() const {
+  std::vector<routing_guidelines::Server_info> result;
+
+  // This will only match routes which are using $.session.targetPort and
+  // $.session.targetIP. It should not be used for user defined guidelines as we
+  // cannot guarantee that only such matching rules are used.
+  routing_guidelines::Session_info session_info;
+  session_info.target_ip = routing_ctx_.get_bind_address().hostname();
+  session_info.target_port = routing_ctx_.get_bind_address().port();
+
+  std::vector<
+      routing_guidelines::Routing_guidelines_engine::Route::DestinationGroup>
+      available_routes;
+  const auto &route_info = routing_guidelines_->classify(
+      session_info, routing_ctx_.get_router_info());
+
+  if (!route_info.errors.empty()) {
+    log_error("Routing guidelines session classification error(s): %s",
+              mysql_harness::join(route_info.errors, ", ").c_str());
+    return {};
+  }
+
+  available_routes = route_info.destination_groups;
+  if (available_routes.empty()) return {};
+
+  std::set<std::string> allowed_destination_classes;
+  for (const auto &route : available_routes) {
+    std::copy(std::cbegin(route.destination_classes),
+              std::cend(route.destination_classes),
+              std::inserter(allowed_destination_classes,
+                            std::begin(allowed_destination_classes)));
+  }
+
+  const auto &cluster_topology = cache_api_->get_cluster_topology();
+  auto instances =
+      get_nodes_from_topology(cluster_topology, /*drop_hidden*/ true);
+
+  const auto context =
+      "reachable from " + routing_ctx_.get_bind_address().str() + ": ";
+
+  for (const auto &instance : instances) {
+    const auto &instance_classification =
+        routing_guidelines_->classify(instance, routing_ctx_.get_router_info());
+    if (!instance_classification.errors.empty()) {
+      log_error(
+          "Routing guidelines classification error(s) when preparing "
+          "destinations: %s",
+          mysql_harness::join(instance_classification.errors, ", ").c_str());
+      return {};
+    }
+    const auto &destination_classes = instance_classification.class_names;
+
+    for (const auto &destination_class : destination_classes) {
+      if (allowed_destination_classes.count(destination_class)) {
+        result.emplace_back(instance);
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+std::vector<routing_guidelines::Server_info>
+DestMetadataCacheManager::get_all_nodes() const {
+  std::vector<routing_guidelines::Server_info> result;
+  const auto &cluster_topology = cache_api_->get_cluster_topology();
+  return get_nodes_from_topology(cluster_topology, /*drop_hidden*/ true);
+}
+
+std::vector<routing_guidelines::Server_info>
+DestMetadataCacheManager::get_new_connection_nodes() const {
+  if (!routing_guidelines_ || !cache_api_->is_initialized()) return {};
+  if (routing_guidelines_->routing_guidelines_updated()) {
+    // For user-defined guidelines there might be no direct mapping between a
+    // Routing plugin and a guidelines route. Therefore each destination
+    // returned by the metadata may be a valid candidate.
+    return get_all_nodes();
+  } else {
+    return get_nodes_allowed_by_routing_guidelines();
+  }
+}
+
+std::vector<mysql_harness::Destination>
+DestMetadataCacheManager::get_destination_candidates() const {
+  std::vector<mysql_harness::Destination> result;
+
+  const auto candidates = get_new_connection_nodes();
+  for (const auto &dest : candidates) {
+    result.push_back(addr_from_instance(dest, protocol_));
+  }
+  return result;
+}
+
+void DestMetadataCacheManager::init() {
   // check if URI does not contain parameters that we don't understand
   for (const auto &uri_param : uri_query_) {
     if (std::find(supported_params.begin(), supported_params.end(),
@@ -295,15 +417,15 @@ void DestMetadataCacheManager::subscribe_for_metadata_cache_changes() {
   subscribed_for_metadata_cache_changes_ = true;
 }
 
-void DestMetadataCacheGroup::subscribe_for_acceptor_handler() {
+void DestMetadataCacheManager::subscribe_for_acceptor_handler() {
   cache_api_->add_acceptor_handler_listener(this);
 }
 
-void DestMetadataCacheGroup::subscribe_for_md_refresh_handler() {
+void DestMetadataCacheManager::subscribe_for_md_refresh_handler() {
   cache_api_->add_md_refresh_listener(this);
 }
 
-DestMetadataCacheGroup::~DestMetadataCacheGroup() {
+DestMetadataCacheManager::~DestMetadataCacheManager() {
   if (subscribed_for_metadata_cache_changes_) {
     cache_api_->remove_state_listener(this);
     cache_api_->remove_acceptor_handler_listener(this);
@@ -311,376 +433,45 @@ DestMetadataCacheGroup::~DestMetadataCacheGroup() {
   }
 }
 
-class MetadataCacheDestination : public Destination {
- public:
-  MetadataCacheDestination(std::string id, mysql_harness::Destination dest,
-                           DestMetadataCacheGroup *balancer,
-                           std::string server_uuid,
-                           mysqlrouter::ServerMode server_mode)
-      : Destination(std::move(id), std::move(dest)),
-        balancer_{balancer},
-        server_uuid_{std::move(server_uuid)},
-        server_mode_{server_mode} {}
-
-  void connect_status(std::error_code ec) override {
-    last_ec_ = ec;
-
-    if (ec != std::error_code{}) {
-      // the tests
-      //
-      // - NodeUnavailable/NodeUnavailableTest.NodeUnavailable/1, where
-      //   GetParam() = "round-robin"
-      // - NodeUnavailable/NodeUnavailableTest.NodeUnavailable/2, where
-      //   GetParam() = "round-robin-with-fallback"
-      //
-      // rely on moving the ndx forward in case of failure.
-
-      balancer_->advance(1);
-    }
-  }
-
-  std::string server_uuid() const { return server_uuid_; }
-
-  std::error_code last_error_code() const { return last_ec_; }
-
-  mysqlrouter::ServerMode server_mode() const override { return server_mode_; }
-
- private:
-  DestMetadataCacheGroup *balancer_;
-
-  std::string server_uuid_;
-
-  mysqlrouter::ServerMode server_mode_;
-
-  std::error_code last_ec_;
-};
-
 // the first round of destinations didn't succeed.
 //
 // try to fallback.
-std::optional<Destinations> DestMetadataCacheGroup::refresh_destinations(
-    const Destinations &previous_dests) {
-  if (cache_api_->cluster_type() == mysqlrouter::ClusterType::RS_V2) {
-    // ReplicaSet
-    if (routing_strategy_ ==
-            routing::RoutingStrategy::kRoundRobinWithFallback &&
-        !previous_dests.primary_already_used()) {
-      // get the primaries
-      return primary_destinations();
-    }
-  } else {
-    // Group Replication
-    if (server_role() == DestMetadataCacheGroup::ServerRole::Primary) {
-      // verify preconditions.
-      assert(!previous_dests.empty() &&
-             "previous destinations MUST NOT be empty");
+bool DestMetadataCacheManager::refresh_destinations(
+    const routing_guidelines::Session_info &session_info) {
+  if (server_role_ != DestMetadataCacheManager::ServerRole::Primary)
+    return false;
 
-      assert(previous_dests.is_primary_destination() &&
-             "previous destinations MUST be primary destinations");
+  const auto failover_successful = cache_api_->wait_primary_failover(
+      last_server_uuid_, kPrimaryFailoverTimeout);
 
-      if (previous_dests.empty()) {
-        return std::nullopt;
+  {
+    std::lock_guard<std::mutex> lock(state_mtx_);
+    current_group_position_ = 0;
+    current_destination_group_index_ = 0;
+    last_connection_status_ = ConnectionStatus::NotSet;
+    if (failover_successful) {
+      const auto &route_classification = routing_guidelines_->classify(
+          session_info, routing_ctx_.get_router_info());
+
+      if (!route_classification.errors.empty()) {
+        log_error(
+            "Routing route classification error(s): %s",
+            mysql_harness::join(route_classification.errors, ", ").c_str());
+
+        return false;
       }
 
-      if (!previous_dests.is_primary_destination()) {
-        return std::nullopt;
-      }
-
-      // if connecting to the primary failed differentiate between:
-      //
-      // - network failure
-      // - member failure
-      //
-      // On network failure (timeout, network-not-reachable, ...), fail
-      // directly.
-      //
-      // On member failure (connection refused, ...) wait for failover and use
-      // the new primary.
-
-      auto const *primary_member = dynamic_cast<MetadataCacheDestination *>(
-          previous_dests.begin()->get());
-
-      const auto err = primary_member->last_error_code();
-      log_debug("refresh_destinations(): %s:%s", err.category().name(),
-                err.message().c_str());
-
-      if (err == make_error_condition(std::errc::timed_out) ||
-          err == make_error_condition(std::errc::no_such_file_or_directory)) {
-        return std::nullopt;
-      }
-
-      if (cache_api_->wait_primary_failover(primary_member->server_uuid(),
-                                            kPrimaryFailoverTimeout)) {
-        return primary_destinations();
-      }
+      route_info_ = route_classification;
+      return true;
     }
   }
-
-  return std::nullopt;
+  return false;
 }
 
-void DestMetadataCacheGroup::advance(size_t n) {
-  std::lock_guard<std::mutex> lk(mutex_update_);
-
-  start_pos_ += n;
-}
-
-Destinations DestMetadataCacheGroup::balance(
-    const metadata_cache::cluster_nodes_list_t &available,
-    bool primary_fallback) {
-  Destinations dests;
-
-  auto from_instance = [this](const auto &dest) {
-    mysql_harness::TcpDestination addr(
-        dest.host,
-        (protocol_ == Protocol::Type::kXProtocol) ? dest.xport : dest.port);
-
-    return std::make_unique<MetadataCacheDestination>(
-        addr.str(), addr, this, dest.mysql_server_uuid, dest.mode);
-  };
-
-  std::lock_guard<std::mutex> lk(mutex_update_);
-
-  switch (routing_strategy_) {
-    case routing::RoutingStrategy::kFirstAvailable: {
-      for (auto const &dest : available) {
-        dests.push_back(from_instance(dest));
-      }
-
-      break;
-    }
-    case routing::RoutingStrategy::kRoundRobinWithFallback:
-    case routing::RoutingStrategy::kRoundRobin: {
-      if (available.empty()) break;
-
-      const auto sz = available.size();
-      const auto end = available.end();
-      const auto begin = available.begin();
-
-      // start pos moves forward with each call to balance().
-      //
-      // ensure it wraps around.
-
-      if (start_pos_ >= sz) start_pos_ = 0;
-      if (rw_start_pos_ >= sz) rw_start_pos_ = 0;
-      if (ro_start_pos_ >= sz) ro_start_pos_ = 0;
-
-      // Goal:
-      //
-      // - writes round-robins over read-write-servers
-      // - reads  round-robins over read-only servers
-      //
-      // Example:
-      //
-      // available  = [ W1, R1, R2, W2, R3 ]
-      // writers    = [ W1, W2 ]
-      // readers    = [ R1, R2, R3 ]
-      //
-      // Each group is rotated independently and then appened
-      // depending on the server-mode of the current "start_pos".
-      //
-      // input:         -> output         (auth, write, read)
-      //
-      // W1 R1 R2 W2 R3 -> W1 W2 R1 R2 R3 (a: W1, w: W1, r: R1)
-      // R1 R2 W2 R3 W1 -> R2 R3 R1 W2 W1 (a: R2: w: W2, r: R2)
-      // R2 W2 R3 W1 R1 -> R3 R1 R2 W1 W2 (a: R3: w: W1, r: R3)
-      // W2 R3 W1 R1 R2 -> W2 W1 R1 R2 R3 (a: W2: w: W2, r: R1)
-      // R3 W1 R1 R2 W2 -> R2 R3 R1 W1 W2 (a: R2: w: W1, r: R2)
-      // W1 R1 R2 W2 R3 -> W2 W1 R3 R1 R2 (a: W2: w: W2, r: R3)
-      //
-      // ^^- start-pos -> initial-server-mode.
-
-      //
-      const auto initial_server_mode = available[start_pos_].mode;
-
-      auto &initial_server_mode_start_pos =
-          initial_server_mode == mysqlrouter::ServerMode::ReadOnly
-              ? ro_start_pos_
-              : rw_start_pos_;
-
-      auto &other_server_mode_start_pos =
-          initial_server_mode == mysqlrouter::ServerMode::ReadOnly
-              ? rw_start_pos_
-              : ro_start_pos_;
-
-      {
-        if (initial_server_mode_start_pos >= sz) {
-          initial_server_mode_start_pos = 0;
-        }
-
-        // move iterator forward and remember the position as 'last'
-        auto cur = begin;
-        std::advance(cur, initial_server_mode_start_pos);
-        auto last = cur;
-
-        auto pos = initial_server_mode_start_pos;
-        bool is_first{true};
-
-        // for start_pos == 2:
-        //
-        // 0 1 2 3 4 x
-        // ^   ^     ^
-        // |   |     `- end
-        // |   `- last|cur
-        // `- begin
-
-        // from last to end;
-        //
-        // dests = [2 3 4]
-        for (; cur != end; ++cur, ++pos) {
-          if (cur->mode == initial_server_mode) {
-            if (is_first) {
-              initial_server_mode_start_pos = pos;
-              is_first = false;
-            }
-            dests.push_back(from_instance(*cur));
-          }
-        }
-
-        // from begin to before-last
-        //
-        // dests = [2 3 4] + [0 1]
-        for (cur = begin, pos = 0; cur != last; ++cur, ++pos) {
-          if (cur->mode == initial_server_mode) {
-            if (is_first) {
-              initial_server_mode_start_pos = pos;
-              is_first = false;
-            }
-            dests.push_back(from_instance(*cur));
-          }
-        }
-
-        if (++initial_server_mode_start_pos >= sz) {
-          initial_server_mode_start_pos = 0;
-        }
-      }
-
-      // ... and now the other server-mode set:
-      {
-        if (other_server_mode_start_pos >= sz) {
-          other_server_mode_start_pos = 0;
-        }
-
-        // move iterator forward and remember the position as 'last'
-        auto cur = begin;
-        std::advance(cur, other_server_mode_start_pos);
-        auto last = cur;
-
-        auto pos = other_server_mode_start_pos;
-        bool is_first{true};
-
-        // from last to end;
-        //
-        // dests = [2 3 4]
-        for (; cur != end; ++cur, ++pos) {
-          if (cur->mode != initial_server_mode) {
-            if (is_first) {
-              other_server_mode_start_pos = pos;
-              is_first = false;
-            }
-            dests.push_back(from_instance(*cur));
-          }
-        }
-
-        // from begin to before-last
-        //
-        // dests = [2 3 4] + [0 1]
-        for (cur = begin, pos = 0; cur != last; ++cur, ++pos) {
-          if (cur->mode != initial_server_mode) {
-            if (is_first) {
-              other_server_mode_start_pos = pos;
-              is_first = false;
-            }
-            dests.push_back(from_instance(*cur));
-          }
-        }
-
-        if (++other_server_mode_start_pos >= sz) {
-          other_server_mode_start_pos = 0;
-        }
-      }
-      // NOTE: AsyncReplicasetTest.SecondaryAdded from
-      // routertest_component_async_replicaset depends on the start_pos_ is
-      // capped here.
-      //
-      // replacing it with:
-      //
-      //    ++start_pos_;
-      //
-      // would be correct too, but change the order of destinations that the
-      // test expects.
-      if (++start_pos_ >= sz) start_pos_ = 0;
-
-      break;
-    }
-    case routing::RoutingStrategy::kNextAvailable:
-    case routing::RoutingStrategy::kUndefined:
-      assert(0);
-      break;
-  }
-
-  if (dests.empty()) {
-    log_warning("No available servers found for %s routing",
-                server_role_ == ServerRole::Primary ? "PRIMARY" : "SECONDARY");
-
-    // return an empty list
-    return dests;
-  }
-
-  if (primary_fallback) {
-    // announce that we already use the primaries and don't want to fallback
-    dests.primary_already_used(true);
-  }
-
-  if (server_role() == DestMetadataCacheGroup::ServerRole::Primary) {
-    dests.set_is_primary_destination(true);
-  }
-
-  return dests;
-}
-
-Destinations DestMetadataCacheGroup::destinations() {
-  if (!cache_api_->is_initialized()) return {};
-
-  const auto &all_replicaset_nodes = cache_api_->get_cluster_nodes();
-
-  auto [available, primary_failover] = get_available(all_replicaset_nodes);
-
-  return balance(available, primary_failover);
-}
-
-Destinations DestMetadataCacheGroup::primary_destinations() {
-  if (!cache_api_->is_initialized()) return {};
-
-  const auto &all_replicaset_nodes = cache_api_->get_cluster_nodes();
-
-  auto available = get_available_primaries(all_replicaset_nodes);
-
-  return balance(available, true);
-}
-
-DestMetadataCacheGroup::AddrVector DestMetadataCacheGroup::get_destinations()
-    const {
-  // don't call lookup if the cache-api is not ready yet.
-  if (!cache_api_->is_initialized()) return {};
-
-  auto available = get_available(cache_api_->get_cluster_nodes()).first;
-
-  AddrVector addresses;
-  for (const auto &dest : available) {
-    addresses.emplace_back(mysql_harness::TcpDestination(
-        dest.host,
-        protocol_ == Protocol::Type::kXProtocol ? dest.xport : dest.port));
-  }
-
-  return addresses;
-}
-
-void DestMetadataCacheGroup::on_instances_change(
-    const metadata_cache::ClusterTopology &cluster_topology,
+void DestMetadataCacheManager::on_instances_change(
     const bool md_servers_reachable) {
   // we got notified that the metadata has changed.
-  // If instances is empty then (most like is empty)
+  // If instances is empty then (most likely it is empty)
   // the metadata-cache cannot connect to the metadata-servers
   // In that case we only disconnect clients if
   // the user configured that it should happen
@@ -688,7 +479,6 @@ void DestMetadataCacheGroup::on_instances_change(
   const bool disconnect =
       md_servers_reachable || disconnect_on_metadata_unavailable_;
 
-  const auto instances = cluster_topology.get_all_members();
   const std::string reason =
       md_servers_reachable ? "metadata change" : "metadata unavailable";
 
@@ -696,21 +486,20 @@ void DestMetadataCacheGroup::on_instances_change(
     std::vector<AvailableDestination> result;
 
     for (const auto &dest : dests) {
-      mysql_harness::TcpDestination tcp_dest(
-          dest.host,
-          (protocol_ == Protocol::Type::kXProtocol) ? dest.xport : dest.port);
+      metadata_cache::ServerMode mode =
+          dest.member_role == "PRIMARY" ? metadata_cache::ServerMode::ReadWrite
+                                        : metadata_cache::ServerMode::ReadOnly;
 
-      result.emplace_back(tcp_dest, dest.mysql_server_uuid, dest.mode);
+      result.emplace_back(addr_from_instance(dest, protocol_), dest.uuid, mode);
     }
 
     return result;
   };
 
-  auto nodes_for_new_connections = from_instances(
-      get_available(instances, /*for_new_connections=*/true).first);
-
-  auto nodes_for_existing_connections = from_instances(
-      get_available(instances, /*for_new_connections=*/false).first);
+  const auto &nodes_for_new_connections =
+      from_instances(get_new_connection_nodes());
+  const auto &nodes_for_existing_connections =
+      from_instances(get_old_connection_nodes());
 
   std::lock_guard<std::mutex> lock(allowed_nodes_change_callbacks_mtx_);
 
@@ -722,16 +511,13 @@ void DestMetadataCacheGroup::on_instances_change(
   }
 }
 
-void DestMetadataCacheGroup::notify_instances_changed(
-    const metadata_cache::ClusterTopology &cluster_topology,
+void DestMetadataCacheManager::notify_instances_changed(
     const bool md_servers_reachable, const uint64_t /*view_id*/) noexcept {
-  on_instances_change(cluster_topology, md_servers_reachable);
+  on_instances_change(md_servers_reachable);
 }
 
-bool DestMetadataCacheGroup::update_socket_acceptor_state(
-    const metadata_cache::cluster_nodes_list_t &instances) noexcept {
-  const auto &nodes_for_new_connections =
-      get_available(instances, /*for_new_connections=*/true).first;
+bool DestMetadataCacheManager::update_socket_acceptor_state() noexcept {
+  const auto &nodes_for_new_connections = get_new_connection_nodes();
 
   {
     std::lock_guard<std::mutex> lock(socket_acceptor_handle_callbacks_mtx);
@@ -751,35 +537,32 @@ bool DestMetadataCacheGroup::update_socket_acceptor_state(
   return true;
 }
 
-void DestMetadataCacheGroup::on_md_refresh(
-    const bool nodes_changed,
-    const metadata_cache::ClusterTopology &cluster_topology) {
-  const auto instances = cluster_topology.get_all_members();
-
+void DestMetadataCacheManager::on_md_refresh(const bool nodes_changed) {
   auto from_instances = [this](const auto &dests) {
     std::vector<AvailableDestination> result;
 
     for (const auto &dest : dests) {
-      mysql_harness::TcpDestination tcp_dest(
-          dest.host,
-          (protocol_ == Protocol::Type::kXProtocol) ? dest.xport : dest.port);
+      metadata_cache::ServerMode mode =
+          dest.member_role == "PRIMARY" ? metadata_cache::ServerMode::ReadWrite
+                                        : metadata_cache::ServerMode::ReadOnly;
 
-      result.emplace_back(tcp_dest, dest.mysql_server_uuid, dest.mode);
+      result.emplace_back(addr_from_instance(dest, protocol_), dest.uuid, mode);
     }
-
     return result;
   };
 
-  const auto available_nodes = from_instances(
-      get_available(instances, /*for_new_connections=*/true).first);
-
-  std::lock_guard<std::mutex> lock(md_refresh_callback_mtx_);
-  if (md_refresh_callback_) {
-    md_refresh_callback_(nodes_changed, available_nodes);
+  const auto &new_connection_nodes = from_instances(get_new_connection_nodes());
+  {
+    std::lock_guard<std::mutex> lock(md_refresh_callback_mtx_);
+    if (md_refresh_callback_) {
+      md_refresh_callback_(nodes_changed, new_connection_nodes);
+    }
   }
+
+  if (nodes_changed) clear_internal_state();
 }
 
-void DestMetadataCacheGroup::start(const mysql_harness::PluginFuncEnv *env) {
+void DestMetadataCacheManager::start(const mysql_harness::PluginFuncEnv *env) {
   // before using metadata-cache we need to wait for it to be initialized
   while (!cache_api_->is_initialized() && (!env || is_running(env))) {
     std::this_thread::sleep_for(1ms);
@@ -790,4 +573,77 @@ void DestMetadataCacheGroup::start(const mysql_harness::PluginFuncEnv *env) {
     subscribe_for_acceptor_handler();
     subscribe_for_md_refresh_handler();
   }
+}
+std::unique_ptr<Destination> DestMetadataCacheManager::get_next_destination(
+    const routing_guidelines::Session_info &session_info) {
+  auto destination = get_next_destination_impl();
+
+  if (destination) {
+    last_server_uuid_ = destination->server_uuid();
+
+    const auto &strategy_str = routing::get_routing_strategy_name(strategy_);
+
+    log_debug("RGuidelines: %" PRIu64 ": Will try %s:%i from %s",
+              session_info.id, destination->hostname().c_str(), port,
+              strategy_str.c_str());
+  }
+
+  return destination;
+}
+
+routing_guidelines::Routing_guidelines_engine::RouteChanges
+DestMetadataCacheManager::update_routing_guidelines(
+    const std::string &routing_guidelines_document) {
+  log_debug("Try to update routing guidelines with: %s",
+            routing_guidelines_document.c_str());
+  if (routing_guidelines_document.empty() ||
+      routing_guidelines_document == "{}") {
+    log_info("Restore initial routing guidelines autogenerated from config");
+    std::lock_guard l{state_mtx_};
+    return routing_guidelines_->restore_default();
+  }
+
+  auto new_routing_guidelines =
+      routing_guidelines::Routing_guidelines_engine::create(
+          routing_guidelines_document);
+
+  const bool has_extended_session_info_support =
+      get_routing_context().dest_ssl_mode() == SslMode::kPreferred;
+  if (!has_extended_session_info_support &&
+      new_routing_guidelines.extended_session_info_in_use()) {
+    log_warning(
+        "S.session.user, $.session.schema and $.session.connectAttrs are "
+        "supported only when ssl_server_mode is set to PREFERRED");
+  }
+
+  const auto &hostnames_to_resolve =
+      new_routing_guidelines.hostnames_to_resolve();
+  new_routing_guidelines.update_resolve_cache(
+      resolve_routing_guidelines_hostnames(hostnames_to_resolve));
+
+  return std::invoke(
+      [this, new_guide = std::move(new_routing_guidelines)]() mutable {
+        std::lock_guard l{state_mtx_};
+        return routing_guidelines_->update_routing_guidelines(
+            std::move(new_guide),
+            /*is_provided_by_user*/ true);
+      });
+}
+
+void DestMetadataCacheManager::clear_internal_state() {
+  std::lock_guard<std::mutex> lock(state_mtx_);
+  last_connection_status_ = ConnectionStatus::NotSet;
+}
+
+void DestMetadataCacheManager::connect_status(std::error_code ec) {
+  std::lock_guard<std::mutex> lock(state_mtx_);
+  last_ec_ = ec;
+  const bool was_successful = ec == std::error_code{};
+  set_last_connect_successful(was_successful);
+}
+
+void DestMetadataCacheManager::set_last_connect_successful(
+    const bool successful) {
+  last_connection_status_ =
+      successful ? ConnectionStatus::InProgress : ConnectionStatus::Failed;
 }

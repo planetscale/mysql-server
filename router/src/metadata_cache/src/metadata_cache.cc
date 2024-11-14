@@ -412,6 +412,45 @@ void MetadataCache::on_refresh_succeeded(
   });
 }
 
+static void trace_instances_info(
+    const metadata_cache::ClusterTopology &cluster_topology) {
+  const auto &clusterset_name = cluster_topology.name;
+  for (const auto &cluster : cluster_topology.clusters_data) {
+    const std::string cluster_role = cluster.is_primary ? "PRIMARY" : "REPLICA";
+    for (const auto &cluster_member : cluster.members) {
+      if (cluster_member.mode == metadata_cache::ServerMode::Unavailable) {
+        continue;
+      }
+
+      std::string tags_str;
+      for (const auto &tag : cluster_member.tags) {
+        tags_str += "\n\t\t" + tag.first + ": " + tag.second;
+      }
+
+      const std::string member_role =
+          cluster_member.mode == metadata_cache::ServerMode::ReadWrite
+              ? "PRIMARY"
+              : "SECONDARY";
+
+      const auto label_port =
+          cluster_member.port == 0 ? cluster_member.xport : cluster_member.port;
+      const std::string label =
+          cluster_member.host + ":" + std::to_string(label_port);
+
+      log_debug(
+          "Instance reported from metadata:\n\tAddress: %s,\n\tPort: "
+          "%hu\n\tX "
+          "port: %hu\n\tUUID: %s\n\tMember role: %s\n\tClusterSet name: "
+          "%s\n\tCluster name: %s\n\tCluster role: %s\n\tLabel: %s\n\tTags: "
+          "%s",
+          cluster_member.host.c_str(), cluster_member.port,
+          cluster_member.xport, cluster_member.mysql_server_uuid.c_str(),
+          member_role.c_str(), clusterset_name.c_str(), cluster.name.c_str(),
+          cluster_role.c_str(), label.c_str(), tags_str.c_str());
+    }
+  }
+}
+
 void MetadataCache::on_instances_changed(const bool md_servers_reachable,
                                          uint64_t view_id) {
   // Socket acceptors state will be updated when processing new instances
@@ -426,10 +465,13 @@ void MetadataCache::on_instances_changed(const bool md_servers_reachable,
     }
   }
 
+  if (log_level_is_handled(mysql_harness::logging::LogLevel::kDebug)) {
+    trace_instances_info(get_cluster_topology());
+  }
+
   if (use_cluster_notifications_) {
-    const auto cluster_nodes = cluster_topology.get_all_members();
     meta_data_->setup_notifications_listener(
-        cluster_topology, [this]() { on_refresh_requested(); });
+        get_cluster_topology(), [this]() { on_refresh_requested(); });
   }
 }
 

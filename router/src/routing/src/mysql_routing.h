@@ -70,6 +70,7 @@
 #include "mysql_routing_base.h"
 #include "mysqlrouter/base_protocol.h"
 #include "mysqlrouter/io_thread.h"
+#include "mysqlrouter/metadata_cache_datatypes.h"
 #include "mysqlrouter/routing.h"
 #include "mysqlrouter/routing_component.h"
 #include "mysqlrouter/uri.h"
@@ -261,9 +262,9 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
 
   std::vector<MySQLRoutingAPI::ConnData> get_connections() override;
 
-  MySQLRoutingConnectionBase *get_connection(const std::string &) override;
-
-  RouteDestination *destinations() { return destination_.get(); }
+  DestinationManager *destination_manager() {
+    return destination_manager_.get();
+  }
 
   void disconnect_all();
 
@@ -373,7 +374,7 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
   net::io_context &io_ctx_;
 
   /** @brief Destination object to use when getting next connection */
-  std::unique_ptr<RouteDestination> destination_;
+  std::unique_ptr<DestinationManager> destination_manager_{nullptr};
 
   bool is_destination_standalone_{false};
 
