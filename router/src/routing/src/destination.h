@@ -240,6 +240,14 @@ class DestinationManager : public DestinationNodesStateNotifier {
       const = 0;
 
   /**
+   * Check if routing guidelines uses $.session.rand as a match criterion.
+   */
+  bool routing_guidelines_session_rand_used() const {
+    if (!routing_ctx_.get_routing_guidelines()) return false;
+    return routing_ctx_.get_routing_guidelines()->session_rand_used();
+  }
+
+  /**
    * Get information about this given Router instance.
    */
   routing_guidelines::Router_info get_router_info() const {

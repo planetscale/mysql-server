@@ -136,6 +136,9 @@ ConnectProcessor::init_destination() {
   bool dest_manager_started{true};
 
   if (!connection()->has_transient_error_at_connect()) {
+    if (destination_manager->routing_guidelines_session_rand_used()) {
+      connection()->set_routing_guidelines_session_rand();
+    }
     const auto &session_info = connection()->get_session_info();
 
     dest_manager_started =

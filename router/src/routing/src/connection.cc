@@ -25,6 +25,7 @@
 
 #include "connection.h"
 
+#include <random>
 #include <string>
 #include <system_error>  // error_code
 
@@ -336,4 +337,12 @@ routing_guidelines::Session_info MySQLRoutingConnectionBase::get_session_info()
     session_info.random_value = *routing_guidelines_session_rand_;
 
   return session_info;
+}
+
+void MySQLRoutingConnectionBase::set_routing_guidelines_session_rand() {
+  std::random_device rd;
+  std::mt19937 rng{rd()};
+  std::uniform_real_distribution<double> dist(0, 1);
+  auto rand = dist(rng);
+  routing_guidelines_session_rand_ = rand;
 }

@@ -215,6 +215,8 @@ class MySQLRoutingConnectionBase {
 
   routing_guidelines::Session_info get_session_info() const;
 
+  void set_routing_guidelines_session_rand();
+
  protected:
   /** @brief wrapper for common data used by all routing threads */
   MySQLRoutingContext &context_;
@@ -229,6 +231,7 @@ class MySQLRoutingConnectionBase {
 
  private:
   net::impl::socket::native_handle_type client_fd_;
+  std::optional<double> routing_guidelines_session_rand_;
 };
 
 class ConnectorBase {

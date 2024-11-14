@@ -83,6 +83,10 @@ class MysqlRoutingXConnection
         server_conn_{nullptr, context.dest_ssl_mode(),
                      ServerSideConnection::protocol_state_type{}} {
     client_address(client_conn_.connection()->endpoint());
+
+    if (destination_manager->routing_guidelines_session_rand_used()) {
+      set_routing_guidelines_session_rand();
+    }
   }
 
  public:
