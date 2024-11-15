@@ -132,6 +132,7 @@ SET(TESTS
   mutex_lock
   my_alloc
   my_bitmap
+  my_char_traits
   my_error
   my_fileutils
   my_gcvt
