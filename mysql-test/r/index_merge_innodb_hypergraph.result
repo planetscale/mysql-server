@@ -2112,9 +2112,9 @@ EXPLAIN
 # The expected number of rows can vary depending on page size
 explain select * from t1 where pk1 < 7500 and key1 = 10;
 EXPLAIN
--> Intersect rows sorted by row ID  (rows=100)
-    -> Index range scan on t1 using key1 over (key1 = 10 AND pk1 < 7500)  (rows=100)
-    -> Index range scan on t1 using PRIMARY over (pk1 < 7500)  (rows=4851)
+-> Intersect rows sorted by row ID  (...)
+    -> Index range scan on t1 using key1 over (key1 = 10 AND pk1 < 7500)  (...)
+    -> Index range scan on t1 using PRIMARY over (pk1 < 7500)  (...)
 
 # Verify that keys with 'tails' of PK members are ok.
 explain select * from t1 where pktail1ok=1 and key1=10;
