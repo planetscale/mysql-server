@@ -32,8 +32,9 @@
 --echo
 --echo # Verify processlist user name is 'system_user'.
 --echo
---replace_column 1 <ID> 3 <Host>
-select id, user,host,command,state from performance_schema.processlist order by user, id;
+--replace_column 1 <Id> 3 <Host> 6 <Time> 7 <State>
+--replace_regex /Daemon/<Command>/ /Connect/<Command>/ /Sleep/<Command>/
+select * from performance_schema.processlist order by user, id;
 
 --echo
 --echo # Create user 'test_processlist' then restart the replica and verify that
@@ -55,8 +56,9 @@ GRANT ALL ON *.* TO 'test_processlist'@'localhost';
 --echo
 --echo # Verify processlist user name is 'system_user' for the replica threads.
 --echo
---replace_column 1 <ID> 3 <Host>
-select id, user,host,command,state from performance_schema.processlist order by user, id;
+--replace_column 1 <Id> 3 <Host> 6 <Time> 7 <State>
+--replace_regex /Daemon/<Command>/ /Connect/<Command>/ /Sleep/<Command>/
+select * from performance_schema.processlist order by user, id;
 
 --echo
 --echo # Clean up.

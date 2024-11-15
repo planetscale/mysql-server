@@ -33,19 +33,19 @@ include/rpl/start_replica.inc
 
 # Verify processlist user name is 'system_user'.
 
-select id, user,host,command,state from performance_schema.processlist order by user, id;
-id	user	host	command	state
-<ID>	event_scheduler	<Host>	Daemon	Waiting on empty queue
-<ID>	root	<Host>	Sleep
-<ID>	root	<Host>	Sleep
-<ID>	root	<Host>	Query	executing
-<ID>	root	<Host>	Sleep
-<ID>	system user	<Host>	Connect	Waiting for source to send event
-<ID>	system user	<Host>	Query	Replica has read all relay log; waiting for more updates
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
+select * from performance_schema.processlist order by user, id;
+ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	EXECUTION_ENGINE
+<Id>	event_scheduler	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	Query	<Time>	<State>	select * from performance_schema.processlist order by user, id	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	Query	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
 
 # Create user 'test_processlist' then restart the replica and verify that
 # the processlist user name for the replica threads is 'system user'.
@@ -63,20 +63,20 @@ include/rpl/start_replica.inc
 
 # Verify processlist user name is 'system_user' for the replica threads.
 
-select id, user,host,command,state from performance_schema.processlist order by user, id;
-id	user	host	command	state
-<ID>	event_scheduler	<Host>	Daemon	Waiting on empty queue
-<ID>	root	<Host>	Sleep
-<ID>	root	<Host>	Sleep
-<ID>	root	<Host>	Sleep
-<ID>	root	<Host>	Sleep
-<ID>	system user	<Host>	Connect	Waiting for source to send event
-<ID>	system user	<Host>	Query	Replica has read all relay log; waiting for more updates
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	system user	<Host>	Connect	Waiting for an event from Coordinator
-<ID>	test_processlist	<Host>	Query	executing
+select * from performance_schema.processlist order by user, id;
+ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	EXECUTION_ENGINE
+<Id>	event_scheduler	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	root	<Host>	test	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	Query	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	system user	<Host>	NULL	<Command>	<Time>	<State>	NULL	PRIMARY
+<Id>	test_processlist	<Host>	test	Query	<Time>	<State>	select * from performance_schema.processlist order by user, id	PRIMARY
 
 # Clean up.
 
