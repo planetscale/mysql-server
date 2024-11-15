@@ -93,10 +93,7 @@ class MysqlRoutingXConnection
   // create a shared_ptr<ThisClass>
   template <typename... Args>
   [[nodiscard]] static std::shared_ptr<MysqlRoutingXConnection> create(
-      // clang-format off
-      Args &&... args) {
-    // clang-format on
-
+      Args &&...args) {
     // can't use make_unique<> here as the constructor is private.
     return std::shared_ptr<MysqlRoutingXConnection>(
         new MysqlRoutingXConnection(std::forward<Args>(args)...));
