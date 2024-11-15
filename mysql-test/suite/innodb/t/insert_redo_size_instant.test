@@ -11,7 +11,7 @@ INSERT INTO t1 VALUES (1,1);
 --echo # versions are different
 
 --echo # Disable page cleaners and prevent page flushing/checkpointing.
---source ../include/stop_dirty_page_flushing_and_redo_log_truncating.inc
+--source ../include/log_disable_page_cleaners.inc
 
 SET GLOBAL DEBUG="+d,page_ins_simulate_differing_versions";
 
@@ -32,7 +32,7 @@ CHECK TABLE t1 EXTENDED;
 --echo # versions are same
 
 --echo # Disable page cleaners and prevent page flushing/checkpointing.
---source ../include/stop_dirty_page_flushing_and_redo_log_truncating.inc
+--source ../include/log_disable_page_cleaners.inc
 
 --echo # Generate redo logs
 INSERT INTO t1 VALUES (1,1);
@@ -44,7 +44,7 @@ SELECT * FROM t1;
 CHECK TABLE t1 EXTENDED;
 
 --echo # Resume page cleaners after recovery
---source ../include/resume_dirty_page_flushing_and_redo_log_truncating.inc
+--source ../include/log_enable_page_cleaners.inc
 
 --echo # Cleanup:
 DROP TABLE t1;
