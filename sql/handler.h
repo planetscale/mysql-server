@@ -2642,6 +2642,16 @@ using notify_create_table_t = void (*)(struct HA_CREATE_INFO *create_info,
 using secondary_engine_pre_prepare_hook_t = bool (*)(THD *thd);
 
 /**
+  Hook used to estimate the cardinality of table Node objects in the
+  JoinHypergraph. For each Node, it attempts to estimate the cardinality,
+  and if successful, stores it in the field `cardinality`.
+
+  @param thd The thread context.
+  @param graph The JoinHypergraph where the estimates are to be made.
+*/
+using cardinality_estimation_hook_t = void (*)(THD *thd, JoinHypergraph *graph);
+
+/**
  * Notify plugins when a table is dropped.
  */
 using notify_drop_table_t = void (*)(Table_ref *tab);
@@ -3027,6 +3037,10 @@ struct handlerton {
    * optimization stage, which also decides that the statement should be
    * attempted offloaded to a secondary storage engine. */
   secondary_engine_pre_prepare_hook_t secondary_engine_pre_prepare_hook;
+
+  /* Pointer to a function to request table filter estimation to the
+   * secondary_engine. */
+  cardinality_estimation_hook_t cardinality_estimation_hook;
 
   se_before_commit_t se_before_commit;
   se_after_commit_t se_after_commit;

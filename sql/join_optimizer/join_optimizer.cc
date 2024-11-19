@@ -4086,6 +4086,41 @@ void CostingReceiver::ProposeAccessPathForBaseTable(
 }
 
 /**
+  Attempt to retrieve the estimated cardinality for the given base table node
+  (after filters have been applied) from the Hypergraph.
+
+  If found, we multiply it by the selectivity of the join conditions in
+  `applied_predicates` and return it.
+
+  @param node_idx Index of the base table in the nodes array.
+  @param applied_predicates Bitmap of predicates that are already
+    applied by means of ref access.
+  @param graph pointer to the JoinHypergraph object.
+  @return the estimated cardinality, or std::nullopt if none.
+ */
+std::optional<double> GetTableAfterFiltersCardinalityFromHypergraph(
+    int node_idx, OverflowBitset applied_predicates, JoinHypergraph *graph) {
+  /* Fetch estimated cardinality from Hypergraph. */
+  std::optional<double> cardinality = graph->nodes[node_idx].cardinality;
+  if (!cardinality) {
+    return std::nullopt;
+  }
+
+  /* Compute selectivity for already applied join filters. */
+  double already_applied_join_selectivity = 1.0;
+  for (int i : BitsSetIn(applied_predicates)) {
+    const Predicate &pred = graph->predicates[i];
+    if (!pred.was_join_condition &&
+        !IsSubset(pred.condition->used_tables() & ~PSEUDO_TABLE_BITS,
+                  graph->nodes[node_idx].table()->pos_in_table_list->map())) {
+      already_applied_join_selectivity *= pred.selectivity;
+    }
+  }
+
+  return cardinality.value() * already_applied_join_selectivity;
+}
+
+/**
   See which predicates that apply to this table. Some can be applied
   right away, some require other tables first and must be delayed.
 
@@ -4180,6 +4215,11 @@ void CostingReceiver::ApplyPredicatesForBaseTable(
   path->filter_predicates = std::move(filter_predicates);
   path->delayed_predicates = std::move(delayed_predicates);
 
+  /* Use the node cardinality estimated during hypergraph generation, if any. */
+  force_num_output_rows_after_filter =
+      GetTableAfterFiltersCardinalityFromHypergraph(node_idx,
+                                                    applied_predicates, m_graph)
+          .value_or(force_num_output_rows_after_filter);
   if (force_num_output_rows_after_filter >= 0.0) {
     SetNumOutputRowsAfterFilter(path, force_num_output_rows_after_filter);
   }

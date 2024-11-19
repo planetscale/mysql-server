@@ -33,7 +33,7 @@
 #include <numeric>
 #include <ostream>
 #include <string>
-#include <tuple>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -70,6 +70,7 @@
 #include "sql/sql_optimizer.h"
 #include "sql/table.h"
 #include "sql/table_function.h"
+#include "sql_string.h"
 #include "template_utils.h"
 
 using hypergraph::Hyperedge;
@@ -3632,6 +3633,32 @@ void FindLateralDependencies(JoinHypergraph *graph) {
   }
 }
 
+/**
+ * Attempt to use the secondary engine for cardinality estimation.
+ */
+void SecondaryEngineCardinalityHook(THD *thd, JoinHypergraph *graph) {
+  if (!thd->variables.enable_secondary_engine_statistics ||
+      thd->parsing_system_view || default_secondary_engine_name == nullptr) {
+    return;
+  }
+
+  LEX_CSTRING secondary_engine_name =
+      to_lex_cstring(default_secondary_engine_name);
+  const handlerton *hton =
+      EligibleSecondaryEngineHandlerton(thd, &secondary_engine_name);
+  if (hton == nullptr) {
+    return;
+  }
+
+  cardinality_estimation_hook_t cardinality_estimation_hook =
+      hton->cardinality_estimation_hook;
+  if (cardinality_estimation_hook == nullptr) {
+    return;
+  }
+
+  cardinality_estimation_hook(thd, graph);
+}
+
 }  // namespace
 
 const JOIN *JoinHypergraph::join() const { return m_query_block->join; }
@@ -3892,6 +3919,8 @@ bool MakeJoinHypergraph(THD *thd, JoinHypergraph *graph,
     pred.functional_dependencies_idx.init(thd->mem_root);
     graph->predicates.push_back(std::move(pred));
   }
+
+  SecondaryEngineCardinalityHook(thd, graph);
 
   // Sort the predicates so that filters created from them later automatically
   // evaluate the most selective and least expensive predicates first. Don't

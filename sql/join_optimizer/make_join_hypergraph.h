@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -155,6 +156,9 @@ struct JoinHypergraph {
     void set_lateral_dependencies(hypergraph::NodeMap dependencies) {
       m_lateral_dependencies = dependencies;
     }
+
+    /* Estimated rows cardinality after table filters. */
+    std::optional<double> cardinality;
 
    private:
     TABLE *m_table;

@@ -408,6 +408,7 @@ static int Init(MYSQL_PLUGIN p) {
   hton->db_type = DB_TYPE_UNKNOWN;
   hton->prepare_secondary_engine = PrepareSecondaryEngine;
   hton->secondary_engine_pre_prepare_hook = SecondaryEnginePrePrepareHook;
+  hton->cardinality_estimation_hook = nullptr;
   hton->optimize_secondary_engine = OptimizeSecondaryEngine;
   hton->compare_secondary_engine_cost = CompareJoinCost;
   hton->secondary_engine_flags =
