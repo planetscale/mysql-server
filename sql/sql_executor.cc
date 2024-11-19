@@ -3121,7 +3121,7 @@ void JOIN::create_access_paths() {
   assert(m_root_access_path == nullptr);
 
   AccessPath *path = create_root_access_path_for_join();
-  path = attach_access_paths_for_having_and_limit(path);
+  path = attach_access_paths_for_having_qualify_limit(path);
   path = attach_access_path_for_update_or_delete(path);
 
   m_root_access_path = path;
@@ -3488,15 +3488,20 @@ AccessPath *JOIN::create_root_access_path_for_join() {
   return path;
 }
 
-AccessPath *JOIN::attach_access_paths_for_having_and_limit(
+AccessPath *JOIN::attach_access_paths_for_having_qualify_limit(
     AccessPath *path) const {
-  // Attach HAVING and LIMIT if needed.
+  // Attach HAVING, QUALIFY, LIMIT and OFFSET if needed.
   // NOTE: We can have HAVING even without GROUP BY, although it's not very
   // useful.
   // We don't currently bother with materializing subqueries
   // in HAVING, as they should be rare.
   if (having_cond != nullptr) {
     path = add_filter_access_path(thd, path, having_cond, query_block);
+  }
+
+  if (Item *qualify_cond = query_block->qualify_cond();
+      qualify_cond != nullptr) {
+    path = add_filter_access_path(thd, path, qualify_cond, query_block);
   }
 
   Query_expression *const qe = query_expression();
@@ -3544,7 +3549,7 @@ void JOIN::create_access_paths_for_index_subquery() {
     }
   }
 
-  path = attach_access_paths_for_having_and_limit(path);
+  path = attach_access_paths_for_having_qualify_limit(path);
   m_root_access_path = path;
 }
 

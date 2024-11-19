@@ -114,7 +114,7 @@ class Query_result_scalar_subquery : public Query_result_subquery {
 /**
   Check if a query block is guaranteed to return one row. We know that
   this is the case if it has no tables and is not filtered with WHERE,
-  HAVING or LIMIT clauses.
+  HAVING, QUALIFY or LIMIT clauses.
 
   @param qb  the Query_block to check
 
@@ -123,7 +123,8 @@ class Query_result_scalar_subquery : public Query_result_subquery {
 */
 static bool guaranteed_one_row(const Query_block *qb) {
   return !qb->has_tables() && qb->where_cond() == nullptr &&
-         qb->having_cond() == nullptr && !qb->has_limit();
+         qb->having_cond() == nullptr && qb->qualify_cond() == nullptr &&
+         !qb->has_limit();
 }
 
 /**
@@ -368,7 +369,7 @@ bool Item_singlerow_subselect::fix_fields(THD *thd, Item **ref) {
       single_field != nullptr && !single_field->has_aggregation() &&
       inner->olap == UNSPECIFIED_OLAP_TYPE && !single_field->has_wf() &&
       inner->where_cond() == nullptr && inner->having_cond() == nullptr &&
-      !is_maxmin()) {
+      inner->qualify_cond() == nullptr && !is_maxmin()) {
     if (thd->lex->is_explain()) {
       char warn_buff[MYSQL_ERRMSG_SIZE];
       sprintf(warn_buff, ER_THD(thd, ER_SELECT_REDUCED), inner->select_number);
@@ -2557,13 +2558,14 @@ bool Item_in_subselect::quantified_comp_transformer(THD *thd,
 
   /*
     A table-less IN or NOT IN subquery that is not grouped and has no
-    WHERE clause or HAVING clause can be transformed into a simple
+    WHERE, HAVING or QUALIFY clause can be transformed into a simple
     equality or non-equality.
   */
   if (!query_expr()->is_set_operation() && inner->source_table_is_one_row() &&
       func->eqne_op() && !inner->is_grouped() &&
       inner->where_cond() == nullptr && inner->having_cond() == nullptr &&
-      !inner->has_windows() && left_expr->cols() == 1) {
+      inner->qualify_cond() == nullptr && !inner->has_windows() &&
+      left_expr->cols() == 1) {
     /*
       Keep applicability conditions in sync with
       Item_exists_subselect::truth_transformer().

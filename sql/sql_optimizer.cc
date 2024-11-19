@@ -542,7 +542,7 @@ bool JOIN::optimize(bool finalize_access_paths) {
         const_tables = tables = primary_tables = query_block->leaf_table_count;
         AccessPath *path =
             NewFakeSingleRowAccessPath(thd, /*count_examined_rows=*/true);
-        path = attach_access_paths_for_having_and_limit(path);
+        path = attach_access_paths_for_having_qualify_limit(path);
         m_root_access_path = path;
         /*
           There are no relevant conditions left from the WHERE;
@@ -1138,7 +1138,7 @@ AccessPath *JOIN::create_access_paths_for_zero_rows() const {
   if (send_row_on_empty_set()) {
     // Aggregate no rows into an aggregate row.
     path = NewZeroRowsAggregatedAccessPath(thd, zero_result_cause);
-    path = attach_access_paths_for_having_and_limit(path);
+    path = attach_access_paths_for_having_qualify_limit(path);
   } else {
     // Send no row at all (so also no need to check HAVING or LIMIT).
     path = NewZeroRowsAccessPath(thd, zero_result_cause);
