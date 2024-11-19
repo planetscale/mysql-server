@@ -2248,7 +2248,7 @@ class Query_block : public Query_term {
   /// @note that using this means we modify resolved data during optimization
   uint hidden_items_from_optimization{0};
 
-  bool is_row_count_valid_for_semi_join();
+  [[nodiscard]] bool limit_offset_preserves_first_row() const;
 
  private:
   friend class Query_expression;

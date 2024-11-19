@@ -1380,15 +1380,21 @@ bool Query_block::resolve_placeholder_tables(THD *thd, bool apply_semijoin) {
 }
 
 /**
+  Check if the LIMIT/OFFSET clause is specified in a way that makes it always
+  preserve the first row returned by the underlying query. The first row is
+  preserved if LIMIT is unspecified or greater than zero and OFFSET is
+  unspecified or equal to zero.
 
-  Check if the offset and limit are valid for a semijoin. A semijoin
-  can be used only if OFFSET is 0 and select LIMIT is not 0.
+  If the values of LIMIT and OFFSET are unknown at resolve time (because they
+  are parameters and not literals), we cannot say if the first row will always
+  be preserved, and we return false.
 
-  @retval false  if OFFSET and LIMIT does not permit a semijoin,
-  @retval true   otherwise.
+  @retval true If the first row of the underlying query will always be preserved
+  through LIMIT/OFFSET.
+  @retval false If the first row of the underlying query may be filtered out by
+  LIMIT/OFFSET.
 */
-
-bool Query_block::is_row_count_valid_for_semi_join() {
+bool Query_block::limit_offset_preserves_first_row() const {
   if (offset_limit != nullptr &&
       (!offset_limit->const_item() || offset_limit->val_int() != 0))
     return false;

@@ -114,7 +114,8 @@ class Query_result_scalar_subquery : public Query_result_subquery {
 /**
   Check if a query block is guaranteed to return one row. We know that
   this is the case if it has no tables and is not filtered with WHERE,
-  HAVING, QUALIFY or LIMIT clauses.
+  HAVING, QUALIFY or LIMIT/OFFSET clauses. Also, it should not use non-primitive
+  grouping (such as ROLLUP), as that may increase the number of rows.
 
   @param qb  the Query_block to check
 
@@ -124,7 +125,8 @@ class Query_result_scalar_subquery : public Query_result_subquery {
 static bool guaranteed_one_row(const Query_block *qb) {
   return !qb->has_tables() && qb->where_cond() == nullptr &&
          qb->having_cond() == nullptr && qb->qualify_cond() == nullptr &&
-         !qb->has_limit();
+         qb->olap == UNSPECIFIED_OLAP_TYPE &&
+         qb->limit_offset_preserves_first_row();
 }
 
 /**
@@ -365,11 +367,9 @@ bool Item_singlerow_subselect::fix_fields(THD *thd, Item **ref) {
   if (thd->lex->is_view_context_analysis()) return false;
 
   // A subquery containing a simple selected expression can be eliminated
-  if (!query_expr()->is_set_operation() && !inner->has_tables() &&
+  if (!query_expr()->is_set_operation() && guaranteed_one_row(inner) &&
       single_field != nullptr && !single_field->has_aggregation() &&
-      inner->olap == UNSPECIFIED_OLAP_TYPE && !single_field->has_wf() &&
-      inner->where_cond() == nullptr && inner->having_cond() == nullptr &&
-      inner->qualify_cond() == nullptr && !is_maxmin()) {
+      !single_field->has_wf() && !is_maxmin()) {
     if (thd->lex->is_explain()) {
       char warn_buff[MYSQL_ERRMSG_SIZE];
       sprintf(warn_buff, ER_THD(thd, ER_SELECT_REDUCED), inner->select_number);
@@ -1603,7 +1603,7 @@ bool Item_exists_subselect::is_semijoin_candidate(THD *thd) {
       is_deterministic &&                                                  // 12
       choose_semijoin_or_antijoin() &&                                     // 13
       (!cannot_do_antijoin || !can_do_aj) &&                               // 14
-      inner->is_row_count_valid_for_semi_join()) {                         // 15
+      inner->limit_offset_preserves_first_row()) {                         // 15
     return true;
   }
   return false;
