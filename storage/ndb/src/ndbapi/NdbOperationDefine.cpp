@@ -818,7 +818,7 @@ int NdbOperation::getBlobHandlesNdbRecord(NdbTransaction *aCon,
 
   for (Uint32 i = 0; i < m_attribute_record->noOfColumns; i++) {
     const NdbRecord::Attr *col = &m_attribute_record->columns[i];
-    if (!(col->flags & NdbRecord::IsBlob)) continue;
+    if (!(col->flags & NdbRecord::UsesBlobHandle)) continue;
 
     Uint32 attrId = col->attrId;
     if (!BitmaskImpl::get((NDB_MAX_ATTRIBUTES_IN_TABLE + 31) >> 5, m_read_mask,

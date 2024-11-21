@@ -932,7 +932,7 @@ Uint32 NdbReceiver::unpackNdbRecord(const NdbRecord *rec, const Uint32 bmlen,
     assert(next_index < rec->noOfColumns);
 
     const NdbRecord::Attr *col = &rec->columns[next_index];
-    assert((col->flags & NdbRecord::IsBlob) == 0);
+    assert((col->flags & NdbRecord::UsesBlobHandle) == 0);
 
     /* If col is nullable, check for null and set/clear NULL-bit */
     if (col->flags & NdbRecord::IsNullable) {

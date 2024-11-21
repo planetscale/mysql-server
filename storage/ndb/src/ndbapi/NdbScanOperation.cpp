@@ -371,7 +371,7 @@ int NdbScanOperation::generatePackedReadAIs(const NdbRecord *result_record,
       continue;
 
     /* Blob reads are handled with a getValue() in NdbBlob.cpp. */
-    if (unlikely(col->flags & NdbRecord::IsBlob)) {
+    if (unlikely(col->flags & NdbRecord::UsesBlobHandle)) {
       m_keyInfo = 1;  // Need keyinfo for blob scan
       haveBlob = true;
       continue;
@@ -2567,7 +2567,7 @@ NdbOperation *NdbScanOperation::takeOverScanOpNdbRecord(
     case ReadRequest:
     case ReadExclusive:
     case UpdateRequest:
-      if (unlikely(record->flags & NdbRecord::RecHasBlob)) {
+      if (unlikely(record->flags & NdbRecord::RecUsesBlobHandles)) {
         if (op->getBlobHandlesNdbRecord(pTrans, readMask.rep.data) == -1)
           return nullptr;
       }

@@ -954,7 +954,7 @@ int NdbOperation::buildSignalsNdbRecord(Uint32 aTC_ConnectPtr, Uint64 aTransId,
       /* Blob head reads are defined as extra GetValues,
        * processed below, not here.
        */
-      if (unlikely(col->flags & NdbRecord::IsBlob)) continue;
+      if (unlikely(col->flags & NdbRecord::UsesBlobHandle)) continue;
 
       if (col->flags & NdbRecord::IsDisk) no_disk_flag = 0;
 
@@ -1065,8 +1065,8 @@ int NdbOperation::buildSignalsNdbRecord(Uint32 aTC_ConnectPtr, Uint64 aTransId,
       Uint32 length;
       const char *data;
 
-      if (likely(!(col->flags &
-                   (NdbRecord::IsBlob | NdbRecord::IsMysqldBitfield)))) {
+      if (likely(!(col->flags & (NdbRecord::UsesBlobHandle |
+                                 NdbRecord::IsMysqldBitfield)))) {
         int idxColNum = -1;
         const NdbRecord::Attr *idxCol = nullptr;
 

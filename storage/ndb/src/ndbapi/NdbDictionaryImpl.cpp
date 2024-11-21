@@ -7193,8 +7193,8 @@ int NdbDictionaryImpl::initialiseColumnData(
     recCol->bitCount = 0;
   if (col->m_distributionKey) recCol->flags |= NdbRecord::IsDistributionKey;
   if (col->getBlobType()) {
-    recCol->flags |= NdbRecord::IsBlob;
-    rec->flags |= NdbRecord::RecHasBlob;
+    recCol->flags |= NdbRecord::UsesBlobHandle;
+    rec->flags |= NdbRecord::RecUsesBlobHandles;
   }
   return 0;
 }

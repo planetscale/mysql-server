@@ -53,7 +53,7 @@ class NdbRecord {
     RecIsIndex = 0x4,
 
     /* This NdbRecord has at least one blob. */
-    RecHasBlob = 0x8,
+    RecUsesBlobHandles = 0x8,
 
     /*
       The table has at least one blob (though the NdbRecord may not include
@@ -90,8 +90,9 @@ class NdbRecord {
     IsVar2ByteLen = 0x10,
     /* Flag for column that is a part of the distribution key. */
     IsDistributionKey = 0x20,
-    /* Flag for blob columns. */
-    IsBlob = 0x40,
+    /* Flag for blob columns. (NdbBlob* in row column, NDB attribute info in
+       NdbBlob handle) */
+    UsesBlobHandle = 0x40,
     /*
        Flag for special handling of short varchar for index keys, which is
        used by mysqld to avoid converting index key rows.
@@ -109,13 +110,12 @@ class NdbRecord {
 
   struct Attr {
     Uint32 attrId;
+    Uint32 unused;
 
     /* Character set information, for ordered index merge sort. */
     CHARSET_INFO *charset_info;
     /* Function used to compare attributes during merge sort. */
     NdbSqlUtil::Cmp *compare_function;
-
-    void *unused; /* Make it 64 bytes large */
 
     Uint32 column_no;
     /*
@@ -128,9 +128,10 @@ class NdbRecord {
     /*
       Maximum size of the attribute. This is duplicated here to avoid having
       to dig into Table object for every attribute fetch/store.
+      For blob columns (with UsesBlobHandle) size is 8 (sizeof(NdbBlob*)).
     */
     Uint32 maxSize;
-    /* Number of bits in a bitfield. */
+    /* Number of bits in a bitfield (for flags & IsMysqldBitfield). */
     Uint32 bitCount;
 
     /* NULL bit location (only for nullable columns, ie. flags&IsNullable). */
@@ -147,6 +148,7 @@ class NdbRecord {
       Alignment information for the attribute, duplicated from column info
     */
     Uint32 orgAttrSize;
+    Uint32 unused2;
 
     bool get_var_length(const char *row, Uint32 &len) const {
       if (flags & IsVar1ByteLen)
@@ -191,6 +193,7 @@ class NdbRecord {
     void get_mysqld_bitfield(const char *src_row, char *dst_buffer) const;
     void put_mysqld_bitfield(char *dst_row, const char *src_buffer) const;
   };
+  static_assert(sizeof(Attr) == 64);
 
   /*
     ToDo: For now we need to hang on to the Table *, since lots of the

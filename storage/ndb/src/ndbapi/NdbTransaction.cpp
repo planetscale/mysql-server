@@ -2893,8 +2893,9 @@ NdbOperation *NdbTransaction::setupRecordOp(
     if (op->getBlobHandlesNdbRecordDelete(this, (attribute_row != nullptr),
                                           readMask.rep.data) == -1)
       return nullptr;
-  } else if (unlikely((attribute_record->flags & NdbRecord::RecHasBlob) &&
-                      (type != NdbOperation::UnlockRequest))) {
+  } else if (unlikely(
+                 (attribute_record->flags & NdbRecord::RecUsesBlobHandles) &&
+                 (type != NdbOperation::UnlockRequest))) {
     /* Create blob handles for non-delete, non-unlock operations */
     if (op->getBlobHandlesNdbRecord(this, readMask.rep.data) == -1)
       return nullptr;
