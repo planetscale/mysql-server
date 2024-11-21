@@ -1099,6 +1099,29 @@ IF(WITH_ASAN)
     SET(ASAN_LIB_DIR
       "${ASAN_LIB_DIR}/../lib/clang/${CMAKE_CXX_COMPILER_VERSION}/lib/windows")
     GET_FILENAME_COMPONENT(ASAN_LIB_DIR ${ASAN_LIB_DIR} REALPATH)
+  ELSEIF(WIN32_VS)
+    SET(HAVE_ASAN 1)
+    GET_FILENAME_COMPONENT(ASAN_DLL_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+    # /GS  (Buffer Security Check)  is on by default
+    # 5072 ASAN enabled without debug information emission.
+    STRING_APPEND(CMAKE_C_FLAGS   " -fsanitize=address /GS- /wd5072 ")
+    STRING_APPEND(CMAKE_CXX_FLAGS " -fsanitize=address /GS- /wd5072 ")
+    STRING_APPEND(CMAKE_EXE_LINKER_FLAGS " /InferASanLibs")
+    STRING_APPEND(CMAKE_MODULE_LINKER_FLAGS " /InferASanLibs")
+    STRING_APPEND(CMAKE_SHARED_LINKER_FLAGS " /InferASanLibs")
+    # /InferASanLibs is incompatible with /INCREMENTAL used by feature checks.
+    SET(CMAKE_REQUIRED_LINK_OPTIONS "/INCREMENTAL:NO")
+
+    FIND_FILE(ASAN_DYNAMIC_LIB
+      NAMES clang_rt.asan_dynamic-x86_64.dll
+      PATHS ${ASAN_DLL_DIR}
+      NO_DEFAULT_PATH
+      )
+    IF(ASAN_DYNAMIC_LIB)
+      COPY_CUSTOM_DLL("${ASAN_DYNAMIC_LIB}" COPY_ASAN_LIB_TARGET)
+      ADD_CUSTOM_TARGET(copy_asan_lib_target ALL)
+      ADD_DEPENDENCIES(copy_asan_lib_target ${COPY_ASAN_LIB_TARGET})
+    ENDIF()
   ELSE()
     MY_SANITIZER_CHECK("-fsanitize=address" TRUE WITH_ASAN_OK)
     IF(WITH_ASAN_OK)
