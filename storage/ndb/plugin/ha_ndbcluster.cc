@@ -13013,7 +13013,7 @@ ulonglong ha_ndbcluster::table_flags(void) const {
                 HA_PRIMARY_KEY_REQUIRED_FOR_POSITION | HA_PARTIAL_COLUMN_READ |
                 HA_HAS_OWN_BINLOGGING | HA_BINLOG_ROW_CAPABLE |
                 HA_COUNT_ROWS_INSTANT | HA_READ_BEFORE_WRITE_REMOVAL |
-                HA_GENERATED_COLUMNS | 0;
+                HA_GENERATED_COLUMNS | HA_SUPPORTS_DEFAULT_EXPRESSION | 0;
 
   /*
     To allow for logging of NDB tables during stmt based logging;
