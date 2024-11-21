@@ -25,6 +25,7 @@
 
 #include <stdarg.h>
 #include <boost/graph/properties.hpp>
+#include <chrono>
 #include <memory>
 #include <new>
 
@@ -100,6 +101,7 @@ using std::make_unique;
 using std::min;
 using std::string;
 using std::unique_ptr;
+using namespace std::chrono_literals;
 
 PSI_mutex_key key_LOCK_acl_cache_flush;
 PSI_mutex_info all_acl_cache_mutexes[] = {
@@ -3565,6 +3567,15 @@ void Acl_cache::flush_cache() {
         lf_hash_random_match(&m_cache, pins, &cache_flusher, 0, nullptr));
     if (entry &&
         !lf_hash_delete(&m_cache, pins, entry->key, entry->key_length)) {
+      /*
+        Now that the entry is out of the cache, wait for the reference count to
+        go down to 0 if another thread is still using it.
+      */
+      while (entry->map->reference_count() != 0) {
+        DBUG_PRINT("info",
+                   ("Entry %p with reference count > 0. Waiting.", entry));
+        std::this_thread::sleep_for(100ms);
+      }
       // Hash element is removed from cache; safe to delete
       my_free(entry->key);
       delete entry->map;
