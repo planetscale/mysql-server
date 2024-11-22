@@ -894,6 +894,15 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
 
   if (group != nullptr) distinct = false;  // Can't use distinct
 
+  if (!param->force_hash_field_for_unique) {
+    /*
+      marker == MARKER_GROUP_BY_BIT means:
+      - store NULLs in the key
+    */
+    for (ORDER *tmp = group; tmp; tmp = tmp->next)
+      (*tmp->item)->marker = Item::MARKER_GROUP_BY_BIT;
+  }
+
   /**
     When true, enforces unique constraint (by adding a hidden hash field and
     creating a key over this field) when:
@@ -991,6 +1000,7 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
   uint null_count = 0;
   uint hidden_null_count = 0;
   share->blob_fields = 0;
+  uint group_null_items = 0;
   uint string_count = 0;
   uint fieldnr = 0;
   param->using_outer_summary_function = false;
@@ -1175,6 +1185,10 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
           new_field->type() == MYSQL_TYPE_VARCHAR)
         table->s->db_create_options |= HA_OPTION_PACK_RECORD;
 
+      if (item->marker == Item::MARKER_GROUP_BY_BIT && item->is_nullable()) {
+        group_null_items++;
+        new_field->set_flag(GROUP_FLAG);
+      }
       new_field->set_field_index(fieldnr);
       reg_field[fieldnr++] = new_field;
       /* InnoDB temp table doesn't allow field with empty_name */
@@ -1430,6 +1444,9 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
 
   table->hidden_field_count = param->hidden_field_count;
 
+  if (!unique_constraint_via_hash_field)
+    share->reclength += group_null_items;  // null flag is stored separately
+
   if (share->blob_fields == 0) {
     /* We need to ensure that first byte is not 0 for the delete link */
     if (param->hidden_field_count)
@@ -1455,6 +1472,16 @@ TABLE *create_tmp_table(THD *thd, Temp_table_param *param,
   for (uint i = 0; i < share->fields; i++) {
     Field *field = table->field[i];
 
+    if (!field->is_flag_set(NOT_NULL_FLAG)) {
+      if (field->is_flag_set(GROUP_FLAG) && !unique_constraint_via_hash_field) {
+        /*
+          We have to reserve one byte here for NULL bits,
+          as this is updated by 'end_update()'
+        */
+        *pos++ = 0;  // Null is stored here
+      }
+    }
+    field->clear_flag(GROUP_FLAG);  // checked above, never needed again
     relocate_field(field, pos, table->record[0], &null_count);
     pos += field->pack_length();
     if (!--hidden_field_count)

@@ -1472,7 +1472,7 @@ TRACE
                                   "table": "<temporary>",
                                   "in_plan_at_position": 1,
                                   "columns": 2,
-                                  "row_length": 21,
+                                  "row_length": 22,
                                   "key_length": 5,
                                   "unique_constraint": false,
                                   "makes_grouped_rows": true,

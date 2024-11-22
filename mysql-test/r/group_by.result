@@ -5025,3 +5025,23 @@ View	Create View	character_set_client	collation_connection
 v	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v` AS (select 1 AS `one` from `t1` order by count(0) OVER (PARTITION BY min(`t1`.`c0`) ) ) union all (select 1 AS `1` from `t1` order by count(0) OVER (PARTITION BY min(`t1`.`c0`) ) )	utf8mb4	utf8mb4_0900_ai_ci
 DROP VIEW v;
 DROP TABLE t1;
+#
+# Bug#37309915 ER_DUP_KEY on temporary table 
+#
+CREATE TABLE t1(pk INTEGER PRIMARY KEY, i INT, c VARCHAR(1));
+CREATE TABLE t2(pk INTEGER PRIMARY KEY, i INT, c VARCHAR(1));
+INSERT INTO t1 VALUES (0, 1433358016,'9');
+INSERT INTO t2 VALUES (0, -1877116806,'X'),
+(1, -1089884900,'䩎');
+SELECT  ( SELECT MIN(t1_alias1.i)
+FROM t1 AS t1_alias1, t1
+WHERE t1_alias1.i > t1_outer.i ) AS field1,
+COUNT(t2.i) AS field2,
+t1_outer.c AS field3,
+( SELECT SUM(t2.i)
+FROM t2 AS t2_a, t2 ) AS field4
+FROM t1 AS t1_outer, t2
+GROUP BY field1, field3, field4;
+field1	field2	field3	field4
+NULL	2	9	-5934003412
+DROP TABLE t1, t2;
