@@ -1865,7 +1865,7 @@ Field *Item_sum_hybrid::create_tmp_field(bool group, TABLE *table) {
   */
   switch (args[0]->data_type()) {
     case MYSQL_TYPE_DATE:
-      field = new (*THR_MALLOC) Field_newdate(is_nullable(), item_name.ptr());
+      field = new (*THR_MALLOC) Field_date(is_nullable(), item_name.ptr());
       break;
     case MYSQL_TYPE_TIME:
       field = new (*THR_MALLOC)

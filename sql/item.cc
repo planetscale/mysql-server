@@ -6564,7 +6564,7 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
       break;
     case MYSQL_TYPE_DATE:
     case MYSQL_TYPE_NEWDATE:
-      field = new (*THR_MALLOC) Field_newdate(m_nullable, item_name.ptr());
+      field = new (*THR_MALLOC) Field_date(m_nullable, item_name.ptr());
       break;
     case MYSQL_TYPE_TIME:
       field =
