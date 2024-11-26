@@ -378,9 +378,16 @@ bool IsForcedMaterialization(THD *thd, Item *cond) {
                if (!is_quantified_comp_predicate(item)) return false;
                Item_in_subselect *item_subs =
                    down_cast<Item_in_subselect *>(item);
-               Query_block *qb = item_subs->query_expr()->first_query_block();
-               if (qb->subquery_strategy(thd) ==
-                   Subquery_strategy::SUBQ_MATERIALIZATION) {
+               const Query_expression *query_expr = item_subs->query_expr();
+               Query_block *qb = query_expr->first_query_block();
+               // Sometimes a query block is marked for materialization
+               // during resolving. However, because of an always false
+               // condition detected elsewhere in the query during
+               // optimization, this query block may not be optimized.
+               // So, check that before forcing materialization.
+               if (query_expr->is_optimized() &&
+                   qb->subquery_strategy(thd) ==
+                       Subquery_strategy::SUBQ_MATERIALIZATION) {
                  force_materialization = true;
                  return true;
                }
@@ -418,8 +425,13 @@ bool FinalizeMaterializedSubqueries(THD *thd, JOIN *join, AccessPath *path) {
           // This subquery is already set up for materialization.
           return false;
         }
-        Query_block *qb = item_subs->query_expr()->first_query_block();
+        const Query_expression *query_expr = item_subs->query_expr();
+        // The subquery is eliminated. Do not materialize.
+        if (!query_expr->is_optimized()) {
+          return false;
+        }
         // If IN-TO-EXISTS is forced, don't materialize.
+        Query_block *qb = query_expr->first_query_block();
         if (qb->subquery_strategy(thd) == Subquery_strategy::SUBQ_EXISTS) {
           return false;
         }
