@@ -16922,6 +16922,25 @@ void Dbdih::execDIHNDBTAMPER(Signal *signal) {
 /*****************************************************************************/
 /* **********     FILE HANDLING MODULE                           *************/
 /*****************************************************************************/
+bool Dbdih::checkAllNgsRepresented(Signal *signal,
+                                   const NdbNodeBitmask *nodes) {
+  jam();
+
+  /**
+   * CheckNodeGroups will examine our bitmap of nodes
+   * If any nodegroup is entirely missing then the result
+   * will be Lose.
+   * If all nodegroups are present then the result will
+   * be Win or Partitioning (we don't care which)
+   */
+  CheckNodeGroups *cng = (CheckNodeGroups *)&signal->theData[0];
+  cng->requestType = CheckNodeGroups::Direct | CheckNodeGroups::ArbitCheck;
+  cng->mask.assign(*nodes);
+  execCHECKNODEGROUPSREQ(signal);
+
+  return (cng->output != CheckNodeGroups::Lose);
+}
+
 void Dbdih::validateCopyGci(Signal *signal) {
   jam();
   /**
@@ -16929,10 +16948,18 @@ void Dbdih::validateCopyGci(Signal *signal) {
    * nodes, let's check it for sanity
    */
   bool newestRestorableGCIIsMax = true;
+  bool recoverableNodesAreSufficientForSR = true;
+
   const Uint32 newestRestorableGCI = SYSFILE->newestRestorableGCI;
 
+  /* Build bitmap of recoverable nodes */
+  NdbNodeBitmask recoverableNodes;
   for (Uint32 i = 0; i < MAX_NDB_NODES; i++) {
     const Uint32 nodeLastCompletedGci = SYSFILE->lastCompletedGCI[i];
+
+    if (nodeLastCompletedGci == newestRestorableGCI) {
+      recoverableNodes.set(i);
+    }
 
     if (nodeLastCompletedGci > newestRestorableGCI) {
       jam();
@@ -16940,7 +16967,12 @@ void Dbdih::validateCopyGci(Signal *signal) {
     }
   }
 
-  if (unlikely(!newestRestorableGCIIsMax)) {
+  /* Check overall system is recoverable */
+  recoverableNodesAreSufficientForSR =
+      checkAllNgsRepresented(signal, &recoverableNodes);
+
+  if (unlikely(
+          !(newestRestorableGCIIsMax && recoverableNodesAreSufficientForSR))) {
     jam();
     g_eventLogger->error("DIH : newestRestorableGCI %u", newestRestorableGCI);
     for (Uint32 i = 0; i < MAX_NDB_NODES; i++) {
@@ -16960,8 +16992,20 @@ void Dbdih::validateCopyGci(Signal *signal) {
       g_eventLogger->error(
           "DIH : Invalid CopyGCIREQ attempted, newestRestorableGCI is not max");
     }
-
+    if (!recoverableNodesAreSufficientForSR) {
+      jam();
+      /**
+       * Require that every nodegroup has at least one representative
+       * which is restorable to the newestRestorableGci number.
+       * Otherwise System Restart with all nodes present will not have
+       * sufficient 'log' to be recoverable
+       */
+      g_eventLogger->error(
+          "DIH : Invalid CopyGCIREQ attempted, recoverable nodes are not "
+          "sufficient for SR");
+    }
     ndbrequire(newestRestorableGCIIsMax);
+    ndbrequire(recoverableNodesAreSufficientForSR);
   }
 }
 
