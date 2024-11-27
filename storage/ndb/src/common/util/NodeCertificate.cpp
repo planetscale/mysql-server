@@ -47,6 +47,8 @@
 
 #include "util/NodeCertificate.hpp"
 
+#include "my_ssl_algo_cache.h"
+
 #ifdef _WIN32
 #include <direct.h>
 #define gmtime_r(A, B) (gmtime_s(B, A) == 0)
@@ -351,7 +353,7 @@ bool PrivateKey::store(EVP_PKEY *key, const PkiFile::PathName &path,
   if (fd > 0) fp = fdopen(fd, "w");
   if (!fp) return false;
 
-  const EVP_CIPHER *enc = encrypted ? EVP_des_ede3_cbc() : nullptr;
+  const EVP_CIPHER *enc = encrypted ? my_EVP_des_ede3_cbc() : nullptr;
 
   if (PEM_write_PKCS8PrivateKey(fp, key, enc, nullptr, 0, nullptr,
                                 passphrase)) {
@@ -489,7 +491,7 @@ int SigningRequest::finalise(EVP_PKEY *key) {
   }
 
   /* Sign the CSR with the private key */
-  if (X509_REQ_sign(m_req, key, EVP_sha256()) == 0) return -40;
+  if (X509_REQ_sign(m_req, key, my_EVP_sha256()) == 0) return -40;
 
   m_key = key;
   return 0;
@@ -803,7 +805,7 @@ X509 *ClusterCertAuthority::create(EVP_PKEY *key, const CertLifetime &lifetime,
 
 int ClusterCertAuthority::sign(X509 *issuer, EVP_PKEY *key, X509 *cert) {
   if (X509_set_issuer_name(cert, X509_get_subject_name(issuer)) == 0) return 0;
-  return X509_sign(cert, key, EVP_sha256());
+  return X509_sign(cert, key, my_EVP_sha256());
 }
 
 /*
@@ -1266,7 +1268,7 @@ int NodeCertificate::finalise(X509 *CA_cert, EVP_PKEY *CA_key) {
 
   /* Sign the certificate */
   if (CA_key) {
-    if (!X509_sign(m_x509, CA_key, EVP_sha256())) return -40;
+    if (!X509_sign(m_x509, CA_key, my_EVP_sha256())) return -40;
     m_signed = true;
   }
 

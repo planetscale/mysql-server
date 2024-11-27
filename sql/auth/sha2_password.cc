@@ -32,8 +32,9 @@
 #include <string.h>
 #include <sys/types.h>
 #include <algorithm>
-#include <iomanip>  /* std::setfill(), std::setw() */
-#include <iostream> /* For debugging               */
+#include <charconv>  // from_chars
+#include <iomanip>   /* std::setfill(), std::setw() */
+#include <iostream>  /* For debugging               */
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -85,13 +86,6 @@ int caching_sha2_digest_rounds = 0;
 namespace sha2_password {
 using std::min;
 
-/** Destructor - Release all memory */
-SHA2_password_cache::~SHA2_password_cache() {
-  clear_cache();
-  password_cache empty;
-  m_password_cache.swap(empty);
-}
-
 /**
   Add an entry in cache
   We manage our own memory
@@ -104,14 +98,11 @@ SHA2_password_cache::~SHA2_password_cache() {
     @retval true Error
 */
 
-bool SHA2_password_cache::add(const std::string authorization_id,
+bool SHA2_password_cache::add(const std::string &authorization_id,
                               const sha2_cache_entry &entry_to_be_cached) {
   DBUG_TRACE;
-  auto ret = m_password_cache.insert(std::pair<std::string, sha2_cache_entry>(
-      authorization_id, entry_to_be_cached));
-  if (ret.second == false) return true;
-
-  return false;
+  auto ret = m_password_cache.try_emplace(authorization_id, entry_to_be_cached);
+  return !ret.second;
 }
 
 /**
@@ -124,7 +115,7 @@ bool SHA2_password_cache::add(const std::string authorization_id,
     @retval true Error removing the entry
 */
 
-bool SHA2_password_cache::remove(const std::string authorization_id) {
+bool SHA2_password_cache::remove(const std::string &authorization_id) {
   DBUG_TRACE;
   auto it = m_password_cache.find(authorization_id);
   if (it != m_password_cache.end()) {
@@ -147,12 +138,12 @@ bool SHA2_password_cache::remove(const std::string authorization_id) {
     @retval true Entry not found.
 */
 
-bool SHA2_password_cache::search(const std::string authorization_id,
+bool SHA2_password_cache::search(const std::string &authorization_id,
                                  sha2_cache_entry &cache_entry) {
   DBUG_TRACE;
   auto it = m_password_cache.find(authorization_id);
   if (it != m_password_cache.end()) {
-    const sha2_cache_entry stored_entry = it->second;
+    const sha2_cache_entry &stored_entry = it->second;
     for (unsigned int i = 0; i < MAX_PASSWORDS; ++i) {
       memcpy(cache_entry.digest_buffer[i], stored_entry.digest_buffer[i],
              sizeof(cache_entry.digest_buffer[i]));
@@ -234,7 +225,8 @@ Caching_sha2_password::~Caching_sha2_password() {
 */
 
 std::pair<bool, bool> Caching_sha2_password::authenticate(
-    const std::string &authorization_id, const std::string *serialized_string,
+    const std::string &authorization_id,
+    const std::string_view *serialized_string,
     const std::string &plaintext_password) {
   DBUG_TRACE;
 
@@ -274,7 +266,7 @@ std::pair<bool, bool> Caching_sha2_password::authenticate(
     */
 
     if (this->generate_sha2_multi_hash(plaintext_password, random,
-                                       &generated_digest, iterations)) {
+                                       generated_digest, iterations)) {
       if (m_plugin_info)
         LogPluginErr(ERROR_LEVEL,
                      ER_SHA_PWD_FAILED_TO_GENERATE_MULTI_ROUND_HASH,
@@ -396,7 +388,7 @@ std::pair<bool, bool> Caching_sha2_password::fast_authenticate(
 */
 
 void Caching_sha2_password::remove_cached_entry(
-    const std::string authorization_id) {
+    const std::string &authorization_id) {
   const rwlock_scoped_lock wrlock(&m_cache_lock, true, __FILE__, __LINE__);
   /* It is possible that entry is not present at all, but we don't care */
   (void)m_cache.remove(authorization_id);
@@ -437,10 +429,9 @@ void Caching_sha2_password::remove_cached_entry(
     @retval true. Failure. out variables should not be used.
 */
 
-bool Caching_sha2_password::deserialize(const std::string &serialized_string,
-                                        Digest_info &digest_type,
-                                        std::string &salt, std::string &digest,
-                                        size_t &iterations) {
+bool Caching_sha2_password::deserialize(
+    const std::string_view &serialized_string, Digest_info &digest_type,
+    std::string &salt, std::string &digest, size_t &iterations) {
   DBUG_TRACE;
   if (!serialized_string.length()) return true;
   /* Digest Type */
@@ -449,7 +440,7 @@ bool Caching_sha2_password::deserialize(const std::string &serialized_string,
     DBUG_PRINT("info", ("Digest string is not in expected format."));
     return true;
   }
-  const std::string digest_type_info =
+  const std::string_view digest_type_info =
       serialized_string.substr(delimiter + 1, DIGEST_INFO_LENGTH);
   if (digest_type_info == "A")
     digest_type = Digest_info::SHA256_DIGEST;
@@ -473,10 +464,12 @@ bool Caching_sha2_password::deserialize(const std::string &serialized_string,
                         "Invalid iteration count information."));
     return true;
   }
-  const std::string iteration_info =
+  const std::string_view iteration_info =
       serialized_string.substr(delimiter + 1, ITERATION_LENGTH);
-  unsigned long int iteration_count =
-      strtoul(iteration_info.c_str(), nullptr, 16);
+  unsigned long int iteration_count = 0;
+  std::from_chars(iteration_info.data(),
+                  iteration_info.data() + iteration_info.size(),
+                  iteration_count, 16);
   if (!iteration_count) {
     DBUG_PRINT("info", ("Digest string is not in expected format."
                         "Invalid iteration count information."));
@@ -649,7 +642,7 @@ bool Caching_sha2_password::generate_fast_digest(
 
 bool Caching_sha2_password::generate_sha2_multi_hash(const std::string &source,
                                                      const std::string &random,
-                                                     std::string *digest,
+                                                     std::string &digest,
                                                      unsigned int iterations) {
   DBUG_TRACE;
   char salt[SALT_LENGTH + 1];
@@ -669,7 +662,7 @@ bool Caching_sha2_password::generate_sha2_multi_hash(const std::string &source,
         $5$<SALT_LENGTH><STORED_SHA256_DIGEST_LENGTH>
         We need to extract STORED_SHA256_DIGEST_LENGTH chars from it
       */
-      digest->assign(buffer + 3 + SALT_LENGTH + 1, STORED_SHA256_DIGEST_LENGTH);
+      digest.assign(buffer + 3 + SALT_LENGTH + 1, STORED_SHA256_DIGEST_LENGTH);
       break;
     }
     default:
@@ -707,14 +700,15 @@ void Caching_sha2_password::clear_cache() {
     @retval false Valid hash
     @retval true  Invalid hash
 */
-bool Caching_sha2_password::validate_hash(const std::string serialized_string) {
+bool Caching_sha2_password::validate_hash(
+    const std::string &serialized_string) {
   DBUG_TRACE;
   Digest_info digest_type;
   std::string salt;
   std::string digest;
   size_t iterations;
 
-  if (!serialized_string.length()) {
+  if (serialized_string.empty()) {
     DBUG_PRINT("info", ("0 length digest."));
     return false;
   }
@@ -767,8 +761,7 @@ void static inline auth_save_scramble(MYSQL_PLUGIN_VIO *vio,
 static void make_hash_key(const char *username, const char *hostname,
                           std::string &key) {
   DBUG_TRACE;
-  key.clear();
-  key.append(username ? username : "");
+  key.assign(username ? username : "");
   key.push_back('\0');
   key.append(hostname ? hostname : "");
   key.push_back('\0');
@@ -987,8 +980,7 @@ static int caching_sha2_password_authenticate(MYSQL_PLUGIN_VIO *vio,
   MPVIO_EXT *mpvio = (MPVIO_EXT *)vio;
   std::string authorization_id;
   const char *hostname = mpvio->acl_user->host.get_host();
-  make_hash_key(info->authenticated_as, hostname ? hostname : nullptr,
-                authorization_id);
+  make_hash_key(info->authenticated_as, hostname, authorization_id);
 
   if (pkt_len != sha2_password::CACHING_SHA2_DIGEST_LENGTH) return CR_ERROR;
 
@@ -1093,12 +1085,12 @@ static int caching_sha2_password_authenticate(MYSQL_PLUGIN_VIO *vio,
   }  // if(!my_vio_is_encrypted())
 
   /* Fetch user authentication_string and extract the password salt */
-  const std::string serialized_string[] = {
-      std::string(info->auth_string, info->auth_string_length),
-      std::string(info->additional_auth_string_length
-                      ? info->additional_auth_string
-                      : "",
-                  info->additional_auth_string_length)};
+  const std::string_view serialized_string[] = {
+      std::string_view(info->auth_string, info->auth_string_length),
+      std::string_view(info->additional_auth_string_length != 0U
+                           ? info->additional_auth_string
+                           : "",
+                       info->additional_auth_string_length)};
   const std::string plaintext_password((char *)pkt, pkt_len - 1);
   std::pair<bool, bool> auth_success = g_caching_sha2_password->authenticate(
       authorization_id, serialized_string, plaintext_password);
@@ -1158,8 +1150,7 @@ static int caching_sha2_password_generate(char *outbuf, unsigned int *buflen,
   random.assign(salt, sha2_password::SALT_LENGTH);
 
   if (g_caching_sha2_password->generate_sha2_multi_hash(
-          source, random, &digest,
-          g_caching_sha2_password->get_digest_rounds()))
+          source, random, digest, g_caching_sha2_password->get_digest_rounds()))
     return 1;
 
   if (g_caching_sha2_password->serialize(
@@ -1299,7 +1290,7 @@ static int compare_caching_sha2_password_with_hash(
   }
 
   if (g_caching_sha2_password->generate_sha2_multi_hash(
-          plaintext_password, random, &generated_digest, iterations)) {
+          plaintext_password, random, generated_digest, iterations)) {
     *is_error = 1;
     return -1;
   }

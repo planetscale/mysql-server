@@ -713,7 +713,8 @@ MySQL clients support the protocol:
 #include "my_macros.h"
 #include "my_rnd.h"
 #include "my_shm_defaults.h"  // IWYU pragma: keep
-#include "my_stacktrace.h"    // my_set_exception_pointers
+#include "my_ssl_algo_cache.h"
+#include "my_stacktrace.h"  // my_set_exception_pointers
 #include "my_thread_local.h"
 #include "my_time.h"
 #include "my_timer.h"  // my_timer_initialize
@@ -7157,6 +7158,8 @@ static int init_ssl() {
 }
 
 static int init_ssl_communication() {
+  my_ssl_algorithm_cache_load();
+
   if (TLS_channel::singleton_init(&mysql_main, mysql_main_channel,
                                   &server_main_callback, opt_initialize))
     return 1;
@@ -7184,6 +7187,7 @@ static int init_ssl_communication() {
 #endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
 
   if (init_rsa_keys()) return 1;
+
   return 0;
 }
 
@@ -7191,6 +7195,7 @@ static void end_ssl() {
   TLS_channel::singleton_deinit(mysql_main);
   TLS_channel::singleton_deinit(mysql_admin);
   deinit_rsa_keys();
+  my_ssl_algorithm_cache_unload();
 }
 
 /**

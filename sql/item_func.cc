@@ -5850,27 +5850,35 @@ longlong Item_func_benchmark::val_int() {
     return 0;
   }
 
+  const int result_type = args[1]->result_type();
+
   null_value = false;
-  for (ulonglong loop = 0; loop < loop_count && !thd->killed; loop++) {
-    switch (args[1]->result_type()) {
-      case REAL_RESULT:
+  switch (result_type) {
+    case REAL_RESULT:
+      for (ulonglong loop = 0; loop < loop_count && !thd->killed; loop++) {
         (void)args[1]->val_real();
-        break;
-      case INT_RESULT:
+      }
+      break;
+    case INT_RESULT:
+      for (ulonglong loop = 0; loop < loop_count && !thd->killed; loop++) {
         (void)args[1]->val_int();
-        break;
-      case STRING_RESULT:
+      }
+      break;
+    case STRING_RESULT:
+      for (ulonglong loop = 0; loop < loop_count && !thd->killed; loop++) {
         (void)args[1]->val_str(&tmp);
-        break;
-      case DECIMAL_RESULT:
+      }
+      break;
+    case DECIMAL_RESULT:
+      for (ulonglong loop = 0; loop < loop_count && !thd->killed; loop++) {
         (void)args[1]->val_decimal(&tmp_decimal);
-        break;
-      case ROW_RESULT:
-      default:
-        // This case should never be chosen
-        assert(0);
-        return 0;
-    }
+      }
+      break;
+    case ROW_RESULT:
+    default:
+      // This case should never be chosen
+      assert(0);
+      return 0;
   }
   return 0;
 }

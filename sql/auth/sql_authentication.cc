@@ -2965,7 +2965,9 @@ static size_t parse_client_handshake_packet(THD *thd, MPVIO_EXT *mpvio,
   assert(mpvio->status == MPVIO_EXT::FAILURE);
 
   uint charset_code = 0;
-  end = (char *)protocol->get_net()->read_pos;
+
+  NET *net = protocol->get_net();
+  end = (char *)net->read_pos;
   /*
     In order to safely scan a head for '\0' string terminators
     we must keep track of how many bytes remain in the allocated
@@ -2981,6 +2983,8 @@ static size_t parse_client_handshake_packet(THD *thd, MPVIO_EXT *mpvio,
 
   protocol->set_client_capabilities(uint2korr(end));
 
+  bool is_client_proto_41 = protocol->has_client_capability(CLIENT_PROTOCOL_41);
+
   /*
     JConnector only sends server capabilities before starting SSL
     negotiation.  The below code is patch for this.
@@ -2993,7 +2997,7 @@ static size_t parse_client_handshake_packet(THD *thd, MPVIO_EXT *mpvio,
     goto skip_to_ssl;
   }
 
-  if (protocol->has_client_capability(CLIENT_PROTOCOL_41))
+  if (is_client_proto_41)
     packet_has_required_size =
         bytes_remaining_in_packet >= AUTH_PACKET_HEADER_SIZE_PROTO_41;
   else
@@ -3002,7 +3006,7 @@ static size_t parse_client_handshake_packet(THD *thd, MPVIO_EXT *mpvio,
 
   if (!packet_has_required_size) return packet_error;
 
-  if (protocol->has_client_capability(CLIENT_PROTOCOL_41)) {
+  if (is_client_proto_41) {
     protocol->set_client_capabilities(uint4korr(end));
     mpvio->max_client_packet_length = uint4korr(end + 4);
     charset_code = (uint)(uchar) * (end + 8);
@@ -3027,6 +3031,8 @@ skip_to_ssl:
   DBUG_PRINT("info",
              ("client capabilities: %lu", protocol->get_client_capabilities()));
 
+  is_client_proto_41 = protocol->has_client_capability(CLIENT_PROTOCOL_41);
+
   /*
     If client requested SSL then we must stop parsing, try to switch to SSL,
     and wait for the client to send a new handshake packet.
@@ -3040,18 +3046,14 @@ skip_to_ssl:
       We need to make sure that reference count for
       SSL context is kept till the end of function
     */
-    std::unique_ptr<Lock_and_access_ssl_acceptor_context> context;
-    if (thd->is_admin_connection() && g_admin_ssl_configured == true)
-      context =
-          std::make_unique<Lock_and_access_ssl_acceptor_context>(mysql_admin);
-    else
-      context =
-          std::make_unique<Lock_and_access_ssl_acceptor_context>(mysql_main);
+    const bool admin_ctx = thd->is_admin_connection() && g_admin_ssl_configured;
+    Lock_and_access_ssl_acceptor_context context(admin_ctx ? mysql_admin
+                                                           : mysql_main);
+
     /* Do the SSL layering. */
-    if (!context.get()->have_ssl()) return packet_error;
+    if (!context.have_ssl()) return packet_error;
     DBUG_PRINT("info", ("IO layer change in progress..."));
-    if (sslaccept(*(context.get()), protocol->get_vio(),
-                  protocol->get_net()->read_timeout, &errptr)) {
+    if (sslaccept(context, protocol->get_vio(), net->read_timeout, &errptr)) {
       DBUG_PRINT("error", ("Failed to accept new SSL connection"));
       return packet_error;
     }
@@ -3078,20 +3080,17 @@ skip_to_ssl:
       packet but because of legacy reasons we chose not to parse the packet
       fields a second time and instead only assert the length of the packet.
     */
-    if (protocol->has_client_capability(CLIENT_PROTOCOL_41)) {
+    if (is_client_proto_41) {
       packet_has_required_size =
           bytes_remaining_in_packet >= AUTH_PACKET_HEADER_SIZE_PROTO_41;
-      ssl_charset_code =
-          (uint)(uchar) * ((char *)protocol->get_net()->read_pos + 8);
+      ssl_charset_code = (uint)(uchar) * ((char *)net->read_pos + 8);
       DBUG_PRINT("info", ("client_character_set: %u", ssl_charset_code));
-      end = (char *)protocol->get_net()->read_pos +
-            AUTH_PACKET_HEADER_SIZE_PROTO_41;
+      end = (char *)net->read_pos + AUTH_PACKET_HEADER_SIZE_PROTO_41;
       bytes_remaining_in_packet -= AUTH_PACKET_HEADER_SIZE_PROTO_41;
     } else {
       packet_has_required_size =
           bytes_remaining_in_packet >= AUTH_PACKET_HEADER_SIZE_PROTO_40;
-      end = (char *)protocol->get_net()->read_pos +
-            AUTH_PACKET_HEADER_SIZE_PROTO_40;
+      end = (char *)net->read_pos + AUTH_PACKET_HEADER_SIZE_PROTO_40;
       bytes_remaining_in_packet -= AUTH_PACKET_HEADER_SIZE_PROTO_40;
       /**
         Old clients didn't have their own charset. Instead the assumption
@@ -3110,7 +3109,7 @@ skip_to_ssl:
 
   if ((protocol->has_client_capability(CLIENT_TRANSACTIONS)) &&
       opt_using_transactions)
-    protocol->get_net()->return_status = mpvio->server_status;
+    net->return_status = mpvio->server_status;
 
   /*
     The 4.0 and 4.1 versions of the protocol differ on how strings
@@ -3118,12 +3117,8 @@ skip_to_ssl:
     of the packet, the string is not null terminated. Do not assume
     that the returned string is always null terminated.
   */
-  get_proto_string_func_t get_string;
-
-  if (protocol->has_client_capability(CLIENT_PROTOCOL_41))
-    get_string = get_41_protocol_string;
-  else
-    get_string = get_40_protocol_string;
+  const get_proto_string_func_t get_string =
+      is_client_proto_41 ? get_41_protocol_string : get_40_protocol_string;
 
   /*
     When the ability to change default plugin require that the initial password
@@ -3145,8 +3140,7 @@ skip_to_ssl:
     we must keep track of how many bytes remain in the allocated
     buffer or we might read past the end of the buffer.
   */
-  bytes_remaining_in_packet =
-      pkt_len - (end - (char *)protocol->get_net()->read_pos);
+  bytes_remaining_in_packet = pkt_len - (end - (char *)net->read_pos);
 
   size_t user_len;
   char *user = get_string(&end, &bytes_remaining_in_packet, &user_len);
@@ -3227,7 +3221,7 @@ skip_to_ssl:
       read_client_connect_attrs(thd, &end, &bytes_remaining_in_packet, mpvio))
     return packet_error;
 
-  NET_SERVER *ext = static_cast<NET_SERVER *>(protocol->get_net()->extension);
+  auto *ext = static_cast<NET_SERVER *>(net->extension);
   struct compression_attributes *compression = &(ext->compression);
   const bool is_client_supports_zlib =
       protocol->has_client_capability(CLIENT_COMPRESS);
@@ -3325,7 +3319,7 @@ skip_to_ssl:
 
     mpvio->protocol->read_packet();
     passwd_len = protocol->get_packet_length();
-    passwd = (char *)protocol->get_net()->read_pos;
+    passwd = (char *)net->read_pos;
   }
 
   *buff = (uchar *)passwd;
@@ -3511,7 +3505,8 @@ static int server_mpvio_read_packet(MYSQL_PLUGIN_VIO *param, uchar **buf) {
   }
 
   DBUG_EXECUTE_IF("simulate_packet_error", pkt_len = packet_error;);
-  if (pkt_len == packet_error) goto err;
+  if (pkt_len == packet_error) [[unlikely]]
+    goto err;
 
   mpvio->packets_read++;
 
@@ -3521,7 +3516,8 @@ static int server_mpvio_read_packet(MYSQL_PLUGIN_VIO *param, uchar **buf) {
   */
   if (mpvio->packets_read == 1) {
     pkt_len = parse_client_handshake_packet(current_thd, mpvio, buf, pkt_len);
-    if (pkt_len == packet_error) goto err;
+    if (pkt_len == packet_error) [[unlikely]]
+      goto err;
   } else
     *buf = protocol->get_net()->read_pos;
 

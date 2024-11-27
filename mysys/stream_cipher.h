@@ -27,6 +27,7 @@
 #include <openssl/evp.h>
 #include <memory>
 #include <string>
+#include "my_ssl_algo_cache.h"
 
 #include "my_char_traits.h"
 
@@ -161,13 +162,13 @@ class Aes_ctr {
 
     @return SHA-512 message digest.
   */
-  static const EVP_MD *get_evp_md() { return EVP_sha512(); }
+  static const EVP_MD *get_evp_md() { return my_EVP_sha512(); }
   /**
     Returns the cipher to be uses when using the cipher.
 
     @return AES-256-CTR.
   */
-  static const EVP_CIPHER *get_evp_cipher() { return EVP_aes_256_ctr(); }
+  static const EVP_CIPHER *get_evp_cipher() { return my_EVP_aes_256_ctr(); }
   /**
     Returns a new unique Stream_cipher encryptor.
 

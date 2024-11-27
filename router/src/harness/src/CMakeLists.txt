@@ -171,6 +171,14 @@ IF(WIN32)
   )
 ENDIF()
 
+# WL#16504 stuff
+IF(WIN32)
+  LIST(APPEND ROUTER_MYSQLCLIENT_EXPORTS
+    my_EVP_sha1
+    my_EVP_sha256
+  )
+ENDIF()
+
 ADD_CONVENIENCE_LIBRARY(
   router_mysqlclient_shim
 
