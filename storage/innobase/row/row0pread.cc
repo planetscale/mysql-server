@@ -232,8 +232,24 @@ class PCursor {
   record. If all records were removed then restore the cursor to the infimum;
   this must be fine if the next step of the caller is to advance the cursor.
   @note This method must be paired with
-  save_current_user_record_as_last_processed() to restore the record position */
+  save_current_user_record_as_last_processed() to save the record position */
   void restore_to_last_processed_user_record() noexcept;
+
+  /** This method must be called after all records on a page are processed and
+  cursor is positioned at supremum. Under this assumption, it stores the
+  position BTR_PCUR_AFTER the last user record on the page.
+  This method must be paired with restore_to_first_unprocessed() to restore to
+  a record which comes right after the value of the stored last processed
+  record @see restore_to_first_unprocessed for details. */
+  void save_previous_user_record_as_last_processed() noexcept;
+
+  /** Restore the cursor to the record which comes next after the saved
+  position by the paired method save_previous_user_record_as_last_processed().
+  If there is no such record, it will restore to supremum on the last leaf
+  page.
+  @note This method must be paired with
+  save_previous_user_record_as_last_processed() to save the record position */
+  void restore_to_first_unprocessed() noexcept;
 
   /** Move to the next block.
   @param[in]  index             Index being traversed.
@@ -403,6 +419,29 @@ void PCursor::restore_to_last_processed_user_record() noexcept {
   ut_ad(same_row);
 }
 
+void PCursor::save_previous_user_record_as_last_processed() noexcept {
+  ut_a(m_pcur->is_after_last_on_page());
+  m_pcur->store_position(m_mtr);
+  ut_a(m_pcur->m_rel_pos == BTR_PCUR_AFTER);
+  m_mtr->commit();
+}
+
+void PCursor::restore_to_first_unprocessed() noexcept {
+  ut_a(m_pcur->m_rel_pos == BTR_PCUR_AFTER);
+  m_mtr->start();
+  m_mtr->set_log_mode(MTR_LOG_NO_REDO);
+  m_pcur->restore_position(BTR_SEARCH_LEAF, m_mtr, UT_LOCATION_HERE);
+  if (m_pcur->m_pos_state == BTR_PCUR_IS_POSITIONED_OPTIMISTIC) {
+    /* The BTR_PCUR_IS_POSITIONED_OPTIMISTIC means the implementation of
+    btr_pcur_t::restore_position() successfully re-acquired a block stored in
+    hint and it wasn't modified meanwhile, and in such case it does not advance
+    the cursor to the next position even though BTR_PCUR_AFTER was used, so we
+    have to do it ourselves. */
+    ut_a(!m_pcur->is_after_last_on_page());
+    m_pcur->move_to_next_on_page();
+  }
+}
+
 dberr_t PCursor::move_to_user_rec() noexcept {
   auto cur = m_pcur->get_page_cur();
   const auto next_page_no = btr_page_get_next(page_cur_get_page(cur), m_mtr);
@@ -477,6 +516,15 @@ void Parallel_reader::Thread_ctx::
 void Parallel_reader::Thread_ctx::
     restore_to_last_processed_user_record() noexcept {
   m_pcursor->restore_to_last_processed_user_record();
+}
+
+void Parallel_reader::Thread_ctx::
+    save_previous_user_record_as_last_processed() noexcept {
+  m_pcursor->save_previous_user_record_as_last_processed();
+}
+
+void Parallel_reader::Thread_ctx::restore_to_first_unprocessed() noexcept {
+  m_pcursor->restore_to_first_unprocessed();
 }
 
 dberr_t PCursor::move_to_next_block(dict_index_t *index) {
