@@ -323,7 +323,8 @@ static bool promote_file(const char *pending, const char *active,
 #ifdef _WIN32
   rename(active, retired);  // this may fail if active does not exist
 #else
-  link(active, retired);  // this may fail if active does not exist
+  std::ignore =
+      link(active, retired);  // this may fail if active does not exist
 #endif
   return (rename(pending, active) == 0);
 }
