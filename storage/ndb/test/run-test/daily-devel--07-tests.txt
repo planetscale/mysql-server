@@ -364,3 +364,7 @@ max-time: 180
 cmd: testScan
 args: -n ScanErrorHandling T1
 max-time: 480
+
+cmd: testSystemRestart
+args: -n GCPSaveLagLcpSR T1
+max-time: 240
