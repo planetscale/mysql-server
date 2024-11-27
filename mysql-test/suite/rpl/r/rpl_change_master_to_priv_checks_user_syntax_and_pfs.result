@@ -2,17 +2,11 @@ CHANGE REPLICATION SOURCE TO PRIVILEGE_CHECKS_USER = CURRENT_USER();
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'CURRENT_USER()' at line 1
 include/rpl/init.inc [topology=1->2, 1->3, 1->4]
 Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
-Warnings:
 Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
 Note	####	Storing MySQL user name or password information in the connection metadata repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START REPLICA; see the 'START REPLICA Syntax' in the MySQL Manual for more information.
 Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
-Warnings:
 Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
 Note	####	Storing MySQL user name or password information in the connection metadata repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START REPLICA; see the 'START REPLICA Syntax' in the MySQL Manual for more information.
-Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
 Warnings:
 Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
 Note	####	Storing MySQL user name or password information in the connection metadata repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START REPLICA; see the 'START REPLICA Syntax' in the MySQL Manual for more information.
@@ -38,9 +32,3 @@ check_pfs.inc [Privilege_checks_user column in performance_schema.replication_ap
 RESET REPLICA;
 check_pfs.inc [Privilege_checks_user column in performance_schema.replication_applier_configuration is set to 'u1'@'localhost' for server '4']
 include/rpl/deinit.inc
-Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
-Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
-Warnings:
-Warning	1681	'FLUSH PRIVILEGES' is deprecated and will be removed in a future release.
