@@ -2324,6 +2324,17 @@ TEST_P(SplittingConnectionTest, set_option_succeeds) {
     rw_expected_stmts.emplace_back(stmt_type_sql_select, stmt_select_history);
   }
 
+  SCOPED_TRACE("// switch to secondary");
+
+  if (!started_on_rw) {
+    // if the test started with a RO node, the set-option will be applied to the
+    // secondary if we switch back to the secondary again.
+    //
+    // If the test started with a RW node, the set-option will be set as part of
+    // the initial handshake and will not be tracked.
+    ro_expected_stmts.emplace_back(stmt_type_com_set_option, "<NULL>");
+  }
+
   // secondary
   //
   // Router should:
@@ -2338,6 +2349,8 @@ TEST_P(SplittingConnectionTest, set_option_succeeds) {
     ro_expected_stmts.emplace_back(stmt_type_sql_select,
                                    "SELECT * FROM `testing` . `t1`");
   }
+
+  SCOPED_TRACE("// checking statement history of RO");
 
   // needed?
   ro_expected_stmts.emplace_back(stmt_type_sql_select, stmt_select_wait_gtid);
