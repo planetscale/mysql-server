@@ -277,6 +277,7 @@ our @DEFAULT_SUITES = qw(
   test_services
   x
   component_keyring_file
+  component_connection_control
 );
 
 our $DEFAULT_SUITES = join ',', @DEFAULT_SUITES;

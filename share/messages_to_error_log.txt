@@ -12957,6 +12957,27 @@ ER_DIAG_LOG_STRING
 ER_FAILED_TO_CREATE_RPL_OPT_TRACKER_THREAD
   eng "Unable to create the thread that periodically tracks the replication features. The server will continue its bootstrap."
 
+ER_CONNECTION_CONTROL_STATUS_VAR_REG_FAILED
+  eng "component_connection_control status variables registration failed."
+
+ER_CONNECTION_CONTROL_STATUS_VAR_UNREG_FAILED
+  eng "component_connection_control status variables unregistration failed."
+
+ER_CONNECTION_CONTROL_VARIABLE_REGISTRATION_FAILED
+  eng "%s variable registration failed."
+
+ER_CONNECTION_CONTROL_VARIABLE_UNREGISTRATION_FAILED
+  eng "%s variable unregistration failed."
+
+ER_CONNECTION_CONTROL_FAILED_TO_GET_SECURITY_CTX
+  eng "Can't retrieve the security context from thread."
+
+ER_CONNECTION_CONTROL_FAILED_TO_GET_ATTRIBUTE_FROM_SECURITY_CTX
+  eng "Can't retrieve the %s from the security context."
+
+ER_CONNECTION_CONTROL_FAILED_DEINIT
+  eng "Failed to deinit %s."
+
 ################################################################################
 # Error numbers 50000 to 51999 are reserved. Please do not use them for
 # other error messages.
