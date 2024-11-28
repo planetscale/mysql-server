@@ -236,6 +236,11 @@ class METADATA_CACHE_EXPORT MetadataCache
 
   void clear_routing_guidelines_update_callbacks();
 
+  void add_router_info_update_callback(
+      metadata_cache::MetadataCacheAPI::update_router_info_callback_t clb);
+
+  void clear_router_info_update_callback();
+
  protected:
   /** @brief Refreshes the cache
    *
@@ -363,6 +368,7 @@ class METADATA_CACHE_EXPORT MetadataCache
   std::mutex acceptor_handler_callbacks_mtx_;
   std::mutex md_refresh_callbacks_mtx_;
   std::mutex routing_guidelines_update_callback_mtx_;
+  std::mutex router_info_update_callback_mtx_;
 
   std::set<metadata_cache::ClusterStateListenerInterface *> state_listeners_;
   std::set<metadata_cache::AcceptorUpdateHandlerInterface *>
@@ -374,6 +380,8 @@ class METADATA_CACHE_EXPORT MetadataCache
   std::vector<
       metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t>
       on_routing_guidelines_change_callbacks_;
+  std::vector<metadata_cache::MetadataCacheAPI::update_router_info_callback_t>
+      update_router_info_callbacks_;
 
   struct Stats {
     std::chrono::system_clock::time_point last_refresh_failed;

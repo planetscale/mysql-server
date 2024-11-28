@@ -32,6 +32,7 @@
 #include "mysqlrouter/metadata.h"
 #include "mysqlrouter/metadata_cache.h"
 #include "mysqlrouter/mysql_session.h"
+#include "mysqlrouter/routing_guidelines_datatypes.h"
 #include "mysqlrouter/routing_guidelines_version.h"
 #include "router_options.h"
 
@@ -123,6 +124,9 @@ class METADATA_CACHE_EXPORT ClusterMetadata : public MetaData {
   auth_credentials_t fetch_auth_credentials(
       const metadata_cache::metadata_server_t &md_server,
       const mysqlrouter::TargetCluster &target_cluster) override;
+
+  std::optional<routing_guidelines::Router_info> fetch_router_info(
+      const uint16_t router_id) override;
 
   stdx::expected<std::string, std::error_code>
   fetch_routing_guidelines_document(const uint16_t router_id) override;

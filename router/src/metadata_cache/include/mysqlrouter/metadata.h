@@ -102,6 +102,9 @@ class METADATA_CACHE_EXPORT MetaData {
   virtual std::optional<std::chrono::seconds>
   get_periodic_stats_update_frequency() noexcept = 0;
 
+  virtual std::optional<routing_guidelines::Router_info> fetch_router_info(
+      const uint16_t router_id) = 0;
+
   virtual stdx::expected<std::string, std::error_code>
   fetch_routing_guidelines_document(const uint16_t router_id) = 0;
 

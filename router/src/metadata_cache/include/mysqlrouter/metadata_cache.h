@@ -425,6 +425,18 @@ class METADATA_CACHE_EXPORT MetadataCacheAPIBase
 
   virtual void clear_routing_guidelines_update_callbacks() = 0;
 
+  /**
+   * Callback used to update the router information used by the routing
+   * guidelines engine.
+   */
+  using update_router_info_callback_t =
+      std::function<void(const routing_guidelines::Router_info &)>;
+
+  virtual void add_router_info_update_callback(
+      update_router_info_callback_t clb) = 0;
+
+  virtual void clear_router_info_update_callback() = 0;
+
   MetadataCacheAPIBase() = default;
   // disable copy as it isn't needed right now. Feel free to enable
   // must be explicitly defined though.
@@ -534,6 +546,11 @@ class METADATA_CACHE_EXPORT MetadataCacheAPI : public MetadataCacheAPIBase {
       on_routing_guidelines_change_callback_t) override;
 
   void clear_routing_guidelines_update_callbacks() override;
+
+  void add_router_info_update_callback(
+      update_router_info_callback_t clb) override;
+
+  void clear_router_info_update_callback() override;
 
   void set_instance_factory(metadata_factory_t cb) override {
     instance_factory_ = std::move(cb);

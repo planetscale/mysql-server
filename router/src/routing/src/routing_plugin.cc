@@ -570,12 +570,16 @@ static void start(mysql_harness::PluginFuncEnv *env) {
           [&r](const auto &affected_routes) {
             r->on_routing_guidelines_update(affected_routes);
           });
+      mdc->add_router_info_update_callback([&r](const auto &router_info) {
+        r->on_router_info_update(router_info);
+      });
     }
 
     Scope_guard guard{[r, mdc, section_key = section->key]() {
       MySQLRoutingComponent::get_instance().erase(section_key);
       if (mdc->is_initialized() && !r->is_standalone()) {
         mdc->clear_routing_guidelines_update_callbacks();
+        mdc->clear_router_info_update_callback();
       }
     }};
 

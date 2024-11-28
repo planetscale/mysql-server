@@ -63,7 +63,9 @@ class MySQLRoutingContext {
         client_ssl_ctx_{client_ssl_ctx},
         destination_tls_context_{dest_tls_context},
         routing_guidelines_{std::move(routing_guidelines)},
-        blocked_endpoints_{routing_config.max_connect_errors} {}
+        blocked_endpoints_{routing_config.max_connect_errors} {
+    router_info_.route_name = get_id();
+  }
 
   BlockedEndpoints &blocked_endpoints() { return blocked_endpoints_; }
   const BlockedEndpoints &blocked_endpoints() const {
@@ -186,6 +188,18 @@ class MySQLRoutingContext {
     return routing_guidelines_;
   }
 
+  void set_router_info(routing_guidelines::Router_info router_info) {
+    std::lock_guard<std::mutex> l{router_info_mtx_};
+    router_info_ = std::move(router_info);
+    router_info_.route_name = get_id();
+    router_info_.bind_address = routing_config_.bind_address.hostname();
+  }
+
+  routing_guidelines::Router_info get_router_info() const {
+    std::lock_guard<std::mutex> l{router_info_mtx_};
+    return router_info_;
+  }
+
  private:
   const RoutingConfig routing_config_;
 
@@ -206,6 +220,9 @@ class MySQLRoutingContext {
    */
   std::shared_ptr<routing_guidelines::Routing_guidelines_engine>
       routing_guidelines_{nullptr};
+
+  mutable std::mutex router_info_mtx_;
+  routing_guidelines::Router_info router_info_;
 
   /**
    * Callbacks for communicating with quarantined destination candidates

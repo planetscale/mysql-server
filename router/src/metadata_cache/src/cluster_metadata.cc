@@ -42,6 +42,7 @@
 #include "mysql/harness/utility/string.h"  // string_format
 #include "mysqlrouter/cluster_metadata_instance_attributes.h"
 #include "mysqlrouter/mysql_session.h"
+#include "mysqlrouter/utils.h"  // strtoi_checked
 #include "mysqlrouter/utils_sqlstring.h"
 #include "router_config.h"  // MYSQL_ROUTER_VERSION
 
@@ -544,6 +545,59 @@ ClusterMetadata::fetch_routing_guidelines_document(const uint16_t router_id) {
   return result;
 }
 
+std::optional<routing_guidelines::Router_info>
+ClusterMetadata::fetch_router_info(const uint16_t router_id) {
+  routing_guidelines::Router_info router_info;
+  if (!metadata_connection_) {
+    return std::nullopt;
+  }
+  sqlstring query =
+      "SELECT address, "
+      "attributes->>'$.ROEndpoint', "
+      "attributes->>'$.RWEndpoint', "
+      "attributes->>'$.RWSplitEndpoint', "
+      "attributes->>'$.ROXEndpoint', "
+      "attributes->>'$.RWXEndpoint', "
+      "attributes->>'$.LocalCluster', "
+      "options FROM mysql_innodb_cluster_metadata.v2_routers "
+      "WHERE router_id=?";
+  query << router_id << sqlstring::end;
+
+  auto result_processor = [&router_info](const MySQLSession::Row &row) -> bool {
+    router_info.hostname = as_string(row[0]);
+
+    const auto ro_port = mysqlrouter::strtoi_checked(row[1]);
+    router_info.port_ro =
+        ro_port != 0 ? ro_port : mysqlrouter::strtoi_checked(row[4]);
+    const auto rw_port = mysqlrouter::strtoi_checked(row[2]);
+    router_info.port_rw =
+        rw_port != 0 ? rw_port : mysqlrouter::strtoi_checked(row[5]);
+    router_info.port_rw_split = mysqlrouter::strtoi_checked(row[3]);
+
+    router_info.local_cluster = as_string(row[6]);
+
+    if (row[7] != nullptr) {
+      std::string tags_str = as_string(row[7]);
+      if (!tags_str.empty()) {
+        const auto &tags_result =
+            mysqlrouter::InstanceAttributes::get_tags(tags_str);
+        if (tags_result) {
+          router_info.tags = *tags_result;
+        } else {
+          log_warning("Error parsing router tags JSON string: %s",
+                      tags_result.error().c_str());
+        }
+      }
+    }
+
+    return true;
+  };
+
+  metadata_connection_->query(query, result_processor);
+
+  return router_info;
+}
+
 std::optional<metadata_cache::metadata_server_t>
 ClusterMetadata::find_rw_server(
     const std::vector<metadata_cache::ManagedInstance> &instances) {
@@ -578,7 +632,7 @@ void set_instance_attributes(metadata_cache::ManagedInstance &instance,
       attributes, default_instance_type);
 
   if (type_attr) {
-    instance.type = type_attr.value();
+    instance.type = *type_attr;
   }
 
   // we want to log the warning only when it's changing

@@ -1212,3 +1212,8 @@ MySQLRouting::update_routing_guidelines(
   return md_destination_manager->update_routing_guidelines(
       routing_guidelines_document);
 }
+
+void MySQLRouting::on_router_info_update(
+    const routing_guidelines::Router_info &router_info) {
+  context_.set_router_info(router_info);
+}

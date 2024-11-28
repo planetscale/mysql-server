@@ -487,6 +487,15 @@ void MetadataCache::on_md_refresh(const bool cluster_nodes_changed,
     }
   }
 
+  const auto &router_info = meta_data_->fetch_router_info(router_id_);
+  if (router_info) {
+    std::lock_guard lock(router_info_update_callback_mtx_);
+    for (const auto &update_router_info_clb : update_router_info_callbacks_) {
+      // Do it for each routing plugin
+      update_router_info_clb(*router_info);
+    }
+  }
+
   if (last_routing_guidelines_used_ != routing_guidelines_doc) {
     update_routing_guidelines(routing_guidelines_doc);
     last_routing_guidelines_used_ = routing_guidelines_doc;
@@ -773,7 +782,7 @@ void MetadataCache::add_routing_guidelines_update_callbacks(
         update_callback,
     metadata_cache::MetadataCacheAPI::on_routing_guidelines_change_callback_t
         on_routing_guidelines_change_callback) {
-  std::lock_guard<std::mutex> lock{routing_guidelines_update_callback_mtx_};
+  std::lock_guard lock{routing_guidelines_update_callback_mtx_};
   if (!update_routing_guidelines_callback_)
     update_routing_guidelines_callback_ = std::move(update_callback);
   on_routing_guidelines_change_callbacks_.push_back(
@@ -781,7 +790,18 @@ void MetadataCache::add_routing_guidelines_update_callbacks(
 }
 
 void MetadataCache::clear_routing_guidelines_update_callbacks() {
-  std::lock_guard<std::mutex> lock{routing_guidelines_update_callback_mtx_};
+  std::lock_guard lock{routing_guidelines_update_callback_mtx_};
   update_routing_guidelines_callback_ = nullptr;
   on_routing_guidelines_change_callbacks_.clear();
+}
+
+void MetadataCache::add_router_info_update_callback(
+    metadata_cache::MetadataCacheAPI::update_router_info_callback_t clb) {
+  std::lock_guard lock{router_info_update_callback_mtx_};
+  update_router_info_callbacks_.push_back(clb);
+}
+
+void MetadataCache::clear_router_info_update_callback() {
+  std::lock_guard lock{router_info_update_callback_mtx_};
+  update_router_info_callbacks_.clear();
 }

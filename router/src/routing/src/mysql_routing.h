@@ -311,6 +311,14 @@ class ROUTING_EXPORT MySQLRouting : public MySQLRoutingBase {
   routing_guidelines::Routing_guidelines_engine::RouteChanges
   update_routing_guidelines(const std::string &routing_guidelines_document);
 
+  /**
+   * If the router info was updated then register this info in routing context.
+   *
+   * @param router_info updated router info
+   */
+  void on_router_info_update(
+      const routing_guidelines::Router_info &router_info);
+
   bool is_standalone() const override { return is_destination_standalone_; }
 
  private:

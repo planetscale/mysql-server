@@ -295,10 +295,15 @@ void MetadataCacheAPI::clear_routing_guidelines_update_callbacks() {
   g_metadata_cache->clear_routing_guidelines_update_callbacks();
 }
 
-void MetadataCacheAPI::fetch_whole_topology(bool val) {
-  LOCK_METADATA_AND_CHECK_INITIALIZED();
+void MetadataCacheAPI::add_router_info_update_callback(
+    update_router_info_callback_t update_callback) {
+  { LOCK_METADATA_AND_CHECK_INITIALIZED(); }
+  g_metadata_cache->add_router_info_update_callback(std::move(update_callback));
+}
 
-  g_metadata_cache->fetch_whole_topology(val);
+void MetadataCacheAPI::clear_router_info_update_callback() {
+  { LOCK_METADATA_AND_CHECK_INITIALIZED(); }
+  g_metadata_cache->clear_router_info_update_callback();
 }
 
 }  // namespace metadata_cache
