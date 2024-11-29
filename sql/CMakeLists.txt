@@ -510,6 +510,7 @@ SET(SQL_SHARED_SOURCES
   statement/statement_runnable.cc
   statement/utils.cc
   rpl_group_replication.cc
+  rpl_opt_tracker.cc
   rpl_transaction_ctx.cc
   rpl_transaction_write_set_ctx.cc
   rpl_write_set_handler.cc
@@ -978,7 +979,7 @@ ENDIF()
 TARGET_LINK_LIBRARIES(sql_main extra::unordered_dense)
 
 TARGET_LINK_LIBRARIES(sql_main ${MYSQLD_STATIC_PLUGIN_LIBS}
-  mysql_server_component_services mysys strings vio
+  mysql_server_component_services mysys library_mysys strings vio
   mysql_binlog_event ${LIBWRAP} ${LIBDL} OpenSSL::SSL OpenSSL::Crypto
   extra::rapidjson extra::boost)
 

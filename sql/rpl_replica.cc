@@ -139,6 +139,7 @@
 #include "sql/rpl_mi.h"
 #include "sql/rpl_msr.h"  // Multisource_info
 #include "sql/rpl_mta_submode.h"
+#include "sql/rpl_opt_tracker.h"
 #include "sql/rpl_replica_commit_order_manager.h"  // Commit_order_manager
 #include "sql/rpl_replica_until_options.h"
 #include "sql/rpl_reporting.h"
@@ -9346,7 +9347,16 @@ bool reset_slave_cmd(THD *thd) {
       my_error(ER_REPLICA_CHANNEL_DOES_NOT_EXIST, MYF(0), lex->mi.channel);
   }
 
+  const bool replication_replica_enabled =
+      (channel_map.get_number_of_configured_channels() > 0);
   channel_map.unlock();
+
+  /*
+    Only track when Replication Replica changes to disabled.
+  */
+  if (!res && !replication_replica_enabled) {
+    rpl_opt_tracker->track_replication_replica(replication_replica_enabled);
+  }
 
   return res;
 }
@@ -10981,6 +10991,7 @@ bool change_master_cmd(THD *thd) {
   Master_info *mi = nullptr;
   LEX *lex = thd->lex;
   bool res = false;
+  bool replication_replica_enabled{false};
 
   channel_map.wrlock();
 
@@ -11077,8 +11088,18 @@ bool change_master_cmd(THD *thd) {
     my_error(ER_REPLICA_CONFIGURATION, MYF(0));
   }
 
+  replication_replica_enabled =
+      (channel_map.get_number_of_configured_channels() > 0);
+
 err:
   channel_map.unlock();
+
+  /*
+    Only track when Replication Replica changes to enabled.
+  */
+  if (!res && replication_replica_enabled) {
+    rpl_opt_tracker->track_replication_replica(replication_replica_enabled);
+  }
 
   return res;
 }

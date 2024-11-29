@@ -12954,6 +12954,9 @@ ER_BULK_PARSER_UNEXPECTED_ENCLOSED_BY_CHARACTER_LOG
 ER_DIAG_LOG_STRING
   eng "%s"
 
+ER_FAILED_TO_CREATE_RPL_OPT_TRACKER_THREAD
+  eng "Unable to create the thread that periodically tracks the replication features. The server will continue its bootstrap."
+
 ################################################################################
 # Error numbers 50000 to 51999 are reserved. Please do not use them for
 # other error messages.

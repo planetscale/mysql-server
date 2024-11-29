@@ -37,6 +37,7 @@
 #include "plugin/group_replication/include/observer_server_actions.h"
 #include "plugin/group_replication/include/observer_server_state.h"
 #include "plugin/group_replication/include/observer_trans.h"
+#include "plugin/group_replication/include/opt_tracker.h"
 #include "plugin/group_replication/include/perfschema/pfs.h"
 #include "plugin/group_replication/include/pipeline_stats.h"
 #include "plugin/group_replication/include/plugin.h"
@@ -873,6 +874,7 @@ int initialize_plugin_and_join(
   lv.group_replication_running = true;
   lv.plugin_is_stopping = false;
   log_primary_member_details();
+  track_group_replication_enabled(true);
 
 err:
 
@@ -1369,6 +1371,7 @@ int plugin_group_replication_stop(char **error_message) {
   if (!error && lv.recovery_timeout_issue_on_stop)
     error = GROUP_REPLICATION_STOP_WITH_RECOVERY_TIMEOUT;
 
+  track_group_replication_enabled(false);
   LogPluginErr(SYSTEM_LEVEL, ER_GRP_RPL_IS_STOPPED);
   return error;
 }
@@ -2200,6 +2203,8 @@ int plugin_group_replication_init(MYSQL_PLUGIN plugin_info) {
   // Set the atomic var to the value of the base plugin variable
   ov.transaction_size_limit_var = ov.transaction_size_limit_base_var;
 
+  track_group_replication_available();
+
   if (ov.start_group_replication_at_boot_var &&
       plugin_group_replication_start()) {
     LogPluginErr(ERROR_LEVEL, ER_GRP_RPL_FAILED_TO_START_ON_BOOT);
@@ -2229,6 +2234,8 @@ int plugin_group_replication_deinit(void *p) {
 
   if (plugin_group_replication_stop())
     LogPluginErr(ERROR_LEVEL, ER_GRP_RPL_FAILED_TO_STOP_ON_PLUGIN_UNINSTALL);
+
+  track_group_replication_unavailable();
 
   if (group_member_mgr != nullptr) {
     delete group_member_mgr;

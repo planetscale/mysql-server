@@ -847,7 +847,8 @@ MySQL clients support the protocol:
 #include "sql/rpl_io_monitor.h"
 #include "sql/rpl_log_encryption.h"
 #include "sql/rpl_mi.h"
-#include "sql/rpl_msr.h"      // Multisource_info
+#include "sql/rpl_msr.h"  // Multisource_info
+#include "sql/rpl_opt_tracker.h"
 #include "sql/rpl_replica.h"  // replica_load_tmpdir
 #include "sql/rpl_rli.h"      // Relay_log_info
 #include "sql/rpl_source.h"   // max_binlog_dump_events
@@ -1105,6 +1106,7 @@ static PSI_mutex_key key_LOCK_log_throttle_qni;
 static PSI_mutex_key key_LOCK_reset_gtid_table;
 static PSI_mutex_key key_LOCK_compress_gtid_table;
 static PSI_mutex_key key_LOCK_collect_instance_log;
+static PSI_mutex_key key_LOCK_rpl_opt_tracker;
 static PSI_mutex_key key_BINLOG_LOCK_commit;
 static PSI_mutex_key key_BINLOG_LOCK_commit_queue;
 static PSI_mutex_key key_BINLOG_LOCK_after_commit;
@@ -1130,6 +1132,7 @@ static PSI_cond_key key_BINLOG_update_cond;
 static PSI_cond_key key_BINLOG_prep_xids_cond;
 static PSI_cond_key key_COND_manager;
 static PSI_cond_key key_COND_compress_gtid_table;
+static PSI_cond_key key_COND_rpl_opt_tracker;
 static PSI_cond_key key_BINLOG_COND_wait_for_group_turn;
 static PSI_thread_key key_thread_signal_hand;
 static PSI_thread_key key_thread_main;
@@ -1612,6 +1615,8 @@ mysql_mutex_t LOCK_reset_gtid_table;
 mysql_mutex_t LOCK_compress_gtid_table;
 mysql_cond_t COND_compress_gtid_table;
 mysql_mutex_t LOCK_collect_instance_log;
+mysql_mutex_t LOCK_rpl_opt_tracker;
+mysql_cond_t COND_rpl_opt_tracker;
 #if !defined(_WIN32)
 mysql_mutex_t LOCK_socket_listener_active;
 mysql_cond_t COND_socket_listener_active;
@@ -1843,6 +1848,7 @@ Checkable_rwlock *global_tsid_lock = nullptr;
 Tsid_map *global_tsid_map = nullptr;
 Gtid_state *gtid_state = nullptr;
 Gtid_table_persistor *gtid_table_persistor = nullptr;
+Rpl_opt_tracker *rpl_opt_tracker = nullptr;
 
 /* cache for persisted variables */
 static Persisted_variables_cache persisted_variables_cache;
@@ -2790,6 +2796,8 @@ static void clean_up(bool print_message) {
   rpl_source_io_monitor = nullptr;
   delete rpl_acf_configuration_handler;
   rpl_acf_configuration_handler = nullptr;
+  delete rpl_opt_tracker;
+  rpl_opt_tracker = nullptr;
 
   if (use_slave_mask) bitmap_free(&slave_error_mask);
   my_tz_free();
@@ -2935,6 +2943,8 @@ static void clean_up_mutexes() {
   mysql_mutex_destroy(&LOCK_password_history);
   mysql_mutex_destroy(&LOCK_password_reuse_interval);
   mysql_cond_destroy(&COND_manager);
+  mysql_mutex_destroy(&LOCK_rpl_opt_tracker);
+  mysql_cond_destroy(&COND_rpl_opt_tracker);
 #ifdef _WIN32
   mysql_cond_destroy(&COND_handler_count);
   mysql_mutex_destroy(&LOCK_handler_count);
@@ -7067,7 +7077,10 @@ static int init_thread_environment() {
                    MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_collect_instance_log, &LOCK_collect_instance_log,
                    MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_rpl_opt_tracker, &LOCK_rpl_opt_tracker,
+                   MY_MUTEX_INIT_FAST);
   mysql_cond_init(key_COND_compress_gtid_table, &COND_compress_gtid_table);
+  mysql_cond_init(key_COND_rpl_opt_tracker, &COND_rpl_opt_tracker);
   Events::init_mutexes();
 #if defined(_WIN32)
   mysql_mutex_init(key_LOCK_handler_count, &LOCK_handler_count,
@@ -10115,6 +10128,14 @@ int mysqld_main(int argc, char **argv)
   set_super_read_only_post_init();
 
   /*
+    Delay replication feature tracking to after components are
+    initialized.
+  */
+  rpl_opt_tracker = new Rpl_opt_tracker(srv_registry_registration,
+                                        srv_registry_registration_no_lock);
+  rpl_opt_tracker->start_worker();
+
+  /*
     Expose MySQL metrics.
     This is done only when the server bootstrap is complete,
     to avoid observing states that are not fully initialized.
@@ -10170,6 +10191,7 @@ int mysqld_main(int argc, char **argv)
   */
   unregister_pfs_metric_sources();
   unregister_server_metric_sources();
+  rpl_opt_tracker->stop_worker();
 
   unregister_server_telemetry_loggers();
 
@@ -13988,6 +14010,7 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_reset_gtid_table, "LOCK_reset_gtid_table", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_LOCK_compress_gtid_table, "LOCK_compress_gtid_table", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_LOCK_collect_instance_log, "LOCK_collect_instance_log", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
+  { &key_LOCK_rpl_opt_tracker, "LOCK_rpl_opt_tracker", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_mta_gaq_LOCK, "key_mta_gaq_LOCK", 0, 0, PSI_DOCUMENT_ME},
   { &key_thd_timer_mutex, "thd_timer_mutex", 0, 0, PSI_DOCUMENT_ME},
   { &key_commit_order_manager_mutex, "Commit_order_manager::m_mutex", 0, 0, PSI_DOCUMENT_ME},
@@ -14116,6 +14139,7 @@ static PSI_cond_info all_server_conds[]=
   { &key_cond_mta_gaq, "Relay_log_info::mta_gaq_cond", 0, 0, PSI_DOCUMENT_ME},
   { &key_gtid_ensure_index_cond, "Gtid_state", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_COND_compress_gtid_table, "COND_compress_gtid_table", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
+  { &key_COND_rpl_opt_tracker, "COND_rpl_opt_tracker", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_commit_order_manager_cond, "Commit_order_manager::m_workers.cond", 0, 0, PSI_DOCUMENT_ME},
   { &key_cond_slave_worker_hash, "Relay_log_info::replica_worker_hash_cond", 0, 0, PSI_DOCUMENT_ME},
   { &key_monitor_info_run_cond, "Source_IO_monitor::run_cond", 0, 0, PSI_DOCUMENT_ME},
@@ -14128,6 +14152,7 @@ PSI_thread_key key_thread_bootstrap;
 PSI_thread_key key_thread_handle_manager;
 PSI_thread_key key_thread_one_connection;
 PSI_thread_key key_thread_compress_gtid_table;
+PSI_thread_key key_thread_rpl_opt_tracker;
 PSI_thread_key key_thread_parser_service;
 PSI_thread_key key_thread_handle_con_admin_sockets;
 
@@ -14147,6 +14172,7 @@ static PSI_thread_info all_server_threads[]=
 PSI_FLAG_USER | PSI_FLAG_NO_SEQNUM, 0, PSI_DOCUMENT_ME},
   { &key_thread_signal_hand, "signal_handler", "sig_handler", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_thread_compress_gtid_table, "compress_gtid_table", "gtid_zip", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
+  { &key_thread_rpl_opt_tracker, "rpl_opt_tracker", "rpl_opt_tracker", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_thread_parser_service, "parser_service", "parser_srv", PSI_FLAG_SINGLETON, 0, PSI_DOCUMENT_ME},
   { &key_thread_handle_con_admin_sockets, "admin_interface", "con_admin", PSI_FLAG_USER, 0, PSI_DOCUMENT_ME},
 };
