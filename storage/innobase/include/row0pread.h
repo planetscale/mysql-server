@@ -257,11 +257,17 @@ class Parallel_reader {
     @return DB_SUCCESS or error code. */
     [[nodiscard]] dberr_t restore_from_savepoint() noexcept;
 
-    /** Save the current user record position, commit any active mtr. */
+    /** @see PCursor::save_current_user_record_as_last_processed */
     void save_current_user_record_as_last_processed() noexcept;
 
-    /** Restore the saved user record position to resume the scan */
+    /** @see PCursor::restore_to_last_processed_user_record */
     void restore_to_last_processed_user_record() noexcept;
+
+    /** @see PCursor::save_previous_user_record_as_last_processed */
+    void save_previous_user_record_as_last_processed() noexcept;
+
+    /** @see PCursor::restore_to_first_unprocessed */
+    void restore_to_first_unprocessed() noexcept;
 
     /** Thread ID. */
     size_t m_thread_id{std::numeric_limits<size_t>::max()};
