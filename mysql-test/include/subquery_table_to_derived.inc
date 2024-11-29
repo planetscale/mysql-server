@@ -14,6 +14,15 @@ INSERT INTO t1 VALUES(1,10),(2,20),(3,30);
 CREATE TABLE t2 (a INT, b INT);
 INSERT INTO t2 VALUES(1,10),(2,20),(3,30),(1,110),(2,120),(3,130);
 
+# Add more rows to make sure we get consistent plans. Otherwise table scan path
+# is chosen for the materialized temp table as against ref access path, and
+# this in turn leads to some plans being different on at least one platform,
+# namely Mac.
+INSERT INTO t2 SELECT * FROM t2;
+INSERT INTO t2 SELECT * FROM t2;
+INSERT INTO t2 SELECT * FROM t2;
+
+
 ANALYZE TABLE t1,t2;
 
 # IN

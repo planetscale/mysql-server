@@ -1,3 +1,5 @@
+--source ../include/elide_costs.inc
+
 SET EXPLAIN_FORMAT=tree;
 
 CREATE TABLE t1(f1 INT);
@@ -371,6 +373,7 @@ CREATE TABLE t1 (
 INSERT INTO t1 VALUES (1,NULL),(0,'a'),(1,NULL),(0,'a');
 INSERT INTO t1 VALUES (1,'a'),(0,'a'),(1,'a'),(0,'a');
 ANALYZE TABLE t1;
+--replace_regex $elide_costs
 EXPLAIN SELECT /*+ SET_VAR(sql_buffer_result=1) */  MIN(a), b FROM t1 WHERE t1.b = 'a' GROUP BY b;
 DROP TABLE t1;
 CALL test_hint("SET_VAR(sql_buffer_result=1)", "sql_buffer_result");

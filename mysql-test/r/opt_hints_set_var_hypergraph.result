@@ -643,10 +643,10 @@ Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
 EXPLAIN SELECT /*+ SET_VAR(sql_buffer_result=1) */  MIN(a), b FROM t1 WHERE t1.b = 'a' GROUP BY b;
 EXPLAIN
--> Table scan on <temporary>  (cost=10.4..10.4 rows=1)
-    -> Temporary table  (cost=4.64..4.64 rows=1)
-        -> Group aggregate: min(t1.a)  (cost=4.41..4.41 rows=1)
-            -> Covering index lookup on t1 using b (b = 'a')  (cost=0.504..3.03 rows=6)
+-> Table scan on <temporary>  (rows=1)
+    -> Temporary table  (rows=1)
+        -> Group aggregate: min(t1.a)  (rows=1)
+            -> Covering index lookup on t1 using b (b = 'a')  (rows=6)
 
 DROP TABLE t1;
 CALL test_hint("SET_VAR(sql_buffer_result=1)", "sql_buffer_result");

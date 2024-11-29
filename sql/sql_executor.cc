@@ -1598,7 +1598,7 @@ static void RecalculateTablePathCost(THD *thd, AccessPath *path,
       break;
 
     case AccessPath::STREAM:
-      EstimateStreamCost(path);
+      EstimateStreamCost(current_thd, path);
       break;
 
     case AccessPath::MATERIALIZE:

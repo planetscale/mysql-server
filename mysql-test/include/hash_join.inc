@@ -628,6 +628,7 @@ CREATE TABLE t1 (
 INSERT INTO t1 VALUES (1,'n','X'), (2,'Y','8'), (3,'R','l'), (4,'a','b'), (5,'c','d'), (6,'e','f');
 
 let $query = SELECT
+SQL_SMALL_RESULT # Fix one plan between streaming and temp-table-aggregate
   t1.col_varchar_key AS field1
 FROM
   (t1, t1 as alias1)

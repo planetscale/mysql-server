@@ -508,7 +508,7 @@ f1	SUM(f2) OVER(PARTITION BY f1)
 3	33
 4	44
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f2)
 FROM t1 GROUP BY f1) as dt WHERE f2 > 30;
 EXPLAIN
 -> Table scan on dt  (rows=0)
@@ -521,13 +521,13 @@ EXPLAIN
                             -> Table scan on t1  (rows=12)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f2)
 FROM t1 GROUP BY f1) as dt WHERE f2 > 30;
 f1	f2	SUM(f3) OVER(PARTITION BY f2)
 3	33	333
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 EXPLAIN
@@ -541,13 +541,14 @@ EXPLAIN
                             -> Index range scan on t1 using f1 over (2 < f1), with index condition: (t1.f1 > 2)  (rows=4)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 f1	f2	SUM(f3) OVER(PARTITION BY f1)
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 EXPLAIN
@@ -561,13 +562,15 @@ EXPLAIN
                             -> Index range scan on t1 using f1 over (2 < f1), with index condition: (t1.f1 > 2)  (rows=4)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 f1	f2	SUM(f3) OVER(PARTITION BY f1,f2)
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2),
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2),
 AVG(f3) OVER (PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
@@ -586,7 +589,8 @@ EXPLAIN
                                             -> Index range scan on t1 using f1 over (2 < f1), with index condition: (t1.f1 > 2)  (rows=4)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2),
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2),
 AVG(f3) OVER (PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;

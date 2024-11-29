@@ -938,6 +938,7 @@ ANALYZE TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
 EXPLAIN FORMAT=tree SELECT
+SQL_SMALL_RESULT # Fix one plan between streaming and temp-table-aggregate
 t1.col_varchar_key AS field1
 FROM
 (t1, t1 as alias1)
@@ -967,6 +968,7 @@ EXPLAIN
 Warnings:
 Note	1276	Field or reference 'test.t1.col_varchar' of SELECT #2 was resolved in SELECT #1
 SELECT
+SQL_SMALL_RESULT # Fix one plan between streaming and temp-table-aggregate
 t1.col_varchar_key AS field1
 FROM
 (t1, t1 as alias1)

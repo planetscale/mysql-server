@@ -90,13 +90,13 @@ KEY idx_CC_col_varchar_key (col_varchar_key)
 INSERT INTO t1 VALUES (1,'n','X'),(2,'Y','8'),(3,'R','l');
 ANALYZE TABLE t1;
 --replace_regex $elide_costs
-EXPLAIN FORMAT=TREE SELECT
+EXPLAIN FORMAT=TREE SELECT SQL_BIG_RESULT
 t1.col_varchar_key AS field1 FROM (t1, t1 as alias1)
 WHERE NOT EXISTS( SELECT alias2.col_varchar_key FROM t1 AS alias2
                   WHERE alias2.col_varchar_key >= t1.col_varchar)
 GROUP BY field1;
 --replace_regex $elide_trace_costs_and_rows
-EXPLAIN FORMAT=JSON SELECT
+EXPLAIN FORMAT=JSON SELECT SQL_BIG_RESULT
 t1.col_varchar_key AS field1 FROM (t1, t1 as alias1)
 WHERE NOT EXISTS( SELECT alias2.col_varchar_key FROM t1 AS alias2
                   WHERE alias2.col_varchar_key >= t1.col_varchar)

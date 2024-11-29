@@ -64,6 +64,199 @@ using std::min;
 using std::popcount;
 using std::string;
 
+// Below are convenience functions that calculate an estimated cost of a given
+// path, using either hypergraph cost model or the old model. Linear regression
+// was used to produce cost formulae. A common pattern in the below cost
+// formulae is that wherever there is deduplication, the cost depends both on
+// input rows and output rows. Furthermore, cost always increases not just with
+// increasing aggregation functions, but also with the number of GROUP BY
+// fields or DISTINCT fields.
+//
+// The literal constants in the cost model formulas below are in terms of
+// microseconds, since the original calibration using linear regression fitted
+// a model to the running time in microseconds (see
+// MaterializationCostModel.java for details). In order to be compatible with
+// the rest of the hypergraph cost model we have to output costs in terms of
+// the cost unit (see cost_constants.h) and not directly in microseconds. In
+// order to convert from microseconds to cost units we divide the output of
+// each linear regression formula by kUnitCostInMicroSecondsWL16117, retaining
+// the original calibrated constants for clarity.
+
+/**
+  Calculate the estimated cost of Streaming Aggregation, i.e. AGGREGATE
+  Accesspath.
+  @param thd Current thread.
+  @param output_rows Number of rows that the path outputs.
+  @param input_rows Number of input rows to the path.
+  @param agg_count Number of aggregation functions present in the path.
+  @param group_by_field_count Number of GROUP BY columns used in the path.
+         In the absence of GROUP BY clause, it can be 0.
+  @returns The cost estimate.
+
+  Note: This aggregation cost is independent of the cost of Temp table
+  aggregation, and these two paths do not share any logic or cost constants.
+ */
+static double AggregateCost(THD *thd, double output_rows, double input_rows,
+                            int agg_count, int group_by_field_count) {
+  if (!thd->lex->using_hypergraph_optimizer()) {
+    return kAggregateOneRowCostOldModel * std::max(0.0, input_rows);
+  }
+
+  // Use hypergraph optimizer cost model ...
+
+  // Suggested cost formula by linear regression:
+  // -95.758E0 + o * 131.99E-3 +
+  //  i * 27.353E-3 + i * aggs * 35.718E-3 + i * group_by_fields * 5.5004E-3
+  return (0.132 * std::max(0.0, output_rows) +
+          (std::max(0.0, input_rows) *
+           (.0274 + agg_count * .0357 + group_by_field_count * .006))) /
+         kUnitCostInMicrosecondsWL16117;
+}
+
+/**
+  Calculate the estimated initialization cost of a MATERIALIZE Accesspath that
+  involves deduplication. This involves the cost for deduplicating input rows
+  and inserting them into the temp table.
+  @param use_old_model If false, use the hypergraph cost model based on linear
+         regression. If true, continue to use the earlier cost model.
+  @param output_rows Number of rows that the path outputs.
+  @param input_rows Number of input rows to the path.
+  @param field_count Number of GROUP BY or DISTINCT columns present.
+  @returns The cost estimate.
+ */
+static double MaterializationWithDedupCost(bool use_old_model,
+                                           double output_rows,
+                                           double input_rows, int field_count) {
+  if (use_old_model) {
+    return kMaterializeOneRowCostOldModel * output_rows;
+  }
+
+  // Linear regression formula for 'materialize_dedup':
+  // -13.448E3 + o * 292.41E-3 + i * 112.57E-3 + i * fields * 38.639E-3
+  return (.292 * output_rows + input_rows * (.113 + .039 * field_count)) /
+         kUnitCostInMicrosecondsWL16117;
+}
+
+/**
+  Calculate the estimated cost of a MATERIALIZE Accesspath that does not involve
+  deduplication.
+  @param use_old_model If false, use the hypergraph cost model based on linear
+         regression. If true, continue to use the earlier cost model.
+  @param output_rows Number of rows that the path outputs.
+  @param field_count Number of fields present in the materialized rows, which
+         translates to the number of temp table columns.
+  @returns The cost estimate.
+ */
+static double MaterializationCost(bool use_old_model, double output_rows,
+                                  int field_count) {
+  if (use_old_model) {
+    return kMaterializeOneRowCostOldModel * output_rows;
+  }
+
+  // Linear regression formula for 'materialize':
+  // 70.011E0 + i * 62.093E-3 + i * fields * 14.778E-3
+  return (output_rows * (.063 + .015 * field_count)) /
+         kUnitCostInMicrosecondsWL16117;
+}
+
+/**
+  Calculate the estimated cost of a Table scan Accesspath for a temporary table
+  created for materialization.
+  @param thd Current thread.
+  @param table_path The TABLE_SCAN AccessPath of the temporary table.
+  @param output_rows Number of rows that the path outputs.
+  @returns The cost estimate.
+ */
+static double TempTableScanCost(THD *thd, AccessPath *table_path,
+                                double output_rows) {
+  if (Overlaps(test_flags, TEST_NO_TEMP_TABLES)) {
+    // Unit tests don't load any temporary table engines,
+    // so just make up a number.
+    return output_rows * 0.1;
+  }
+
+  TABLE dummy_table;
+  TABLE *temp_table = table_path->table_scan().table;
+  if (temp_table == nullptr) {
+    // We need a dummy TABLE object to get estimates.
+    handlerton *handlerton = ha_default_temp_handlerton(thd);
+    dummy_table.file = handlerton->create(handlerton, /*share=*/nullptr,
+                                          /*partitioned=*/false, thd->mem_root);
+    dummy_table.file->set_ha_table(&dummy_table);
+    dummy_table.init_cost_model(thd->cost_model());
+    temp_table = &dummy_table;
+  }
+
+  // Try to get usable estimates. Ignored by InnoDB, but used by
+  // TempTable.
+  temp_table->file->stats.records = min(output_rows, LLONG_MAX_DOUBLE);
+
+  if (thd->lex->using_hypergraph_optimizer()) {
+    // From linear regression results, it was found that the cost does not
+    // increase with number of temp table fields. Calibration was done with
+    // temp table in memory. Needs further calibration for tables spilled to
+    // disk.
+    return (output_rows * 0.082) / kUnitCostInMicrosecondsWL16117;
+  }
+
+  return temp_table->file->table_scan_cost().total_cost();
+}
+
+/**
+  Calculate the estimated cost of a STREAM Accesspath.
+  @param thd Current thread.
+  @param output_rows Number of rows that the path outputs, which is same as
+         input rows.
+  @param field_count Number of fields present in the streamed rows, which
+         typically translates to the number of JOIN fields.
+  @returns The cost estimate.
+ */
+static double StreamCost(THD *thd, double output_rows, int field_count) {
+  if (!thd->lex->using_hypergraph_optimizer()) {
+    return 0;
+  }
+
+  // Linear regression shows : i * .121 + i * (n-2) .021. During the testing,
+  // we had to have an initial count(*) and another field to trigger the
+  // Stream plan, but then the fields were increased over and above these
+  // fields, hence the (n-2). And we did not want to use aggregation functions
+  // because they would incur extra irrelevant cost to the Stream plan.
+  return (output_rows * (.079 + .021 * field_count)) /
+         kUnitCostInMicrosecondsWL16117;
+}
+
+/**
+  Calculate the estimated initialization cost of a TEMPTABLE_AGGREGATE
+  Accesspath This involves the cost for deduplicating input rows, inserting
+  them into the temp table, and processing the aggregation functions.
+  Cost estimation for this path was introduced only in hypergraph optimizer.
+  @param output_rows Number of rows that the path outputs.
+  @param input_rows Number of input rows to the path.
+  @param agg_count Number of aggregation functions present in the path.
+  @param group_by_fields Number of GROUP BY columns present.
+  @returns The cost estimate.
+ */
+static double TempTableAggregationCost(double output_rows, double input_rows,
+                                       int agg_count, int group_by_fields) {
+  // Suggested cost formula by regression analysis:
+  // -17.931E3 + o * 358.04E-3 +
+  //  i * 142.04E-3 + i * aggs * 78.696E-3 + i * fields * 74.319E-3
+  return (output_rows * .358 + input_rows * (.142 + (.0787 * agg_count) +
+                                             (.0743 * group_by_fields))) /
+         kUnitCostInMicrosecondsWL16117;
+}
+
+// End of definitions of convenience cost functions related to materialization,
+// aggregation, and streaming.
+
+// The cost of creating a temp table for materialization or temp table
+// aggregation. We ignore the y-intercept value in the above linear regression
+// formulae, since it is more important to get the scaling right. But the cost
+// also cannot be less than the temp table creation cost, hence always add this
+// cost.  The value was derived by checking actual materialization cost
+// involving one or two rows.
+constexpr double kTempTableCreationCost = 3;
+
 namespace {
 double EstimateAggregateRows(THD *thd, const AccessPath *child,
                              const Query_block *query_block, bool rollup);
@@ -146,7 +339,7 @@ void AddCost(THD *thd, const ContainedSubquery &subquery, double num_rows,
           /*read_rows=*/num_rows);
       cost->cost_to_materialize +=
           subquery.path->cost() +
-          kMaterializeOneRowCost * subquery.path->num_output_rows();
+          kMaterializeOneRowCostOldModel * subquery.path->num_output_rows();
 
       cost->cost_if_not_materialized += num_rows * subquery.path->cost();
     } break;
@@ -180,48 +373,85 @@ FilterCost EstimateFilterCost(THD *thd, double num_rows, Item *condition,
   return cost;
 }
 
-// Very rudimentary (it's better to overestimate than to understimate), so that
-// we get something that isn't “unknown”.
-void EstimateMaterializeCost(THD *thd, AccessPath *path) {
-  AccessPath *table_path = path->materialize().table_path;
-  double &subquery_cost = path->materialize().subquery_cost;
-  const bool is_distinct_or_group_by =
-      path->materialize().param->deduplication_reason !=
-      MaterializePathParameters::NO_DEDUP;
-  double cost_for_cacheable = 0.0;
+static void AddOperandCosts(const MaterializePathParameters::Operand &operand,
+                            double *subquery_cost, double *cost_for_cacheable) {
+  // For implicit grouping operand.subquery_path->num_output_rows() may be
+  // set (to 1.0) even if operand.subquery_path->cost is undefined (cf.
+  // Bug#35240913).
+  if (operand.subquery_path->cost() > 0.0) {
+    *subquery_cost += operand.subquery_path->cost();
+    if (operand.join != nullptr && operand.join->query_block->is_cacheable()) {
+      *cost_for_cacheable += operand.subquery_path->cost();
+    }
+  }
+}
+
+static void SetDistinctGroupByOutputRowsAndSubqueryCosts(
+    THD *thd, AccessPath *path, double *subquery_cost,
+    double *cost_for_cacheable) {
+  // For DISTINCT or GROUP BY there is only one operand.
+  const MaterializePathParameters::Operand &operand =
+      path->materialize().param->m_operands.at(0);
+
+  // For GROUP BY, the number of output rows may or may not be already preset.
+  if (path->materialize().param->deduplication_reason ==
+          MaterializePathParameters::DEDUP_FOR_GROUP_BY &&
+      path->num_output_rows() == kUnknownRowCount) {
+    // The number of output rows is equal to the number of distinct groups, so
+    // we can reuse our cardinality estimation from regular aggregation.
+    path->set_num_output_rows(EstimateAggregateRows(
+        thd, operand.subquery_path, operand.join->query_block,
+        /*rollup=*/false));  // Temporary tables do not support GROUP BY WITH
+                             // ROLLUP.
+  }
+  // else for DISTINCT, it's always preset.
+
+  *subquery_cost = *cost_for_cacheable = 0;
+  AddOperandCosts(operand, subquery_cost, cost_for_cacheable);
+}
+
+/**
+  Return the cost for materialization used for DISTINCT or GROUP BY, which
+  essentially involves deduplication cost.
+ */
+static double GetDistinctOrGroupByInitCost(bool use_old_cost_model,
+                                           AccessPath *path) {
+  int num_deduplication_fields = 0;
+  const MaterializePathParameters::Operand &operand =
+      path->materialize().param->m_operands.at(0);
+
+  if (path->materialize().param->deduplication_reason ==
+      MaterializePathParameters::DEDUP_FOR_DISTINCT) {
+    num_deduplication_fields = CountVisibleFields(*operand.join->fields);
+  } else {  // GROUP BY
+    num_deduplication_fields =
+        CountOrderElements(operand.join->group_list.order);
+  }
+  return MaterializationWithDedupCost(
+      use_old_cost_model, path->num_output_rows(),
+      operand.subquery_path->num_output_rows(), num_deduplication_fields);
+}
+
+// Accumulate output rows and subquery costs from the children. Not to be used
+// for DISTINCT/GROUP BY
+static void AccummulateOutputRowsAndSubqueryCosts(AccessPath *path,
+                                                  double *subquery_cost,
+                                                  double *cost_for_cacheable) {
   bool left_operand = true;
 
-  // There are three different strategies for estimating the row count. If it's
-  // for DISTINCT, it's always preset. If it's for GROUP BY, it can be preset,
-  // but we have to calculate it if it's not. For everything else, calculate it
-  // afresh.
-  if (!is_distinct_or_group_by) {
-    path->set_num_output_rows(0);  // Reset any possibly set output rows.
-  } else if (path->num_output_rows() == kUnknownRowCount) {
-    // For DISTINCT, num_output_rows is always preset, so it has to be GROUP BY.
-    assert(path->materialize().param->deduplication_reason ==
-           MaterializePathParameters::DEDUP_FOR_GROUP_BY);
-
-    // Calculate estimate of output rows, which is same as number of groups.
-    path->set_num_output_rows(EstimateAggregateRows(
-        thd, path->materialize().param->m_operands.at(0).subquery_path,
-        path->materialize().param->m_operands.at(0).join->query_block,
-        /*rollup=*/false));  // We anyway don't temp table support with ROLLUP.
-  }
-
-  subquery_cost = 0.0;
+  path->set_num_output_rows(0);  // Reset any possibly set output rows.
+  *subquery_cost = 0.0;
 
   for (const MaterializePathParameters::Operand &operand :
        path->materialize().param->m_operands) {
     if (operand.subquery_path->num_output_rows() >= 0.0) {
-      if (is_distinct_or_group_by) {
-        // Output rows for deduplication is separately handled above.
-      }
+      // Add up output rows.
+
       // For INTERSECT and EXCEPT we can never get more rows than we have in
       // the left block, so do not add unless we are looking at left block or
       // we have a UNION.
-      else if (left_operand || path->materialize().param->table == nullptr ||
-               path->materialize().param->table->is_union_or_table()) {
+      if (left_operand || path->materialize().param->table == nullptr ||
+          path->materialize().param->table->is_union_or_table()) {
         path->set_num_output_rows(path->num_output_rows() +
                                   operand.subquery_path->num_output_rows());
       } else if (!left_operand &&
@@ -230,72 +460,143 @@ void EstimateMaterializeCost(THD *thd, AccessPath *path) {
         path->set_num_output_rows(std::min(
             path->num_output_rows(), operand.subquery_path->num_output_rows()));
       }
-      // For implicit grouping operand.subquery_path->num_output_rows() may be
-      // set (to 1.0) even if operand.subquery_path->cost is undefined (cf.
-      // Bug#35240913).
-      if (operand.subquery_path->cost() > 0.0) {
-        subquery_cost += operand.subquery_path->cost();
-        if (operand.join != nullptr &&
-            operand.join->query_block->is_cacheable()) {
-          cost_for_cacheable += operand.subquery_path->cost();
-        }
-      }
+
+      // Add up subquery costs.
+      AddOperandCosts(operand, subquery_cost, cost_for_cacheable);
     }
     left_operand = false;
   }
+}
+
+/**
+  Provide row estimates and costs for a MATERIALIZE AccessPath.
+  MATERIALIZE AccessPath is created by both old and new optimizer in many
+  different contexts where temp table needs to be created, both with and
+  without deduplication. E.g.
+  materialization for a derived table,
+  materializing deduplicated input rows for DISTINCT,
+  GROUP BY clause without an aggregation functions,
+  SET operations, etc
+
+  Note:
+  - SET operations that do deduplication (such as UNION DISTINCT, EXCEPT and
+    INTERSECT) currently do not consider deduplication cost. They should.
+  - There is no aggregation involved in this path. Aggregation with temp table
+    uses a different Access path.
+*/
+void EstimateMaterializeCost(THD *thd, AccessPath *path) {
+  AccessPath *table_path = path->materialize().table_path;
+  double &subquery_cost = path->materialize().subquery_cost;
+
+  // is_distinct_or_group_by=true means we are materializing in order to
+  // deduplicate for a query that either uses DISTINCT or GROUP BY without any
+  // aggregation functions.
+  // When is_distinct_or_group_by is false, it means :
+  // - Either it can be materialization of a single child plan without
+  //   deduplication,
+  // - Or it can be a SET operations materialization with or without
+  //   deduplication.
+  //
+  // We don't currently consider deduplication cost in case of SET operations.
+  // When we would consider it in the future, it should (ideally) share the
+  // deduplication cost model currently being used for DISTINCT and GROUP BY.
+  const bool is_distinct_or_group_by =
+      path->materialize().param->deduplication_reason !=
+      MaterializePathParameters::NO_DEDUP;
+
+  double cost_for_cacheable = 0.0;
+  double table_scan_cost = 0;
+  double init_cost = 0;
+
+  // We support hypergraph model for deduplication unless it's for SET
+  // operations.
+  bool use_old_cost_model =
+      !thd->lex->using_hypergraph_optimizer() ||
+      (path->materialize().param->cte != nullptr &&
+       path->materialize().param->cte->recursive) ||
+      (!is_distinct_or_group_by &&  // we support new model for DISTINCT
+       path->materialize().param->table != nullptr &&
+       // New model not supported for deduplication used in SET operations.
+       MaterializeIsDoingDeduplication(path->materialize().param->table));
+
+  // Accummulate output rows and subquery costs from the children.
+
+  // There are three different strategies for estimating the output row count.
+  // If it's for DISTINCT, it's always preset in the access path before calling
+  // this function. If it's for GROUP BY, it may have been preset, but we have
+  // to calculate it if it's not. For everything else, we calculate it afresh.
+  if (!is_distinct_or_group_by) {
+    AccummulateOutputRowsAndSubqueryCosts(path, &subquery_cost,
+                                          &cost_for_cacheable);
+  } else {
+    SetDistinctGroupByOutputRowsAndSubqueryCosts(thd, path, &subquery_cost,
+                                                 &cost_for_cacheable);
+  }
+
+  // Now that the output rows are set, we can calculate the init cost.
+
+  // The materialization cost will be at least the temp table creation cost.
+  if (!use_old_cost_model) {
+    init_cost = kTempTableCreationCost;
+  }
+
+  if (!is_distinct_or_group_by) {
+    int num_fields = 0;
+    if (JOIN *join = path->materialize().param->m_operands.at(0).join;
+        join != nullptr) {
+      num_fields = CountVisibleFields(*join->fields);
+    }
+    // This involves plain materialization. Even though SET operations can
+    // involve deduplication, we are not currently considering deduplication
+    // cost.  Needs to be fixed in the future.
+    init_cost += MaterializationCost(use_old_cost_model,
+                                     path->num_output_rows(), num_fields);
+  } else {
+    init_cost += GetDistinctOrGroupByInitCost(use_old_cost_model, path);
+  }
+
+  // Rest of the logic is common for any type of materialization.
+
   path->materialize().subquery_rows = path->num_output_rows();
   path->num_output_rows_before_filter = path->num_output_rows();
 
+  // Set the table path cost to its own scan cost plus the descendents' cost,
+  // or in other words, the complete cost minus materialization cost. But see
+  // comments below.
   if (table_path->type == AccessPath::TABLE_SCAN) {
-    path->set_cost(0.0);
-    path->set_init_cost(0.0);
-    path->set_init_once_cost(0.0);
     table_path->set_num_output_rows(path->num_output_rows());
     table_path->num_output_rows_before_filter = path->num_output_rows();
     table_path->set_init_cost(subquery_cost);
     table_path->set_init_once_cost(cost_for_cacheable);
 
-    if (Overlaps(test_flags, TEST_NO_TEMP_TABLES)) {
-      // Unit tests don't load any temporary table engines,
-      // so just make up a number.
-      table_path->set_cost(subquery_cost + path->num_output_rows() * 0.1);
-    } else {
-      TABLE dummy_table;
-      TABLE *temp_table = table_path->table_scan().table;
-      if (temp_table == nullptr) {
-        // We need a dummy TABLE object to get estimates.
-        handlerton *handlerton = ha_default_temp_handlerton(thd);
-        dummy_table.file =
-            handlerton->create(handlerton, /*share=*/nullptr,
-                               /*partitioned=*/false, thd->mem_root);
-        dummy_table.file->set_ha_table(&dummy_table);
-        dummy_table.init_cost_model(thd->cost_model());
-        temp_table = &dummy_table;
-      }
-
-      // Try to get usable estimates. Ignored by InnoDB, but used by
-      // TempTable.
-      temp_table->file->stats.records =
-          min(path->num_output_rows(), LLONG_MAX_DOUBLE);
-      table_path->set_cost(subquery_cost +
-                           temp_table->file->table_scan_cost().total_cost());
-    }
+    table_scan_cost =
+        TempTableScanCost(thd, table_path, path->num_output_rows());
+    table_path->set_cost(table_path->init_cost() + table_scan_cost);
   } else {
-    // Use the costs of the subquery.
-    path->set_init_cost(subquery_cost);
-    path->set_init_once_cost(cost_for_cacheable);
-    path->set_cost(subquery_cost);
+    // The table_path is assumed to have updated cost figures.
+    table_scan_cost = std::max(table_path->cost(), 0.0);
   }
 
-  path->set_init_cost(path->init_cost() +
-                      std::max(table_path->init_cost(), 0.0) +
-                      kMaterializeOneRowCost * path->num_output_rows());
+  path->set_init_cost(subquery_cost + init_cost);
+  path->set_init_once_cost(cost_for_cacheable);
 
-  path->set_init_once_cost(path->init_once_cost() +
-                           std::max(table_path->init_once_cost(), 0.0));
+  if (table_path->type != AccessPath::TABLE_SCAN) {
+    // An assumption here is that a non-TABLE_SCAN path does not include
+    // descendants' cost in its own cost. Otherwise the below calculation would
+    // cause double inclusion of descendents cost. It is not clear why in the
+    // first place we include the descendents cost for a TABLE_SCAN path above.
+    // In fact, AddPathCosts() is anyways not going to use table_path->cost. It
+    // is going to show the table path cost as the total cost of the whole
+    // materialization path (i.e. path->cost()). At a minimum, table_path cost
+    // should have some consistency regardless of it's access_type.  TODO: This
+    // needs to be fixed in a future cost model WL.
+    path->set_init_cost(path->init_cost() +
+                        std::max(table_path->init_cost(), 0.0));
+    path->set_init_once_cost(path->init_once_cost() +
+                             std::max(table_path->init_once_cost(), 0.0));
+  }
 
-  path->set_cost(path->cost() + std::max(table_path->cost(), 0.0) +
-                 kMaterializeOneRowCost * path->num_output_rows());
+  path->set_cost(path->init_cost() + table_scan_cost);
 }
 
 namespace {
@@ -889,8 +1190,11 @@ void EstimateAggregateCost(THD *thd, AccessPath *path,
   path->set_init_cost(child->init_cost());
   path->set_init_once_cost(child->init_once_cost());
 
-  path->set_cost(child->cost() + kAggregateOneRowCost *
-                                     std::max(0.0, child->num_output_rows()));
+  path->set_cost(
+      std::max(0.0, child->cost()) +
+      AggregateCost(thd, path->num_output_rows(), child->num_output_rows(),
+                    query_block->join->tmp_table_param.sum_func_count,
+                    CountOrderElements(query_block->join->group_list.order)));
 
   path->num_output_rows_before_filter = path->num_output_rows();
   path->set_cost_before_filter(path->cost());
@@ -909,9 +1213,9 @@ void EstimateDeleteRowsCost(AccessPath *path) {
   // (buffered) deletes in the cost estimate.
   const table_map buffered_tables =
       param.tables_to_delete_from & ~param.immediate_tables;
-  path->set_cost(child->cost() + kMaterializeOneRowCost *
-                                     popcount(buffered_tables) *
-                                     child->num_output_rows());
+  path->set_cost(child->cost() +
+                 (kMaterializeOneRowCostOldModel * popcount(buffered_tables) *
+                  child->num_output_rows()));
 }
 
 void EstimateUpdateRowsCost(AccessPath *path) {
@@ -926,15 +1230,22 @@ void EstimateUpdateRowsCost(AccessPath *path) {
   // (buffered) updates in the cost estimate.
   const table_map buffered_tables =
       param.tables_to_update & ~param.immediate_tables;
-  path->set_cost(child->cost() + kMaterializeOneRowCost *
-                                     popcount(buffered_tables) *
-                                     child->num_output_rows());
+  path->set_cost(child->cost() +
+                 (kMaterializeOneRowCostOldModel * popcount(buffered_tables) *
+                  child->num_output_rows()));
 }
 
-void EstimateStreamCost(AccessPath *path) {
+void EstimateStreamCost(THD *thd, AccessPath *path) {
+  const auto &stream_path = path->stream();
+  int numfields =
+      (stream_path.join != nullptr && stream_path.join->fields != nullptr
+           ? stream_path.join->fields->size()
+           : 2);  // We didn't get the fields. Just make up a number.
+
   AccessPath &child = *path->stream().child;
   path->set_num_output_rows(child.num_output_rows());
-  path->set_cost(child.cost());
+  path->set_cost(child.cost() +
+                 StreamCost(thd, child.num_output_rows(), numfields));
   path->set_init_cost(child.init_cost());
   path->set_init_once_cost(0.0);  // Never recoverable across query blocks.
   path->num_output_rows_before_filter = path->num_output_rows();
@@ -985,8 +1296,6 @@ void EstimateTemptableAggregateCost(THD *thd, AccessPath *path,
                                     const Query_block *query_block) {
   AccessPath *child = path->temptable_aggregate().subquery_path;
   AccessPath *table_path = path->temptable_aggregate().table_path;
-  double init_cost = 0.0;
-  double num_output_rows = 0;
 
   // Calculate estimate of output rows, which is same as the number of rows
   // after aggregation.
@@ -994,59 +1303,36 @@ void EstimateTemptableAggregateCost(THD *thd, AccessPath *path,
     path->set_num_output_rows(
         EstimateAggregateRows(thd, child, query_block, /*rollup=*/false));
   }
-  num_output_rows = path->num_output_rows();
 
-  const uint rowlen =
-      get_tmp_table_rec_length(*query_block->join->fields,
-                               /*include_hidden=*/true, /*can_skip_aggs=*/true);
+  double num_output_rows = path->num_output_rows();
+  double table_scan_cost = TempTableScanCost(thd, table_path, num_output_rows);
 
-  const Cost_model_server *cost_model = query_block->join->cost_model();
+  // Add temp table initialization cost....
+  double init_cost = kTempTableCreationCost;
+  init_cost += TempTableAggregationCost(
+      num_output_rows, child->num_output_rows(),
+      query_block->join->tmp_table_param.sum_func_count,
+      CountOrderElements(query_block->join->group_list.order));
 
-  Cost_model_server::enum_tmptable_type tmp_table_type;
-  if (rowlen * num_output_rows < thd->variables.max_heap_table_size)
-    tmp_table_type = Cost_model_server::MEMORY_TMPTABLE;
-  else
-    tmp_table_type = Cost_model_server::DISK_TMPTABLE;
+  double child_cost = std::max(child->cost(), 0.0);
+  path->set_init_cost(init_cost + child_cost);
+  path->set_init_once_cost(path->init_cost());
+  path->set_cost(path->init_cost() + table_scan_cost);
 
-  // Add temp table creation cost.
-  init_cost += cost_model->tmptable_create_cost(tmp_table_type);
+  // The logic of setting table path costs is taken from
+  // EstimateMaterializeCost(). It is not clear why we are supposed to include
+  // child cost in a TABLE_SCAN AccessPath cost. Did this just for consistency.
+  // Check EstimateMaterializeCost() for details.
+  if (table_path->type == AccessPath::TABLE_SCAN) {
+    table_path->set_init_cost(child_cost);
+    table_path->set_init_once_cost(child_cost);
+    table_path->set_cost(table_path->init_cost() + table_scan_cost);
+    table_path->set_num_output_rows(num_output_rows);
+  }
+  // else the table_path is assumed to have updated cost figures.
 
-  // Add temp table population cost....
-
-  init_cost += child->cost();
-
-  // Add key lookup cost, which is used for finding the group. Give some
-  // weightage to the number of groups. As the number of groups
-  // increases, it is found that the lookup cost increases slightly. The below
-  // formula approximately matches the rate at which the lookup time has
-  // shown to increase during testing.
-  init_cost += kTempTableAggLookupCost *
-               (1 + pow(log10(std::max(num_output_rows, 1.0)), 2) / 100) *
-               child->num_output_rows();
-
-  // Add Aggregation cost.
-  init_cost += kAggregateOneRowCost * child->num_output_rows();
-
-  // Add cost of inserting/updating the record into tmp table. We don't
-  // differentiate between update and insert.
-  init_cost += cost_model->tmptable_readwrite_cost(tmp_table_type,
-                                                   child->num_output_rows(), 0);
-
-  path->set_init_cost(init_cost);
-  path->set_cost(init_cost + cost_model->tmptable_readwrite_cost(
-                                 tmp_table_type, 0,
-                                 /*read_rows=*/num_output_rows));
-  path->set_init_once_cost(init_cost);
   path->num_output_rows_before_filter = num_output_rows;
   path->set_cost_before_filter(path->cost());
-
-  // Since the table access path is more of a placeholder in the EXPLAIN
-  // output, we keep the table access cost and the temp table materialization
-  // path cost the same. This way EXPLAIN won't have to adjust the cost figures
-  // the way it currently does for Materialization path.
-  table_path->set_num_output_rows(num_output_rows);
-  table_path->set_init_cost(init_cost);
-  table_path->set_cost(path->cost());
 }
 
 void EstimateWindowCost(AccessPath *path) {

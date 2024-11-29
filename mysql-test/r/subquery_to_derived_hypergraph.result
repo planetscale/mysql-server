@@ -650,12 +650,11 @@ Warning	1287	Setting user variables within expressions is deprecated and will be
 #
 explain SELECT DISTINCT 3 + (SELECT COUNT(a) + RAND() FROM t1) FROM t1;
 EXPLAIN
--> Table scan on <temporary>  (rows=2)
-    -> Temporary table with deduplication  (rows=2)
+-> Sort row IDs with duplicate removal: 3 + (SELECT COUNT(a) + RAND() FROM t1)  (rows=2)
+    -> Table scan on t1  (rows=4)
+-> Select #2 (subquery in projection; uncacheable)
+    -> Aggregate: count(t1.a)  (rows=1)
         -> Table scan on t1  (rows=4)
-        -> Select #2 (subquery in projection; uncacheable)
-            -> Aggregate: count(t1.a)  (rows=1)
-                -> Table scan on t1  (rows=4)
 
 SELECT COUNT(*) > 1 FROM (SELECT DISTINCT 3 + (SELECT COUNT(a) + RAND() FROM t1) FROM t1) AS dt;
 COUNT(*) > 1
@@ -675,15 +674,16 @@ FROM t1
 JOIN t2
 ON t1.a+t2.a = (SELECT COUNT(*) FROM t1);
 EXPLAIN
--> Nested loop inner join  (rows=8)
-    -> Table scan on t2  (rows=2)
-    -> Filter: ((t1.a + t2.a) = derived_1_2.`COUNT(*)`)  (rows=4)
-        -> Nested loop inner join  (rows=4)
-            -> Table scan on t1  (rows=4)
-            -> Covering index lookup on derived_1_2 using <auto_key0> (COUNT(*) = (t1.a + t2.a))  (rows=1)
+-> Inner hash join (no condition), extra conditions: ((t1.a + t2.a) = derived_1_2.`COUNT(*)`)  (rows=8)
+    -> Inner hash join (no condition)  (rows=4)
+        -> Table scan on t1  (rows=4)
+        -> Hash
+            -> Table scan on derived_1_2  (rows=1)
                 -> Materialize  (rows=1)
                     -> Aggregate: count(0)  (rows=1)
                         -> Table scan on t1  (rows=4)
+    -> Hash
+        -> Table scan on t2  (rows=2)
 
 SELECT t1.a, t2.a, t3.a
 FROM t1
@@ -702,7 +702,7 @@ JOIN t3
 ON t1.a + (SELECT MIN(a) FROM t1) = t3.b;
 EXPLAIN
 -> Inner hash join ((t1.a + derived_1_3.`MIN(a)`) = t3.b)  (rows=16)
-    -> Nested loop inner join  (rows=8)
+    -> Inner hash join (no condition), extra conditions: ((t1.a + t2.a) = derived_1_2.`COUNT(*)`)  (rows=8)
         -> Inner hash join (no condition)  (rows=4)
             -> Table scan on t1  (rows=4)
             -> Hash
@@ -710,13 +710,14 @@ EXPLAIN
                     -> Materialize  (rows=1)
                         -> Aggregate: min(t1.a)  (rows=1)
                             -> Table scan on t1  (rows=4)
-        -> Filter: ((t1.a + t2.a) = derived_1_2.`COUNT(*)`)  (rows=2)
-            -> Nested loop inner join  (rows=2)
+        -> Hash
+            -> Inner hash join (no condition)  (rows=2)
                 -> Table scan on t2  (rows=2)
-                -> Covering index lookup on derived_1_2 using <auto_key0> (COUNT(*) = (t1.a + t2.a))  (rows=1)
-                    -> Materialize  (rows=1)
-                        -> Aggregate: count(0)  (rows=1)
-                            -> Table scan on t1  (rows=4)
+                -> Hash
+                    -> Table scan on derived_1_2  (rows=1)
+                        -> Materialize  (rows=1)
+                            -> Aggregate: count(0)  (rows=1)
+                                -> Table scan on t1  (rows=4)
     -> Hash
         -> Table scan on t3  (rows=2)
 
@@ -845,10 +846,10 @@ EXPLAIN
                             -> Aggregate: min(t1.a)  (rows=1)
                                 -> Table scan on t1  (rows=4)
             -> Hash
-                -> Nested loop inner join  (rows=0.2)
+                -> Inner hash join (t2.a = derived_1_2.`COUNT(*)`)  (rows=0.2)
                     -> Table scan on t2  (rows=2)
-                    -> Filter: (t2.a = derived_1_2.`COUNT(*)`)  (rows=0.01)
-                        -> Covering index lookup on derived_1_2 using <auto_key0> (COUNT(*) = t2.a)  (rows=0.1)
+                    -> Hash
+                        -> Table scan on derived_1_2  (rows=1)
                             -> Materialize  (rows=1)
                                 -> Aggregate: count(0)  (rows=1)
                                     -> Table scan on t1  (rows=4)
@@ -1422,33 +1423,34 @@ HAVING IFNULL(SUM(s1.cnt)/ NULLIF((SELECT COUNT(*) FROM events_digest), 0), 0) >
 ORDER BY percentile LIMIT 1;
 EXPLAIN
 -> Sort: percentile, limit input to 1 row(s) per chunk  (rows=1)
-    -> Filter: (ifnull((`sum(sys.s1.cnt)` / `nullif(derived_1_3.``COUNT(*)``,0)`),0) > 0.95)  (rows=3.74)
-        -> Table scan on <temporary>  (rows=3.74)
-            -> Aggregate using temporary table  (rows=3.74)
-                -> Left hash join (no condition)  (rows=66.7)
+    -> Stream results  (rows=3.74)
+        -> Filter: (ifnull((sum(sys.s1.cnt) / nullif(derived_1_3.`COUNT(*)`,0)),0) > 0.95)  (rows=3.74)
+            -> Group aggregate: sum(sys.s1.cnt), sum(sys.s1.cnt)  (rows=3.74)
+                -> Sort: sys.s2.avg_us  (rows=66.7)
                     -> Left hash join (no condition)  (rows=66.7)
-                        -> Inner hash join (no condition), extra conditions: (sys.s1.avg_us <= sys.s2.avg_us)  (rows=66.7)
-                            -> Table scan on s1  (rows=14.1)
-                                -> Materialize  (rows=14.1)
-                                    -> Table scan on <temporary>  (rows=14.1)
-                                        -> Aggregate using temporary table  (rows=14.1)
-                                            -> Table scan on events_statements_summary_by_digest  (rows=200)
-                            -> Hash
-                                -> Table scan on s2  (rows=14.1)
+                        -> Left hash join (no condition)  (rows=66.7)
+                            -> Inner hash join (no condition), extra conditions: (sys.s1.avg_us <= sys.s2.avg_us)  (rows=66.7)
+                                -> Table scan on s1  (rows=14.1)
                                     -> Materialize  (rows=14.1)
                                         -> Table scan on <temporary>  (rows=14.1)
                                             -> Aggregate using temporary table  (rows=14.1)
                                                 -> Table scan on events_statements_summary_by_digest  (rows=200)
+                                -> Hash
+                                    -> Table scan on s2  (rows=14.1)
+                                        -> Materialize  (rows=14.1)
+                                            -> Table scan on <temporary>  (rows=14.1)
+                                                -> Aggregate using temporary table  (rows=14.1)
+                                                    -> Table scan on events_statements_summary_by_digest  (rows=200)
+                            -> Hash
+                                -> Table scan on derived_1_2  (rows=1)
+                                    -> Materialize  (rows=1)
+                                        -> Aggregate: count(0)  (rows=1)
+                                            -> Table scan on events_statements_summary_by_digest  (rows=200)
                         -> Hash
-                            -> Table scan on derived_1_2  (rows=1)
+                            -> Table scan on derived_1_3  (rows=1)
                                 -> Materialize  (rows=1)
                                     -> Aggregate: count(0)  (rows=1)
                                         -> Table scan on events_statements_summary_by_digest  (rows=200)
-                    -> Hash
-                        -> Table scan on derived_1_3  (rows=1)
-                            -> Materialize  (rows=1)
-                                -> Aggregate: count(0)  (rows=1)
-                                    -> Table scan on events_statements_summary_by_digest  (rows=200)
 
 # Manually translated, equivalent query (except we need to
 # include the derived_1_1.`COUNT(*)` in the select list for it
@@ -1474,33 +1476,34 @@ HAVING (IFNULL((SUM(s1.cnt) / NULLIF(derived_1_1.`COUNT(*)`,0)),0) > 0.95)
 ORDER BY percentile LIMIT 1;
 EXPLAIN
 -> Sort: percentile, limit input to 1 row(s) per chunk  (rows=1)
-    -> Filter: (ifnull((`sum(sys.s1.cnt)` / `nullif(derived_1_1.``COUNT(*)``,0)`),0) > 0.95)  (rows=3.74)
-        -> Table scan on <temporary>  (rows=3.74)
-            -> Aggregate using temporary table  (rows=3.74)
-                -> Left hash join (no condition)  (rows=66.7)
+    -> Stream results  (rows=3.74)
+        -> Filter: (ifnull((sum(sys.s1.cnt) / nullif(derived_1_1.`COUNT(*)`,0)),0) > 0.95)  (rows=3.74)
+            -> Group aggregate: sum(sys.s1.cnt), sum(sys.s1.cnt)  (rows=3.74)
+                -> Sort: sys.s2.avg_us  (rows=66.7)
                     -> Left hash join (no condition)  (rows=66.7)
-                        -> Inner hash join (no condition), extra conditions: (sys.s1.avg_us <= sys.s2.avg_us)  (rows=66.7)
-                            -> Table scan on s1  (rows=14.1)
-                                -> Materialize  (rows=14.1)
-                                    -> Table scan on <temporary>  (rows=14.1)
-                                        -> Aggregate using temporary table  (rows=14.1)
-                                            -> Table scan on events_statements_summary_by_digest  (rows=200)
-                            -> Hash
-                                -> Table scan on s2  (rows=14.1)
+                        -> Left hash join (no condition)  (rows=66.7)
+                            -> Inner hash join (no condition), extra conditions: (sys.s1.avg_us <= sys.s2.avg_us)  (rows=66.7)
+                                -> Table scan on s1  (rows=14.1)
                                     -> Materialize  (rows=14.1)
                                         -> Table scan on <temporary>  (rows=14.1)
                                             -> Aggregate using temporary table  (rows=14.1)
                                                 -> Table scan on events_statements_summary_by_digest  (rows=200)
+                                -> Hash
+                                    -> Table scan on s2  (rows=14.1)
+                                        -> Materialize  (rows=14.1)
+                                            -> Table scan on <temporary>  (rows=14.1)
+                                                -> Aggregate using temporary table  (rows=14.1)
+                                                    -> Table scan on events_statements_summary_by_digest  (rows=200)
+                            -> Hash
+                                -> Table scan on derived_1_0  (rows=1)
+                                    -> Materialize  (rows=1)
+                                        -> Aggregate: count(0)  (rows=1)
+                                            -> Table scan on events_statements_summary_by_digest  (rows=200)
                         -> Hash
-                            -> Table scan on derived_1_0  (rows=1)
+                            -> Table scan on derived_1_1  (rows=1)
                                 -> Materialize  (rows=1)
                                     -> Aggregate: count(0)  (rows=1)
                                         -> Table scan on events_statements_summary_by_digest  (rows=200)
-                    -> Hash
-                        -> Table scan on derived_1_1  (rows=1)
-                            -> Materialize  (rows=1)
-                                -> Aggregate: count(0)  (rows=1)
-                                    -> Table scan on events_statements_summary_by_digest  (rows=200)
 
 SET sql_mode=default;
 # outer query has window: verify it is retained on outer level
@@ -3232,25 +3235,25 @@ ORDER BY sp
 LIMIT 5;
 EXPLAIN
 -> Sort: sp, limit input to 5 row(s) per chunk  (rows=5)
-    -> Table scan on <temporary>  (rows=500)
-        -> Temporary table with deduplication  (rows=500)
-            -> Left hash join (t2.login = derived_1_3.login)  (rows=500)
-                -> Left hash join (t2.login = derived_1_2.login)  (rows=500)
-                    -> Nested loop inner join  (rows=500)
+    -> Group (no aggregates)  (rows=500)
+        -> Nested loop inner join  (rows=500)
+            -> Sort: t2.login  (rows=500)
+                -> Left hash join (t2.login = derived_1_3.login)  (rows=500)
+                    -> Left hash join (t2.login = derived_1_2.login)  (rows=500)
                         -> Covering index scan on t2 using login  (rows=500)
-                        -> Single-row index lookup on t1 using PRIMARY (login = t2.login)  (rows=1)
+                        -> Hash
+                            -> Table scan on derived_1_2  (rows=500)
+                                -> Materialize  (rows=500)
+                                    -> Group aggregate: sum(tbl2.nump)  (rows=500)
+                                        -> Sort: tbl2.login  (rows=500)
+                                            -> Table scan on tbl2  (rows=500)
                     -> Hash
-                        -> Table scan on derived_1_2  (rows=500)
+                        -> Table scan on derived_1_3  (rows=500)
                             -> Materialize  (rows=500)
                                 -> Group aggregate: sum(tbl2.nump)  (rows=500)
                                     -> Sort: tbl2.login  (rows=500)
                                         -> Table scan on tbl2  (rows=500)
-                -> Hash
-                    -> Table scan on derived_1_3  (rows=500)
-                        -> Materialize  (rows=500)
-                            -> Group aggregate: sum(tbl2.nump)  (rows=500)
-                                -> Sort: tbl2.login  (rows=500)
-                                    -> Table scan on tbl2  (rows=500)
+            -> Single-row index lookup on t1 using PRIMARY (login = t2.login)  (rows=1)
 
 Warnings:
 Note	1276	Field or reference 'test.t1.login' of SELECT #2 was resolved in SELECT #1
@@ -3285,25 +3288,25 @@ ORDER BY numb - IFNULL((SELECT sum(nump) FROM tbl2 WHERE login=t1.login), 0)
 LIMIT 5;
 EXPLAIN
 -> Sort: sp, limit input to 5 row(s) per chunk  (rows=5)
-    -> Table scan on <temporary>  (rows=500)
-        -> Temporary table with deduplication  (rows=500)
-            -> Left hash join (t2.login = derived_1_3.login)  (rows=500)
-                -> Left hash join (t2.login = derived_1_2.login)  (rows=500)
-                    -> Nested loop inner join  (rows=500)
+    -> Group (no aggregates)  (rows=500)
+        -> Nested loop inner join  (rows=500)
+            -> Sort: t2.login  (rows=500)
+                -> Left hash join (t2.login = derived_1_3.login)  (rows=500)
+                    -> Left hash join (t2.login = derived_1_2.login)  (rows=500)
                         -> Covering index scan on t2 using login  (rows=500)
-                        -> Single-row index lookup on t1 using PRIMARY (login = t2.login)  (rows=1)
+                        -> Hash
+                            -> Table scan on derived_1_2  (rows=500)
+                                -> Materialize  (rows=500)
+                                    -> Group aggregate: sum(tbl2.nump)  (rows=500)
+                                        -> Sort: tbl2.login  (rows=500)
+                                            -> Table scan on tbl2  (rows=500)
                     -> Hash
-                        -> Table scan on derived_1_2  (rows=500)
+                        -> Table scan on derived_1_3  (rows=500)
                             -> Materialize  (rows=500)
                                 -> Group aggregate: sum(tbl2.nump)  (rows=500)
                                     -> Sort: tbl2.login  (rows=500)
                                         -> Table scan on tbl2  (rows=500)
-                -> Hash
-                    -> Table scan on derived_1_3  (rows=500)
-                        -> Materialize  (rows=500)
-                            -> Group aggregate: sum(tbl2.nump)  (rows=500)
-                                -> Sort: tbl2.login  (rows=500)
-                                    -> Table scan on tbl2  (rows=500)
+            -> Single-row index lookup on t1 using PRIMARY (login = t2.login)  (rows=1)
 
 Warnings:
 Note	1276	Field or reference 'test.t1.login' of SELECT #2 was resolved in SELECT #1
@@ -3331,13 +3334,14 @@ EXPLAIN
 -> Filter: (ma < derived_1_2.`MAX(t2.a)`)  (rows=3.16)
     -> Group aggregate: max(t4.a)  (rows=3.16)
         -> Sort: t4.b  (rows=10)
-            -> Nested loop left join  (rows=10)
+            -> Left hash join (derived_1_2.b = t4.b)  (rows=10)
                 -> Table scan on t4  (rows=10)
-                -> Index lookup on derived_1_2 using <auto_key0> (b = t4.b)  (rows=0.173)
-                    -> Materialize  (rows=1.73)
-                        -> Group aggregate: max(t2.a)  (rows=1.73)
-                            -> Sort: t2.b  (rows=3)
-                                -> Table scan on t2  (rows=3)
+                -> Hash
+                    -> Table scan on derived_1_2  (rows=1.73)
+                        -> Materialize  (rows=1.73)
+                            -> Group aggregate: max(t2.a)  (rows=1.73)
+                                -> Sort: t2.b  (rows=3)
+                                    -> Table scan on t2  (rows=3)
 
 Warnings:
 Note	1276	Field or reference 'test.t4.b' of SELECT #2 was resolved in SELECT #1
@@ -3524,23 +3528,21 @@ JOIN t1 AS table2
 ON table2.col_int_key = table1.col_int_key
 );
 EXPLAIN
--> Nested loop inner join (LooseScan)  (rows=0.462)
-    -> Remove duplicates from input grouped on table1.col_int_key, derived_3_4.`COUNT( col_int_key )`  (rows=2.31)
-        -> Sort: table1.col_int_key, derived_3_4.`COUNT( col_int_key )`  (rows=5.33)
-            -> Inner hash join (no condition)  (rows=5.33)
-                -> Nested loop inner join  (rows=5.33)
-                    -> Table scan on table2  (rows=4)
-                    -> Covering index lookup on table1 using col_int_key (col_int_key = table2.col_int_key)  (rows=1.33)
-                -> Hash
-                    -> Table scan on derived_3_4  (rows=1)
-                        -> Materialize  (rows=1)
-                            -> Aggregate: count(t1.col_int_key)  (rows=1)
-                                -> Table scan on t1  (rows=4)
-    -> Filter: (where_subselect_20070.field1 = table1.col_int_key)  (rows=0.2)
-        -> Inner hash join (no condition)  (rows=0.6)
-            -> Table scan on where_subselect_20070  (rows=6)
+-> Hash semijoin (FirstMatch) (where_subselect_20070.field1 = table1.col_int_key), (derived_1_2.`COUNT( col_int_key )` = derived_3_4.`COUNT( col_int_key )`)  (rows=0.462)
+    -> Inner hash join (no condition)  (rows=6)
+        -> Table scan on where_subselect_20070  (rows=6)
+        -> Hash
+            -> Table scan on derived_1_2  (rows=1)
+                -> Materialize  (rows=1)
+                    -> Aggregate: count(t1.col_int_key)  (rows=1)
+                        -> Table scan on t1  (rows=4)
+    -> Hash
+        -> Inner hash join (no condition)  (rows=5.33)
+            -> Nested loop inner join  (rows=5.33)
+                -> Table scan on table2  (rows=4)
+                -> Covering index lookup on table1 using col_int_key (col_int_key = table2.col_int_key)  (rows=1.33)
             -> Hash
-                -> Covering index lookup on derived_1_2 using <auto_key0> (COUNT( col_int_key ) = derived_3_4.`COUNT( col_int_key )`)  (rows=0.1)
+                -> Table scan on derived_3_4  (rows=1)
                     -> Materialize  (rows=1)
                         -> Aggregate: count(t1.col_int_key)  (rows=1)
                             -> Table scan on t1  (rows=4)
@@ -4254,33 +4256,32 @@ EXPLAIN
                         -> Filter: (n.i = 7)  (rows=0.1)
                             -> Table scan on n  (rows=1)
                     -> Hash
-                        -> Inner hash join (FirstMatch) (no condition)  (rows=0.0111)
+                        -> Nested loop inner join (FirstMatch)  (rows=0.0111)
                             -> Limit: 1 row(s)  (rows=0.1)
                                 -> Filter: (n.i = 5)  (rows=0.1)
                                     -> Table scan on n  (rows=1)
-                            -> Hash
-                                -> Nested loop inner join (FirstMatch)  (rows=0.111)
-                                    -> Limit: 1 row(s)  (rows=1)
-                                        -> Table scan on n  (rows=1)
-                                    -> Inner hash join (no condition)  (rows=0.111)
-                                        -> Inner hash join (no condition)  (rows=0.333)
-                                            -> Table scan on table3  (rows=1)
-                                            -> Hash
-                                                -> Inner hash join (no condition), extra conditions: (table1.i <= derived_8_12.`MAX(``n``.``i``)`)  (rows=0.333)
-                                                    -> Table scan on table1  (rows=1)
-                                                    -> Hash
-                                                        -> Table scan on derived_8_12  (rows=1)
-                                                            -> Materialize  (rows=1)
-                                                                -> Aggregate: max(n.i)  (rows=1)
-                                                                    -> Table scan on n  (rows=1)
+                            -> Nested loop inner join (FirstMatch)  (rows=0.111)
+                                -> Limit: 1 row(s)  (rows=1)
+                                    -> Table scan on n  (rows=1)
+                                -> Inner hash join (no condition)  (rows=0.111)
+                                    -> Inner hash join (no condition)  (rows=0.333)
+                                        -> Table scan on table3  (rows=1)
                                         -> Hash
-                                            -> Inner hash join (no condition), extra conditions: (table2.i <= derived_8_13.`MAX(``n``.``i``)`)  (rows=0.333)
-                                                -> Table scan on derived_8_13  (rows=1)
-                                                    -> Materialize  (rows=1)
-                                                        -> Aggregate: max(n.i)  (rows=1)
-                                                            -> Table scan on n  (rows=1)
+                                            -> Inner hash join (no condition), extra conditions: (table1.i <= derived_8_12.`MAX(``n``.``i``)`)  (rows=0.333)
+                                                -> Table scan on table1  (rows=1)
                                                 -> Hash
-                                                    -> Table scan on table2  (rows=1)
+                                                    -> Table scan on derived_8_12  (rows=1)
+                                                        -> Materialize  (rows=1)
+                                                            -> Aggregate: max(n.i)  (rows=1)
+                                                                -> Table scan on n  (rows=1)
+                                    -> Hash
+                                        -> Inner hash join (no condition), extra conditions: (table2.i <= derived_8_13.`MAX(``n``.``i``)`)  (rows=0.333)
+                                            -> Table scan on derived_8_13  (rows=1)
+                                                -> Materialize  (rows=1)
+                                                    -> Aggregate: max(n.i)  (rows=1)
+                                                        -> Table scan on n  (rows=1)
+                                            -> Hash
+                                                -> Table scan on table2  (rows=1)
     -> Hash
         -> Table scan on derived_1_14  (rows=1)
             -> Materialize  (rows=1)
@@ -4393,33 +4394,32 @@ EXPLAIN
                         -> Filter: (n.i = 7)  (rows=0.1)
                             -> Table scan on n  (rows=1)
                     -> Hash
-                        -> Inner hash join (FirstMatch) (no condition)  (rows=0.0111)
+                        -> Nested loop inner join (FirstMatch)  (rows=0.0111)
                             -> Limit: 1 row(s)  (rows=0.1)
                                 -> Filter: (n.i = 5)  (rows=0.1)
                                     -> Table scan on n  (rows=1)
-                            -> Hash
-                                -> Nested loop inner join (FirstMatch)  (rows=0.111)
-                                    -> Limit: 1 row(s)  (rows=1)
-                                        -> Table scan on n  (rows=1)
-                                    -> Inner hash join (no condition)  (rows=0.111)
-                                        -> Inner hash join (no condition)  (rows=0.333)
-                                            -> Table scan on table3  (rows=1)
-                                            -> Hash
-                                                -> Inner hash join (no condition), extra conditions: (table1.i <= derived_8_12.`MAX(``n``.``i``)`)  (rows=0.333)
-                                                    -> Table scan on table1  (rows=1)
-                                                    -> Hash
-                                                        -> Table scan on derived_8_12  (rows=1)
-                                                            -> Materialize  (rows=1)
-                                                                -> Aggregate: max(n.i)  (rows=1)
-                                                                    -> Table scan on n  (rows=1)
+                            -> Nested loop inner join (FirstMatch)  (rows=0.111)
+                                -> Limit: 1 row(s)  (rows=1)
+                                    -> Table scan on n  (rows=1)
+                                -> Inner hash join (no condition)  (rows=0.111)
+                                    -> Inner hash join (no condition)  (rows=0.333)
+                                        -> Table scan on table3  (rows=1)
                                         -> Hash
-                                            -> Inner hash join (no condition), extra conditions: (table2.i <= derived_8_13.`MAX(``n``.``i``)`)  (rows=0.333)
-                                                -> Table scan on derived_8_13  (rows=1)
-                                                    -> Materialize  (rows=1)
-                                                        -> Aggregate: max(n.i)  (rows=1)
-                                                            -> Table scan on n  (rows=1)
+                                            -> Inner hash join (no condition), extra conditions: (table1.i <= derived_8_12.`MAX(``n``.``i``)`)  (rows=0.333)
+                                                -> Table scan on table1  (rows=1)
                                                 -> Hash
-                                                    -> Table scan on table2  (rows=1)
+                                                    -> Table scan on derived_8_12  (rows=1)
+                                                        -> Materialize  (rows=1)
+                                                            -> Aggregate: max(n.i)  (rows=1)
+                                                                -> Table scan on n  (rows=1)
+                                    -> Hash
+                                        -> Inner hash join (no condition), extra conditions: (table2.i <= derived_8_13.`MAX(``n``.``i``)`)  (rows=0.333)
+                                            -> Table scan on derived_8_13  (rows=1)
+                                                -> Materialize  (rows=1)
+                                                    -> Aggregate: max(n.i)  (rows=1)
+                                                        -> Table scan on n  (rows=1)
+                                            -> Hash
+                                                -> Table scan on table2  (rows=1)
     -> Hash
         -> Table scan on derived_1_14  (rows=1)
             -> Materialize  (rows=1)
@@ -5305,9 +5305,9 @@ a	c
 4	6
 EXPLAIN SELECT a,c FROM v1 GROUP BY b HAVING c > 0;
 EXPLAIN
--> Filter: (c > 0)  (rows=1)
-    -> Table scan on <temporary>  (rows=3)
-        -> Temporary table with deduplication  (rows=3)
+-> Filter: (derived_2_3.`count(0)` > 0)  (rows=1)
+    -> Group (no aggregates)  (rows=3)
+        -> Sort: b  (rows=9)
             -> Left hash join (no condition)  (rows=9)
                 -> Table scan on t1  (rows=9)
                 -> Hash
@@ -5749,6 +5749,9 @@ CREATE TABLE t1 (a INT, b INT);
 INSERT INTO t1 VALUES(1,10),(2,20),(3,30);
 CREATE TABLE t2 (a INT, b INT);
 INSERT INTO t2 VALUES(1,10),(2,20),(3,30),(1,110),(2,120),(3,130);
+INSERT INTO t2 SELECT * FROM t2;
+INSERT INTO t2 SELECT * FROM t2;
+INSERT INTO t2 SELECT * FROM t2;
 ANALYZE TABLE t1,t2;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
@@ -5759,12 +5762,12 @@ EXPLAIN
 -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
     -> Nested loop left join  (rows=3)
         -> Table scan on ot  (rows=3)
-        -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0245)
-            -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-                -> Materialize  (rows=2.45)
-                    -> Table scan on <temporary>  (rows=2.45)
-                        -> Temporary table with deduplication  (rows=2.45)
-                            -> Table scan on it  (rows=6)
+        -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0693)
+            -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+                -> Materialize  (rows=6.93)
+                    -> Table scan on <temporary>  (rows=6.93)
+                        -> Temporary table with deduplication  (rows=6.93)
+                            -> Table scan on it  (rows=48)
 
 SELECT * FROM t1 ot
 WHERE ot.b<0 OR ot.a IN (SELECT it.a+1 FROM t2 it);
@@ -5781,8 +5784,8 @@ EXPLAIN
         -> Filter: ((ot.a = `<materialized_subquery>`.`it.a+1`))  (rows=1)
             -> Limit: 1 row(s)  (rows=1)
                 -> Index lookup on <materialized_subquery> using <auto_distinct_key> (it.a+1 = ot.a)
-                    -> Materialize with deduplication  (rows=6)
-                        -> Table scan on it  (rows=6)
+                    -> Materialize with deduplication  (rows=48)
+                        -> Table scan on it  (rows=48)
 
 SELECT * FROM t1 ot
 WHERE ot.b<0 OR ot.a IN (SELECT it.a+1 FROM t2 it);
@@ -5795,15 +5798,14 @@ WHERE ot.b<0 OR (ot.a,ot.a+1,ot.a+2)
 IN (SELECT it.a+1 AS myname,it.a+2 AS myname,it.a+3 FROM t2 it
 WHERE it.a+3=ot.a+2);
 EXPLAIN
--> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
-    -> Nested loop left join  (rows=3)
+-> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=5.47)
+    -> Nested loop left join  (rows=5.47)
         -> Table scan on ot  (rows=3)
-        -> Filter: ((ot.a = derived_1_2.Name_exp_1) and ((ot.a + 1) = derived_1_2.Name_exp_2) and ((ot.a + 2) = derived_1_2.Name_exp_3) and ((ot.a + 2) = derived_1_2.Name_exp_4))  (rows=0.0245)
-            -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a, Name_exp_2 = (ot.a + 1), Name_exp_3 = (ot.a + 2), Name_exp_4 = (ot.a + 2))  (rows=0.245)
-                -> Materialize  (rows=2.45)
-                    -> Table scan on <temporary>  (rows=2.45)
-                        -> Temporary table with deduplication  (rows=2.45)
-                            -> Table scan on it  (rows=6)
+        -> Filter: ((ot.a = derived_1_2.Name_exp_1) and ((ot.a + 1) = derived_1_2.Name_exp_2) and ((ot.a + 2) = derived_1_2.Name_exp_3) and ((ot.a + 2) = derived_1_2.Name_exp_4))  (rows=0.182)
+            -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a, Name_exp_2 = (ot.a + 1), Name_exp_3 = (ot.a + 2), Name_exp_4 = (ot.a + 2))  (rows=1.82)
+                -> Materialize  (rows=18.2)
+                    -> Sort with duplicate removal: Name_exp_1, Name_exp_2, Name_exp_3  (rows=18.2)
+                        -> Table scan on it  (rows=48)
 
 Warnings:
 Note	1276	Field or reference 'test.ot.a' of SELECT #2 was resolved in SELECT #1
@@ -5820,12 +5822,11 @@ EXPLAIN
 -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
     -> Nested loop left join  (rows=3)
         -> Table scan on ot  (rows=3)
-        -> Filter: (ot.a = derived_1_2.Name_exp_2)  (rows=0.0245)
-            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_2 = ot.a)  (rows=0.245)
-                -> Materialize  (rows=2.45)
-                    -> Table scan on <temporary>  (rows=2.45)
-                        -> Temporary table with deduplication  (rows=2.45)
-                            -> Table scan on it  (rows=6)
+        -> Filter: (ot.a = derived_1_2.Name_exp_2)  (rows=0.0693)
+            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_2 = ot.a)  (rows=0.693)
+                -> Materialize  (rows=6.93)
+                    -> Sort with duplicate removal: Name_exp_2  (rows=6.93)
+                        -> Table scan on it  (rows=48)
 
 Warnings:
 Note	1276	Field or reference 'test.ot.a' of SELECT #2 was resolved in SELECT #1
@@ -5840,12 +5841,11 @@ EXPLAIN
 -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
     -> Nested loop left join  (rows=3)
         -> Table scan on ot  (rows=3)
-        -> Filter: (ot.a = derived_1_2.Name_exp_2)  (rows=0.0245)
-            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_2 = ot.a)  (rows=0.245)
-                -> Materialize  (rows=2.45)
-                    -> Table scan on <temporary>  (rows=2.45)
-                        -> Temporary table with deduplication  (rows=2.45)
-                            -> Table scan on it  (rows=6)
+        -> Filter: (ot.a = derived_1_2.Name_exp_2)  (rows=0.0693)
+            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_2 = ot.a)  (rows=0.693)
+                -> Materialize  (rows=6.93)
+                    -> Sort with duplicate removal: Name_exp_2  (rows=6.93)
+                        -> Table scan on it  (rows=48)
 
 Warnings:
 Note	1276	Field or reference 'test.ot.a' of SELECT #2 was resolved in SELECT #1
@@ -5860,12 +5860,11 @@ EXPLAIN
 -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
     -> Nested loop left join  (rows=3)
         -> Table scan on ot  (rows=3)
-        -> Filter: (ot.a = derived_1_2.Name_exp_3)  (rows=0.0245)
-            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_3 = ot.a)  (rows=0.245)
-                -> Materialize  (rows=2.45)
-                    -> Table scan on <temporary>  (rows=2.45)
-                        -> Temporary table with deduplication  (rows=2.45)
-                            -> Table scan on it  (rows=6)
+        -> Filter: (ot.a = derived_1_2.Name_exp_3)  (rows=0.0693)
+            -> Index lookup on derived_1_2 using <auto_key0> (Name_exp_3 = ot.a)  (rows=0.693)
+                -> Materialize  (rows=6.93)
+                    -> Sort with duplicate removal: Name_exp_3  (rows=6.93)
+                        -> Table scan on it  (rows=48)
 
 Warnings:
 Note	1276	Field or reference 'test.ot.b' of SELECT #2 was resolved in SELECT #1
@@ -5889,12 +5888,12 @@ EXPLAIN
 -> Nested loop left join  (rows=1)
     -> Filter: (ot.b < 0)  (rows=1)
         -> Table scan on ot  (rows=3)
-    -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0245)
-        -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-            -> Materialize  (rows=2.45)
-                -> Table scan on <temporary>  (rows=2.45)
-                    -> Temporary table with deduplication  (rows=2.45)
-                        -> Table scan on it  (rows=6)
+    -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0693)
+        -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+            -> Materialize  (rows=6.93)
+                -> Table scan on <temporary>  (rows=6.93)
+                    -> Temporary table with deduplication  (rows=6.93)
+                        -> Table scan on it  (rows=48)
 
 SELECT * FROM t1 ot
 WHERE ot.b<0 OR (ot.b<0 AND (ot.b<0 OR ot.a IN (SELECT it.a+1 FROM t2 it)));
@@ -5904,16 +5903,16 @@ WHERE ot.b<0 OR ot.a IN (SELECT it.a+1 FROM (SELECT * FROM t2 LIMIT 1) it
 WHERE it.a+3=ot.a+1);
 EXPLAIN
 -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
-    -> Nested loop left join  (rows=3)
+    -> Left hash join (ot.a = derived_1_2.Name_exp_1), ((ot.a + 1) = derived_1_2.Name_exp_2)  (rows=3)
         -> Table scan on ot  (rows=3)
-        -> Filter: ((ot.a = derived_1_2.Name_exp_1) and ((ot.a + 1) = derived_1_2.Name_exp_2))  (rows=0.01)
-            -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a, Name_exp_2 = (ot.a + 1))  (rows=0.1)
+        -> Hash
+            -> Table scan on derived_1_2  (rows=1)
                 -> Materialize  (rows=1)
                     -> Sort with duplicate removal: Name_exp_1, Name_exp_2  (rows=1)
                         -> Table scan on it  (rows=1)
                             -> Materialize  (rows=1)
                                 -> Limit: 1 row(s)  (rows=1)
-                                    -> Table scan on t2  (rows=6)
+                                    -> Table scan on t2  (rows=48)
 
 Warnings:
 Note	1276	Field or reference 'test.ot.a' of SELECT #2 was resolved in SELECT #1
@@ -5925,12 +5924,12 @@ EXPLAIN
     -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
         -> Nested loop left join  (rows=3)
             -> Table scan on ot  (rows=3)
-            -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0245)
-                -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-                    -> Materialize  (rows=2.45)
-                        -> Table scan on <temporary>  (rows=2.45)
-                            -> Temporary table with deduplication  (rows=2.45)
-                                -> Table scan on it  (rows=6)
+            -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0693)
+                -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+                    -> Materialize  (rows=6.93)
+                        -> Table scan on <temporary>  (rows=6.93)
+                            -> Temporary table with deduplication  (rows=6.93)
+                                -> Table scan on it  (rows=48)
 
 UPDATE t1 ot SET a=a*100
 WHERE ot.b<0 OR ot.a IN (SELECT it.a+1 FROM t2 it);
@@ -5950,12 +5949,12 @@ EXPLAIN
         -> Inner hash join (no condition)  (rows=3)
             -> Nested loop left join  (rows=3)
                 -> Table scan on ot  (rows=3)
-                -> Filter: (ot.a = derived_1_3.Name_exp_1)  (rows=0.0245)
-                    -> Covering index lookup on derived_1_3 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-                        -> Materialize  (rows=2.45)
-                            -> Table scan on <temporary>  (rows=2.45)
-                                -> Temporary table with deduplication  (rows=2.45)
-                                    -> Table scan on it  (rows=6)
+                -> Filter: (ot.a = derived_1_3.Name_exp_1)  (rows=0.0693)
+                    -> Covering index lookup on derived_1_3 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+                        -> Materialize  (rows=6.93)
+                            -> Table scan on <temporary>  (rows=6.93)
+                                -> Temporary table with deduplication  (rows=6.93)
+                                    -> Table scan on it  (rows=48)
             -> Hash
                 -> Table scan on dummy  (rows=1)
                     -> Materialize  (rows=1)
@@ -5978,12 +5977,12 @@ EXPLAIN
     -> Filter: ((ot.b < 0) or (derived_1_2.Name_exp_1 is not null))  (rows=3)
         -> Nested loop left join  (rows=3)
             -> Table scan on ot  (rows=3)
-            -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0245)
-                -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-                    -> Materialize  (rows=2.45)
-                        -> Table scan on <temporary>  (rows=2.45)
-                            -> Temporary table with deduplication  (rows=2.45)
-                                -> Table scan on it  (rows=6)
+            -> Filter: (ot.a = derived_1_2.Name_exp_1)  (rows=0.0693)
+                -> Covering index lookup on derived_1_2 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+                    -> Materialize  (rows=6.93)
+                        -> Table scan on <temporary>  (rows=6.93)
+                            -> Temporary table with deduplication  (rows=6.93)
+                                -> Table scan on it  (rows=48)
 
 DELETE FROM t1 ot
 WHERE ot.b<0 OR ot.a IN (SELECT it.a+1 FROM t2 it);
@@ -6000,12 +5999,12 @@ EXPLAIN
         -> Inner hash join (no condition)  (rows=1)
             -> Nested loop left join  (rows=1)
                 -> Table scan on ot  (rows=1)
-                -> Filter: (ot.a = derived_1_3.Name_exp_1)  (rows=0.0245)
-                    -> Covering index lookup on derived_1_3 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.245)
-                        -> Materialize  (rows=2.45)
-                            -> Table scan on <temporary>  (rows=2.45)
-                                -> Temporary table with deduplication  (rows=2.45)
-                                    -> Table scan on it  (rows=6)
+                -> Filter: (ot.a = derived_1_3.Name_exp_1)  (rows=0.0693)
+                    -> Covering index lookup on derived_1_3 using <auto_key0> (Name_exp_1 = ot.a)  (rows=0.693)
+                        -> Materialize  (rows=6.93)
+                            -> Table scan on <temporary>  (rows=6.93)
+                                -> Temporary table with deduplication  (rows=6.93)
+                                    -> Table scan on it  (rows=48)
             -> Hash
                 -> Table scan on dummy  (rows=1)
                     -> Materialize  (rows=1)

@@ -290,7 +290,7 @@ static void CollectFunctionalDependenciesFromUniqueIndexes(
   }
 }
 
-static size_t CountOrderElements(const ORDER *order) {
+size_t CountOrderElements(const ORDER *order) {
   size_t count = 0;
   for (const ORDER *ptr = order; ptr != nullptr; ptr = ptr->next) {
     ++count;

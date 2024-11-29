@@ -255,7 +255,7 @@ eval $query;
 # We can push past window function as we partition on f2. But cannot push past
 # group by. So pushed condition stays in the HAVING clause of the derived
 let query = SELECT *
-            FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f2)
+            FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f2)
                   FROM t1 GROUP BY f1) as dt WHERE f2 > 30;
 --replace_regex $elide_costs
 eval EXPLAIN FORMAT=tree $query;
@@ -264,7 +264,7 @@ eval $query;
 # We can pushdown only a part of the condition to the derived table. "f2" is
 # not part of the partition clause of window function
 let query = SELECT *
-            FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1)
+            FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f1)
                   FROM t1 GROUP BY f1) as dt
             WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 --replace_regex $elide_costs
@@ -273,7 +273,8 @@ eval $query;
 
 # We can push past window function partially and past group by partially here.
 let query = SELECT *
-            FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2)
+            FROM (SELECT SQL_SMALL_RESULT f1, f2,
+                  SUM(f3) OVER(PARTITION BY f1,f2)
                   FROM t1 GROUP BY f1) as dt
             WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 --replace_regex $elide_costs
@@ -284,7 +285,8 @@ eval $query;
 # other two conditions will stay in HAVING clause (Testing with expressions
 # having fields from partition clause)
 let query = SELECT *
-            FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2),
+            FROM (SELECT SQL_SMALL_RESULT f1, f2,
+                  SUM(f3) OVER(PARTITION BY f1,f2),
                   AVG(f3) OVER (PARTITION BY f1)
                   FROM t1 GROUP BY f1) as dt
             WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;

@@ -1107,8 +1107,6 @@ class Switch_ref_item_slice {
   ~Switch_ref_item_slice() { join->set_ref_item_slice(saved); }
 };
 
-uint get_tmp_table_rec_length(const mem_root_deque<Item *> &items,
-                              bool include_hidden, bool can_skip_aggs);
 bool uses_index_fields_only(Item *item, TABLE *tbl, uint keyno,
                             bool other_tbls_ok);
 bool remove_eq_conds(THD *thd, Item *cond, Item **retcond,
@@ -1308,5 +1306,10 @@ double EstimateRowAccesses(const AccessPath *path, double num_evaluations,
 */
 bool IsHashEquijoinCondition(const Item_eq_base *item, table_map left_side,
                              table_map right_side);
+
+/**
+  Simply counts the ORDER elements.
+*/
+size_t CountOrderElements(const ORDER *order);
 
 #endif /* SQL_OPTIMIZER_INCLUDED */

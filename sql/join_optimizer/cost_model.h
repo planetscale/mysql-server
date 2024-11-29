@@ -143,7 +143,7 @@ void EstimateDeleteRowsCost(AccessPath *path);
 void EstimateUpdateRowsCost(AccessPath *path);
 
 /// Estimate the costs and row count for a STREAM AccessPath.
-void EstimateStreamCost(AccessPath *path);
+void EstimateStreamCost(THD *thd, AccessPath *path);
 
 /**
    Estimate the costs and row count for a WINDOW AccessPath. As described in

@@ -385,14 +385,14 @@ INSERT INTO t1 VALUES (1,'n','X'),(2,'Y','8'),(3,'R','l');
 ANALYZE TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
-EXPLAIN FORMAT=TREE SELECT
+EXPLAIN FORMAT=TREE SELECT SQL_BIG_RESULT
 t1.col_varchar_key AS field1 FROM (t1, t1 as alias1)
 WHERE NOT EXISTS( SELECT alias2.col_varchar_key FROM t1 AS alias2
 WHERE alias2.col_varchar_key >= t1.col_varchar)
 GROUP BY field1;
 EXPLAIN
--> Table scan on <temporary>  (rows=1.95)
-    -> Temporary table with deduplication  (rows=1.95)
+-> Group (no aggregates)  (rows=1.95)
+    -> Sort: t1.col_varchar_key  (rows=3.8)
         -> Inner hash join (no condition)  (rows=3.8)
             -> Table scan on alias1  (rows=3)
             -> Hash
@@ -403,14 +403,14 @@ EXPLAIN
 
 Warnings:
 Note	1276	Field or reference 'test.t1.col_varchar' of SELECT #2 was resolved in SELECT #1
-EXPLAIN FORMAT=JSON SELECT
+EXPLAIN FORMAT=JSON SELECT SQL_BIG_RESULT
 t1.col_varchar_key AS field1 FROM (t1, t1 as alias1)
 WHERE NOT EXISTS( SELECT alias2.col_varchar_key FROM t1 AS alias2
 WHERE alias2.col_varchar_key >= t1.col_varchar)
 GROUP BY field1;
 EXPLAIN
 {
-  "query": "/* select#1 */ select `test`.`t1`.`col_varchar_key` AS `field1` from `test`.`t1` join `test`.`t1` `alias1` anti join (`test`.`t1` `alias2`) on(((`alias2`.`col_varchar_key` >= `test`.`t1`.`col_varchar`))) where true group by `field1`",
+  "query": "/* select#1 */ select sql_big_result `test`.`t1`.`col_varchar_key` AS `field1` from `test`.`t1` join `test`.`t1` `alias1` anti join (`test`.`t1` `alias2`) on(((`alias2`.`col_varchar_key` >= `test`.`t1`.`col_varchar`))) where true group by `field1`",
   "inputs": [
     {
       "inputs": [
@@ -485,19 +485,21 @@ EXPLAIN
           "estimated_first_row_cost": "elided"
         }
       ],
-      "operation": "Temporary table with deduplication",
-      "temp_table": true,
-      "access_type": "materialize",
-      "deduplication": true,
+      "operation": "Sort: t1.col_varchar_key",
+      "access_type": "sort",
+      "sort_fields": [
+        "t1.col_varchar_key"
+      ],
       "estimated_rows": "elided",
       "estimated_total_cost": "elided",
       "estimated_first_row_cost": "elided"
     }
   ],
-  "operation": "Table scan on <temporary>",
+  "group_by": true,
+  "functions": [],
+  "operation": "Group (no aggregates)",
   "query_type": "select",
-  "table_name": "<temporary>",
-  "access_type": "table",
+  "access_type": "aggregate",
   "estimated_rows": "elided",
   "estimated_total_cost": "elided",
   "estimated_first_row_cost": "elided"

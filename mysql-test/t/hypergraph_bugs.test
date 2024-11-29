@@ -413,7 +413,7 @@ ANALYZE TABLE t1, t2;
 # in the hypergraph optimizer"). Then the the row estimate for GROUP BY will also depend
 # on the join order. This triggers the assert (i.e. bug#34861693).
 --replace_regex $elide_costs
-EXPLAIN FORMAT=TREE SELECT x1.a+0 k, COUNT(x1.b) FROM t1 x1
+EXPLAIN FORMAT=TREE SELECT SQL_BIG_RESULT x1.a+0 k, COUNT(x1.b) FROM t1 x1
   LEFT JOIN t2 x2 ON x1.b=x2.a
   LEFT JOIN t1 x3 ON x2.b=x3.a GROUP BY k;
 

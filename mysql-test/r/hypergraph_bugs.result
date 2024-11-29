@@ -502,7 +502,7 @@ ANALYZE TABLE t1, t2;
 Table	Op	Msg_type	Msg_text
 test.t1	analyze	status	OK
 test.t2	analyze	status	OK
-EXPLAIN FORMAT=TREE SELECT x1.a+0 k, COUNT(x1.b) FROM t1 x1
+EXPLAIN FORMAT=TREE SELECT SQL_BIG_RESULT x1.a+0 k, COUNT(x1.b) FROM t1 x1
 LEFT JOIN t2 x2 ON x1.b=x2.a
 LEFT JOIN t1 x3 ON x2.b=x3.a GROUP BY k;
 EXPLAIN
@@ -551,8 +551,8 @@ test.t1	histogram	status	Histogram statistics created for column 'b'.
 test.t1	histogram	status	Histogram statistics created for column 'c'.
 EXPLAIN FORMAT=TREE SELECT a,b FROM t1 GROUP BY a,b;
 EXPLAIN
--> Table scan on <temporary>  (rows=63.7)
-    -> Temporary table with deduplication  (rows=63.7)
+-> Group (no aggregates)  (rows=63.7)
+    -> Sort: t1.a, t1.b  (rows=101)
         -> Table scan on t1  (rows=101)
 
 EXPLAIN ANALYZE SELECT b FROM t1 WHERE b=c;
@@ -837,9 +837,8 @@ EXPLAIN
 
 EXPLAIN ANALYZE SELECT DISTINCT b,c FROM t1;
 EXPLAIN
--> Table scan on <temporary>  (rows=20.6) (actual rows=35 loops=1)
-    -> Temporary table with deduplication  (rows=20.6) (actual rows=35 loops=1)
-        -> Table scan on t1  (rows=100) (actual rows=100 loops=1)
+-> Sort with duplicate removal: t1.b, t1.c  (rows=20.6) (actual rows=35 loops=1)
+    -> Table scan on t1  (rows=100) (actual rows=100 loops=1)
 
 DROP TABLE t1;
 #

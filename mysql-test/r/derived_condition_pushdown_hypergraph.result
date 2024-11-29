@@ -499,7 +499,7 @@ f1	SUM(f2) OVER(PARTITION BY f1)
 3	33
 4	44
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f2)
 FROM t1 GROUP BY f1) as dt WHERE f2 > 30;
 EXPLAIN
 -> Table scan on dt  (rows=2)
@@ -512,13 +512,13 @@ EXPLAIN
                             -> Table scan on t1  (rows=12)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f2)
 FROM t1 GROUP BY f1) as dt WHERE f2 > 30;
 f1	f2	SUM(f3) OVER(PARTITION BY f2)
 3	33	333
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 EXPLAIN
@@ -533,13 +533,14 @@ EXPLAIN
                                 -> Table scan on t1  (rows=12)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1)
+FROM (SELECT SQL_SMALL_RESULT f1, f2, SUM(f3) OVER(PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 f1	f2	SUM(f3) OVER(PARTITION BY f1)
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 EXPLAIN
@@ -554,13 +555,15 @@ EXPLAIN
                                 -> Table scan on t1  (rows=12)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2)
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
 f1	f2	SUM(f3) OVER(PARTITION BY f1,f2)
 4	44	444
 EXPLAIN FORMAT=tree SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2),
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2),
 AVG(f3) OVER (PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
@@ -577,7 +580,8 @@ EXPLAIN
                                     -> Table scan on t1  (rows=12)
 
 SELECT *
-FROM (SELECT f1, f2, SUM(f3) OVER(PARTITION BY f1,f2),
+FROM (SELECT SQL_SMALL_RESULT f1, f2,
+SUM(f3) OVER(PARTITION BY f1,f2),
 AVG(f3) OVER (PARTITION BY f1)
 FROM t1 GROUP BY f1) as dt
 WHERE f1 > 2 and f2 > 30 and (f1+f2) > 40;
@@ -888,12 +892,13 @@ f1	f2
 EXPLAIN FORMAT=tree SELECT * FROM t1 JOIN (SELECT f1, f2 FROM t1) as dt USING (f2)
 WHERE dt.f1 > 31 and t1.f2  > 40;
 EXPLAIN
--> Nested loop inner join  (rows=0.4)
+-> Inner hash join (t1.f2 = dt.f2)  (rows=0.4)
     -> Filter: (t1.f2 > 40)  (rows=4)
         -> Table scan on t1  (rows=12)
-    -> Index lookup on dt using <auto_key0> (f2 = t1.f2)  (rows=0.1)
-        -> Materialize  (rows=1)
-            -> Covering index range scan on t1 using f1_2 over (31 < f1)  (rows=1)
+    -> Hash
+        -> Table scan on dt  (rows=1)
+            -> Materialize  (rows=1)
+                -> Covering index range scan on t1 using f1_2 over (31 < f1)  (rows=1)
 
 SELECT * FROM t1 JOIN (SELECT f1, f2 FROM t1) as dt USING (f2)
 WHERE dt.f1 > 31 and t1.f2  > 40;
@@ -919,11 +924,12 @@ f2	f1	f3	f1
 EXPLAIN FORMAT=tree SELECT * FROM t1 LEFT JOIN (SELECT f1, f2 FROM t1) as dt USING (f2)
 WHERE dt.f1 > 3;
 EXPLAIN
--> Nested loop inner join  (rows=2.4)
+-> Inner hash join (t1.f2 = dt.f2)  (rows=2.4)
     -> Table scan on t1  (rows=12)
-    -> Index lookup on dt using <auto_key0> (f2 = t1.f2)  (rows=0.2)
-        -> Materialize  (rows=2)
-            -> Covering index range scan on t1 using f1_2 over (3 < f1)  (rows=2)
+    -> Hash
+        -> Table scan on dt  (rows=2)
+            -> Materialize  (rows=2)
+                -> Covering index range scan on t1 using f1_2 over (3 < f1)  (rows=2)
 
 SELECT * FROM t1 LEFT JOIN (SELECT f1, f2 FROM t1) as dt USING (f2)
 WHERE dt.f1 > 3;
@@ -1597,8 +1603,8 @@ EXECUTE p USING @p1, @p2, @p3, @p4, @p5, @p6;
 EXPLAIN
 -> Table scan on dt2  (rows=8.32)
     -> Materialize  (rows=8.32)
-        -> Table scan on <temporary>  (rows=8.32)
-            -> Temporary table with deduplication  (rows=8.32)
+        -> Group (no aggregates)  (rows=8.32)
+            -> Sort: l, m  (rows=24)
                 -> Table scan on dt1  (rows=24)
                     -> Union materialize with deduplication  (rows=24)
                         -> Filter: (((((t1.f1 + t1.f2) + 10) + 1) > 20) and (((5 - (((t1.f3 + 3) + 11) + 2)) + 6) > 10))  (rows=12)

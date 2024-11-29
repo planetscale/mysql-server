@@ -984,6 +984,26 @@ static unique_ptr<Json_object> ExplainQueryPlan(
   return obj;
 }
 
+static void GetMaterializationInfo(const AccessPath *path,
+                                   const AccessPath **table_path,
+                                   double *subquery_cost) {
+  *subquery_cost = 0;
+  *table_path = nullptr;
+
+  switch (path->type) {
+    case AccessPath::MATERIALIZE:
+      *table_path = path->materialize().table_path;
+      *subquery_cost = path->materialize().subquery_cost;
+      break;
+    case AccessPath::TEMPTABLE_AGGREGATE:
+      *table_path = path->temptable_aggregate().table_path;
+      *subquery_cost = path->temptable_aggregate().subquery_path->cost();
+      break;
+    default:
+      break;
+  }
+}
+
 /** Append the various costs.
     @param path the path that we add costs for.
     @param materialized_path the MATERIALIZE path for which 'path' is the
@@ -995,14 +1015,11 @@ static unique_ptr<Json_object> ExplainQueryPlan(
 static bool AddPathCosts(const AccessPath *path,
                          const AccessPath *materialized_path, Json_object *obj,
                          bool explain_analyze) {
-  const AccessPath *const table_path = path->type == AccessPath::MATERIALIZE
-                                           ? path->materialize().table_path
-                                           : nullptr;
-
-  double cost;
+  const AccessPath *table_path;
+  double cost, subquery_cost;
 
   /*
-    A MATERIALIZE AccessPath has a child path (called table_path)
+    A materialization AccessPath has a child path (called table_path)
     that iterates over the materialized rows.
     So codewise, table_path is a child of materialized_path, even if it is
     logically the parent, as it consumes the results from materialized_path.
@@ -1030,16 +1047,19 @@ static bool AddPathCosts(const AccessPath *path,
     - For table_path, we show the cost of materialized_path, as this includes
       the cost of materialization, iteration and the descendants.
 
-    - For the MATERIALIZE AccessPath we show the cost of the descendants plus
-      the cost of materialization.
+    - For the materialization AccessPath we show the cost of the descendants
+      plus the cost of materialization.
   */
+
+  GetMaterializationInfo(path, &table_path, &subquery_cost);
+
   if (materialized_path == nullptr) {
     if (table_path == nullptr) {
       cost = std::max(0.0, path->cost());
     } else {
-      assert(path->materialize().subquery_cost >= 0.0);
-      cost = path->materialize().subquery_cost +
-             kMaterializeOneRowCost * path->num_output_rows();
+      // For the materialization AccessPath we show the cost of materialization
+      // plus the cost of the descendants, which is same as the init_cost().
+      cost = path->init_cost();
     }
   } else {
     assert(materialized_path->cost() >= 0.0);
@@ -1759,8 +1779,14 @@ static unique_ptr<Json_object> SetObjectMembers(
     case AccessPath::TEMPTABLE_AGGREGATE: {
       error |= AddMemberToObject<Json_string>(obj, "access_type",
                                               "temp_table_aggregate");
-      ret_obj = AssignParentPath(path->temptable_aggregate().table_path,
-                                 nullptr, std::move(ret_obj), join);
+      // Old optimizer does not do cost estimation, so don't care about passing
+      // materialization path.
+      const AccessPath *materialization_path =
+          (current_thd->lex->using_hypergraph_optimizer() ? path : nullptr);
+
+      ret_obj =
+          AssignParentPath(path->temptable_aggregate().table_path,
+                           materialization_path, std::move(ret_obj), join);
       if (ret_obj == nullptr) return nullptr;
       description = "Aggregate using temporary table";
       children->push_back({path->temptable_aggregate().subquery_path});

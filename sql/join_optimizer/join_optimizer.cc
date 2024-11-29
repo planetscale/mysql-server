@@ -4850,7 +4850,7 @@ AccessPath *DeduplicateForSemijoin(THD *thd, AccessPath *path,
         thd, path->num_output_rows(),
         {semijoin_group, static_cast<size_t>(semijoin_group_size)}));
     dedup_path->set_cost(dedup_path->cost() +
-                         kAggregateOneRowCost * path->num_output_rows());
+                         (kDedupOneRowCost * path->num_output_rows()));
   }
   assert(dedup_path != nullptr);
   return dedup_path;
@@ -6709,7 +6709,7 @@ AccessPath *CreateMaterializationOrStreamingPath(THD *thd, JOIN *join,
     AccessPath *stream_path = NewStreamingAccessPath(
         thd, path, join, /*temp_table_param=*/nullptr, /*table=*/nullptr,
         /*ref_slice=*/-1);
-    EstimateStreamCost(stream_path);
+    EstimateStreamCost(thd, stream_path);
     return stream_path;
   } else {
     // Filesort needs sort by row ID, possibly because large blobs are
@@ -7740,7 +7740,7 @@ void ApplyDistinctParameters::ProposeDistinctPaths(
     dedup_path->set_num_output_rows(output_rows);
 
     dedup_path->set_cost(dedup_path->cost() +
-                         kAggregateOneRowCost * root_path->num_output_rows());
+                         (kDedupOneRowCost * root_path->num_output_rows()));
     receiver->ProposeAccessPath(dedup_path, receiver->all_nodes(),
                                 new_root_candidates,
                                 /*obsolete_orderings=*/0, "sort elided");

@@ -1516,8 +1516,8 @@ explain format=tree select a1,a2,b,min(c),max(c) from t1
 where exists ( select * from t2 where t2.c = t1.c )
 group by a1,a2,b;
 EXPLAIN
--> Table scan on <temporary>  (rows=16)
-    -> Aggregate using temporary table  (rows=16)
+-> Group aggregate: min(t1.c), max(t1.c)  (rows=16)
+    -> Sort: t1.a1, t1.a2, t1.b  (rows=128)
         -> Hash semijoin (FirstMatch) (t1.c = t2.c)  (rows=128)
             -> Covering index scan on t1 using idx_t1_1  (rows=128)
             -> Hash
@@ -1529,8 +1529,8 @@ explain format=tree select a1,a2,b,min(c),max(c) from t1
 where exists ( select * from t2 where t2.c > 'b1' )
 group by a1,a2,b;
 EXPLAIN
--> Table scan on <temporary>  (rows=16)
-    -> Aggregate using temporary table  (rows=16)
+-> Group aggregate: min(t1.c), max(t1.c)  (rows=16)
+    -> Sort: t1.a1, t1.a2, t1.b  (rows=128)
         -> Nested loop inner join (FirstMatch)  (rows=128)
             -> Limit: 1 row(s)  (rows=1)
                 -> Filter: (t2.c > 'b1')  (rows=54.7)
@@ -2189,8 +2189,8 @@ concat(ord(min(b)),ord(max(b)))	min(b)	max(b)
 9798	a	b
 explain format=tree select a1,a2,b,d,min(c),max(c) from t1 group by a1,a2,b;
 EXPLAIN
--> Table scan on <temporary>  (rows=16)
-    -> Aggregate using temporary table  (rows=16)
+-> Group aggregate: min(t1.c), max(t1.c)  (rows=16)
+    -> Sort: t1.a1, t1.a2, t1.b  (rows=128)
         -> Table scan on t1  (rows=128)
 
 explain format=tree select a1,a2,b,d from t1 group by a1,a2,b;
@@ -2217,8 +2217,8 @@ EXPLAIN
 explain format=tree select a1,a2,b,c from t1
 where (a1 = 'b' or a1 = 'd' or a1 = 'a' or a1 = 'c') and (a2 > 'a') and (d > 'xy2') group by a1,a2,b,c;
 EXPLAIN
--> Table scan on <temporary>  (rows=25.3)
-    -> Temporary table with deduplication  (rows=25.3)
+-> Group (no aggregates)  (rows=25.3)
+    -> Sort: t1.a1, t1.a2, t1.b, t1.c  (rows=25.3)
         -> Filter: ((t1.a2 > 'a') and (t1.d > 'xy2') and ((t1.a1 = 'b') or (t1.a1 = 'd') or (t1.a1 = 'a') or (t1.a1 = 'c')))  (rows=25.3)
             -> Table scan on t1  (rows=128)
 
