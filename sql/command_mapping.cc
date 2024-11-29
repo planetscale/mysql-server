@@ -206,7 +206,8 @@ const char *Command_maps::sql_commands[] = {"select",
                                             "unlock_instance",
                                             "restart_server",
                                             "create_srs",
-                                            "drop_srs"};
+                                            "drop_srs",
+                                            "show_parse_tree"};
 
 Command_maps *g_command_maps{nullptr};
 }  // namespace
