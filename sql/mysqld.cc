@@ -2804,6 +2804,7 @@ static void clean_up(bool print_message) {
   if (!opt_noacl) udf_unload_udfs();
   table_def_start_shutdown();
   delegates_shutdown();
+  srv_event_release_plugin_handles();
   plugin_shutdown();
   // needs to be done after plugin shutdown, since plugins can still
   // hold references to the service
@@ -2867,7 +2868,6 @@ static void clean_up(bool print_message) {
   deinitialize_manifest_file_components();
   if (g_event_channels != nullptr) delete g_event_channels;
   g_event_channels = nullptr;
-  srv_event_release_plugin_handles();
   Singleton_event_tracking_service_to_plugin_mapping::remove_instance();
   component_infrastructure_deinit(print_message);
   /*

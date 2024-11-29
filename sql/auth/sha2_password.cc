@@ -1433,8 +1433,10 @@ static bool init_event_tracking_authentication() {
 
 static bool deinit_event_tracking_authentication() {
   if (event_tracking_authentication_initialized &&
-      srv_registry_registration->unregister(auth_service_implementation_name))
+      srv_registry_registration->unregister(auth_service_implementation_name)) {
+    assert(0);  // this should not happen. There's leaked references if it does.
     return true;
+  }
   event_tracking_authentication_initialized = false;
   return false;
 }
