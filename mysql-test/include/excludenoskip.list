@@ -349,3 +349,6 @@ have_component_replication_applier_metrics.inc
 
 # 39. Skip tests that need the diagnostic log.
 have_log_diagnostic.inc
+
+# 40. Skip tests which expect the Group Replication resource manager component
+have_group_replication_resource_manager.inc

@@ -50,6 +50,7 @@
 #include "plugin/group_replication/include/plugin_variables.h"
 #include "plugin/group_replication/include/plugin_variables/recovery_endpoints.h"
 #include "plugin/group_replication/include/services/flow_control/get_metrics.h"
+#include "plugin/group_replication/include/services/management/management.h"
 #include "plugin/group_replication/include/services/message_service/message_service.h"
 #include "plugin/group_replication/include/services/status_service/status_service.h"
 #include "plugin/group_replication/include/sql_service/sql_service_interface.h"
@@ -682,6 +683,12 @@ int plugin_group_replication_start(char **error_message) {
 
   // Reset the coordinator in case there was a previous stop.
   group_action_coordinator->reset_coordinator_process();
+
+  /*
+    Reset start time before join the group to avoid that the
+    eviction service sees a old start time.
+  */
+  GR_start_time_maintain::reset_start_time();
 
   // GR delayed initialization.
   if (!server_engine_initialized()) {
@@ -1866,6 +1873,12 @@ bool attempt_rejoin() {
   if (initialize_plugin_modules(modules_mask)) goto end;
 
   /*
+    Reset start time before join the group to avoid that the
+    eviction service sees a old start time.
+  */
+  GR_start_time_maintain::reset_start_time();
+
+  /*
     Finally we attempt the join itself.
   */
   DBUG_EXECUTE_IF("group_replication_fail_rejoin", goto end;);
@@ -2159,6 +2172,11 @@ int plugin_group_replication_init(MYSQL_PLUGIN plugin_info) {
                  "mode) service.");
     return 1;
   }
+  if (register_group_replication_management_services()) {
+    LogPluginErr(ERROR_LEVEL, ER_GRP_RPL_ERROR_MSG,
+                 "Failed to initialize Group Replication Management service");
+    return 1;
+  }
 
   if (gr::flow_control_metrics_service::
           register_gr_flow_control_metrics_service()) {
@@ -2228,6 +2246,7 @@ int plugin_group_replication_deinit(void *p) {
   finalize_perfschema_module();
 
   gr::status_service::unregister_gr_status_service();
+  unregister_group_replication_management_services();
 
   gr::flow_control_metrics_service::
       unregister_gr_flow_control_metrics_service();
