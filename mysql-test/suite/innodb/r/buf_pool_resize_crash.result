@@ -1,0 +1,8 @@
+SET GLOBAL innodb_buffer_pool_size=128974848;
+SELECT SLEEP(1);
+SLEEP(1)
+0
+SET GLOBAL innodb_buffer_pool_size=127926272;
+SELECT SLEEP(1);
+SLEEP(1)
+0

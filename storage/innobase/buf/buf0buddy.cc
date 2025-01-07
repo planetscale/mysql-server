@@ -761,7 +761,6 @@ bool buf_buddy_realloc(buf_pool_t *buf_pool, void *buf, ulint size) {
 @param[in]      buf_pool        buffer pool instance */
 void buf_buddy_condense_free(buf_pool_t *buf_pool) {
   mutex_enter(&buf_pool->zip_free_mutex);
-  ut_ad(buf_pool->curr_size < buf_pool->old_size);
 
   for (ulint i = 0; i < UT_ARR_SIZE(buf_pool->zip_free); ++i) {
     buf_buddy_free_t *buf = UT_LIST_GET_FIRST(buf_pool->zip_free[i]);

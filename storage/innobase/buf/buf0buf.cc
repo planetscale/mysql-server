@@ -1793,8 +1793,6 @@ that there was a sufficient memory barrier to read curr_size and old_size.
 @param[in]      block           pointer to control block
 @retval true    if will be withdrawn */
 bool buf_block_will_withdrawn(buf_pool_t *buf_pool, const buf_block_t *block) {
-  ut_ad(buf_pool->curr_size < buf_pool->old_size);
-
   const buf_chunk_t *chunk = buf_pool->chunks + buf_pool->n_chunks_new;
   const buf_chunk_t *echunk = buf_pool->chunks + buf_pool->n_chunks;
 
@@ -1814,8 +1812,6 @@ that there was a sufficient memory barrier to read curr_size and old_size.
 @param[in]      ptr             pointer to a frame
 @retval true    if will be withdrawn */
 bool buf_frame_will_withdrawn(buf_pool_t *buf_pool, const byte *ptr) {
-  ut_ad(buf_pool->curr_size < buf_pool->old_size);
-
   const buf_chunk_t *chunk = buf_pool->chunks + buf_pool->n_chunks_new;
   const buf_chunk_t *echunk = buf_pool->chunks + buf_pool->n_chunks;
 
@@ -2180,20 +2176,18 @@ static void buf_pool_resize() {
   /* set withdraw target */
   for (ulint i = 0; i < srv_buf_pool_instances; i++) {
     buf_pool = buf_pool_from_array(i);
-    if (buf_pool->curr_size < buf_pool->old_size) {
-      ulint withdraw_target = 0;
+    ulint withdraw_target = 0;
 
-      const buf_chunk_t *chunk = buf_pool->chunks + buf_pool->n_chunks_new;
-      const buf_chunk_t *echunk = buf_pool->chunks + buf_pool->n_chunks;
+    const buf_chunk_t *chunk = buf_pool->chunks + buf_pool->n_chunks_new;
+    const buf_chunk_t *echunk = buf_pool->chunks + buf_pool->n_chunks;
 
-      while (chunk < echunk) {
-        withdraw_target += chunk->size;
-        ++chunk;
-      }
-
-      ut_ad(buf_pool->withdraw_target == 0);
-      buf_pool->withdraw_target = withdraw_target;
+    while (chunk < echunk) {
+      withdraw_target += chunk->size;
+      ++chunk;
     }
+
+    ut_ad(buf_pool->withdraw_target == 0);
+    buf_pool->withdraw_target = withdraw_target;
     buf_resize_status_progress_update(i + 1, srv_buf_pool_instances);
   }
 
@@ -2211,9 +2205,7 @@ withdraw_retry:
   /* wait for the number of blocks fit to the new size (if needed)*/
   for (ulint i = 0; i < srv_buf_pool_instances; i++) {
     buf_pool = buf_pool_from_array(i);
-    if (buf_pool->curr_size < buf_pool->old_size) {
-      should_retry_withdraw |= buf_pool_withdraw_blocks(buf_pool);
-    }
+    should_retry_withdraw |= buf_pool_withdraw_blocks(buf_pool);
     if (!should_retry_withdraw) {
       buf_resize_status_progress_update(i + 1, srv_buf_pool_instances);
     }

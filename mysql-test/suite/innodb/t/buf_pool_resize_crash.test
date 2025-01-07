@@ -1,0 +1,15 @@
+SET GLOBAL innodb_buffer_pool_size=128974848;
+SELECT SLEEP(1);
+SET GLOBAL innodb_buffer_pool_size=127926272;
+SELECT SLEEP(1);
+
+# This test verifies a scenario where buffer pool chunks
+# are not aligned at InnoDB page sizes, which means they
+# can contain one fewer page than requested. This also means
+# that it's not reliably possible to resize it back to the
+# original value. In that case, it ends up having a smaller
+# buffer pool than requested due to the mismatched alignment
+# of the chunks.
+#
+# So instead we here restart so we get the original values again.
+--source include/force_restart.inc

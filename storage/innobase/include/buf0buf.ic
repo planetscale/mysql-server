@@ -1124,7 +1124,6 @@ withdraw target of the currently ongoing buffer pool resize.
 if the buffer pool is not currently being resized. */
 static inline ulint buf_get_withdraw_depth(buf_pool_t *buf_pool) {
   os_rmb;
-  if (buf_pool->curr_size >= buf_pool->old_size) return 0;
   ulint withdraw_len = UT_LIST_GET_LEN(buf_pool->withdraw);
   return (buf_pool->withdraw_target > withdraw_len
               ? buf_pool->withdraw_target - withdraw_len
