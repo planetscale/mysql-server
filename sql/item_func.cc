@@ -1888,6 +1888,11 @@ bool Item_func_numhybrid::get_time(MYSQL_TIME *ltime) {
   }
 }
 
+const CHARSET_INFO *Item_func_numhybrid::charset_for_protocol() {
+  if (is_temporal_type(data_type())) return &my_charset_bin;
+  return Item_func::charset_for_protocol();
+}
+
 void Item_typecast_signed::print(const THD *thd, String *str,
                                  enum_query_type query_type) const {
   str->append(STRING_WITH_LEN("cast("));

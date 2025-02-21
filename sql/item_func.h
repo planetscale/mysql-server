@@ -909,6 +909,7 @@ class Item_func_numhybrid : public Item_func {
   bool resolve_type_inner(THD *thd) override;
   void fix_num_length_and_dec() override;
   virtual void set_numeric_type() = 0;  // To be called from resolve_type()
+  const CHARSET_INFO *charset_for_protocol() override;
 
   double val_real() override;
   longlong val_int() override;
